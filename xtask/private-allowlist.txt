@@ -1,0 +1,4 @@
+# `cargo xtask check` kişisel veri taraması için izin verilen değerler.
+# Biçim: <depo yolu><TAB><değer>. Yalnızca gerçek kişisel veri olmayan, belgelenmiş örnekler.
+docs/UI_SPEC.md	192.168.1.1
+xtask/private-allowlist.txt	192.168.1.1
