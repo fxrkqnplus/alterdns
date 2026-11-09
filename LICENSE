@@ -672,3 +672,24 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+------------------------------------------------------------------------------
+
+          ADDITIONAL PERMISSION UNDER GNU GPL VERSION 3 SECTION 7
+
+Copyright (C) 2026 Furkan Okan
+
+If you modify this Program, or any covered work, by linking or combining it
+with an unmodified copy of the "wintun.dll" library, as distributed in signed
+form by the Wintun project (https://www.wintun.net/) and containing parts
+covered by the terms of the Wintun Prebuilt Binaries License, the licensors of
+this Program grant you additional permission to convey the resulting work.
+Corresponding Source for a non-source form of such a combination need not
+include the source code for the parts of wintun.dll used.
+
+This additional permission applies only to those parts of this Program for
+which Furkan Okan, or a contributor who has agreed to this permission, is the
+copyright holder. It does not extend to third-party code that is included in
+or linked with this Program under its own license terms. Contributions to this
+Program are accepted under the GNU General Public License version 3 or (at
+your option) any later version, together with this additional permission.

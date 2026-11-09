@@ -30,6 +30,8 @@ Copyright © 2026 Furkan Okan
 
 AlterDNS özgür yazılımdır: **GNU General Public License v3.0 veya (seçiminize göre) daha sonraki bir sürümün** koşulları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz. Ayrıntılar için `LICENSE` dosyasına bakın. Bu program faydalı olması umuduyla dağıtılmaktadır, ancak HİÇBİR GARANTİ VERİLMEMEKTEDİR.
 
+**Ek izin (GPL-3.0 §7):** `LICENSE` dosyasının sonunda, AlterDNS kodunun Wintun projesinin dağıttığı değiştirilmemiş, imzalı `wintun.dll` ile birleştirilmesine izin veren bir ek izin bulunur. Ek izin yalnızca AlterDNS telif sahibinin (ve bu izni kabul eden katkıcıların) kodunu kapsar. Katkılar GPL-3.0-or-later ve bu ek izinle kabul edilir.
+
 "AlterDNS" adı ve logosu bu lisansın kapsamı dışındadır; bkz. `TRADEMARK.md`.
 
 Üçüncü taraf bileşenler kendi lisanslarına tabidir; bkz. `docs/research/THIRD_PARTY.md` (dağıtımda: `THIRD_PARTY_NOTICES`).

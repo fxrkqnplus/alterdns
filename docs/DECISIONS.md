@@ -59,10 +59,19 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 3. **Askıda — WinDivert + kendi motor:** Ürün motoru olarak kullanılmaz. Defender durumu değişirse ileride isteğe bağlı "gelişmiş mod" adayı. Aynı adlı `WinDivert` servisi çakışması (T-CMP-001) bu mod geri gelirse Faz 6'da ölçülür.
 
 **Elenenler (2026-11-09, kullanıcı kararı):**
-- **Kendi çekirdek sürücümüz:** Yayın için EV kod imzalama sertifikası ve Microsoft imza süreci gerekir; bunlar ücretli ve şirket ister. D3 (yalnız ücretsiz yollar) ile çelişir. (Kullanıcı gerekçesi; Microsoft sürücü imzalama belgesiyle ayrıca doğrulanacak.)
+- **Kendi çekirdek sürücümüz** (doğrulandı, 2026-11-09)**:** Yayın için Microsoft imzası ve EV kod imzalama sertifikası gerekir; EV sertifikası ücretlidir ve şirket adına alınır. D3 (yalnız ücretsiz yollar) ile çelişir. Kaynaklar:
+  - Microsoft, *Driver code signing requirements* (learn.microsoft.com/windows-hardware/drivers/dashboard/code-signing-reqs): attestation imzası için ikili göndermek üzere Hardware Dev Center hesabında en az bir EV sertifikası kayıtlı olmalı; aynı şart WHCP sertifikasyonu için de geçerli.
+  - Microsoft, *Attestation sign Windows drivers* (learn.microsoft.com/windows-hardware/drivers/dashboard/code-signing-attestation): attestation imzası EV kod imzalama sertifikası gerektirir.
+  - "Şirket adına" kısmı Microsoft belgesinde geçmez. İkincil kaynak: OSR topluluk forumu yorumu (community.osr.com/discussion/comment/293800/, 2019-05-03): herhangi bir imza türü için şirketiniz adına EV sertifikası alınıp panele yüklenmeli.
 - **Npcap** (lisans dosyasından doğrulandı)**:** Lisans dosyası yazılımın açık kaynak olmadığını, yeniden dağıtılamayacağını ve ücretsiz sürümün sınırlı sayıda sisteme kurulabildiğini söylüyor; dağıtım ücretli OEM lisansı ister. Ayrıca yakalama/enjeksiyon modelidir; özgün paketi durduramaz.
 - **Windows Packet Filter (WinpkFilter)** (README ve lisans sayfasından doğrulandı)**:** Kullanıcı modu kütüphanesi (`ndisapi`) MIT, ama sürücü ayrı lisanslı: ücretsiz katmanda ticari yeniden dağıtım hakkı ve sürücü kaynak kodu yok; dağıtım için ücretli ikili lisans, kaynak için ayrı ücretli lisans gerekir. Kapalı bileşen yasağıyla (SignPath) ve D3 ile çelişir.
 - **GoodbyeDPI veya zapret winws'i sarmalamak:** WinDivert'e bağlıdır; WinDivert askıda olduğu için düşer.
+
+**Wintun lisans önlemleri (2026-11-09, kullanıcı kararı; ayrıntı `THIRD_PARTY.md` §1.1):**
+1. **GPL-3.0 §7 ek izni:** AlterDNS kodunun değiştirilmemiş, Wintun projesinin dağıttığı imzalı `wintun.dll` ile birleştirilmesine izin veren ek izin `LICENSE`'ın sonuna eklendi (kullanıcı onayı, 2026-11-09; GPL metni değişmedi). Ek izin yalnızca telif sahibinin ve bu izni kabul eden katkıcıların kodunu kapsar; katkılar GPL-3.0-or-later + bu ek izinle kabul edilir.
+2. **Yalnızca `alterdns-svc` yükler:** `wintun.dll`'i başka hiçbir işlem yüklemez. `alterdns-svc` bağımlılık ağacında GPL-3.0-only kod (ör. Slint) bulunamaz; `deny-svc.toml` ve `cargo xtask check` bunu crate düzeyinde zorunlu kılar.
+3. **Yedek — kurulumda indirme:** DLL'i pakete koymayıp bileşen yöneticisiyle wintun.net'ten sabit hash'le indirmek. **Yalnızca SignPath DLL'in pakette bulunmasına itiraz ederse** uygulanır.
+4. **SignPath ön sorusu:** Faz 6'yı beklemeden SignPath Foundation'a Wintun DLL'i ve bağlantı modülü ("hacking tool" maddesi) hakkında ön soru gönderilir; yanıt D7 ve D8'e işlenir.
 
 **Ölçüm planı (Faz 0):** Sürücüsüz soket teknikleri (S2-U) ve Wintun spike'ı (`docs/superpowers/plans/2026-11-09-faz-0.md` Görev 7–8). Karar kuralı: hotspot ağında Discord ve Roblox web/API problarını geçen, bütçeleri karşılayan, lisans ve SignPath şartlarına uyan en az müdahaleci seçenek.
 
