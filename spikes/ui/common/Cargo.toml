@@ -1,0 +1,12 @@
+[package]
+name = "ui-common"
+description = "UI spike ortak kodu: tepsi, flyout konumu, HWND sertleştirmesi, ilk kare zaman damgası"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+windows.workspace = true
