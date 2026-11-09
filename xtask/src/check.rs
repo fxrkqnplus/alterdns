@@ -16,6 +16,8 @@ const BINARY_EXTS: [&str; 8] = [
 ];
 const ALLOWLIST_FILE: &str = "xtask/private-allowlist.txt";
 const LOCAL_TERMS_FILE: &str = "lab/local/private-terms.txt";
+const SVC_MANIFEST: &str = "apps/svc/Cargo.toml";
+const SVC_DENY_CONFIG: &str = "deny-svc.toml";
 
 /// `xtask check` adımlarını sırayla çalıştırır; ilk hatada durur.
 pub fn run() -> anyhow::Result<()> {
@@ -48,6 +50,22 @@ pub fn run() -> anyhow::Result<()> {
         if !status.success() {
             bail!("{name} adımı başarısız ({status})");
         }
+    }
+    eprintln!("==> deny-svc");
+    match svc_deny_args(&root) {
+        Some(args) => {
+            let status = Command::new(&cargo)
+                .args(&args)
+                .current_dir(&root)
+                .status()
+                .context("deny-svc adımı başlatılamadı")?;
+            if !status.success() {
+                bail!(
+                    "deny-svc adımı başarısız ({status}): svc ağacında izin dışı lisans veya yasaklı crate"
+                );
+            }
+        }
+        None => eprintln!("{SVC_MANIFEST} yok; svc ağacı denetimi atlandı (Faz 1'de etkinleşir)"),
     }
     eprintln!("==> scan");
     scan_repo(&root)
@@ -145,9 +163,115 @@ pub fn parse_terms(text: &str) -> Vec<String> {
     meaningful_lines(text).map(str::to_string).collect()
 }
 
+/// `alterdns-svc` bağımlılık ağacı için cargo-deny argümanları; svc crate'i yoksa `None`.
+///
+/// `--manifest-path` bir workspace üyesini gösterdiğinde cargo-deny grafiği yalnızca o
+/// crate'ten başlatır; böylece `deny-svc.toml` kuralı yalnızca svc ağacına uygulanır.
+pub fn svc_deny_args(root: &Path) -> Option<Vec<String>> {
+    let manifest = root.join(SVC_MANIFEST);
+    if !manifest.is_file() {
+        return None;
+    }
+    let config = root.join(SVC_DENY_CONFIG);
+    Some(
+        [
+            "deny",
+            "--manifest-path",
+            &manifest.display().to_string(),
+            "--config",
+            &config.display().to_string(),
+            "check",
+            "licenses",
+            "bans",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_root(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("alterdns-xtask-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn repo_file(name: &str) -> toml::Table {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(name);
+        std::fs::read_to_string(path).unwrap().parse().unwrap()
+    }
+
+    fn allowed_licenses(cfg: &toml::Table) -> Vec<String> {
+        cfg["licenses"]["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn svc_deny_args_absent_without_svc_manifest() {
+        assert_eq!(svc_deny_args(&temp_root("nosvc")), None);
+    }
+
+    #[test]
+    fn svc_deny_args_target_svc_manifest_with_svc_config() {
+        let root = temp_root("svc");
+        std::fs::create_dir_all(root.join("apps/svc")).unwrap();
+        std::fs::write(root.join("apps/svc/Cargo.toml"), "").unwrap();
+        let manifest = root.join("apps/svc/Cargo.toml").display().to_string();
+        let config = root.join("deny-svc.toml").display().to_string();
+        let expected: Vec<String> = [
+            "deny",
+            "--manifest-path",
+            &manifest,
+            "--config",
+            &config,
+            "check",
+            "licenses",
+            "bans",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        assert_eq!(svc_deny_args(&root), Some(expected));
+    }
+
+    #[test]
+    fn main_policy_allows_0bsd() {
+        assert!(allowed_licenses(&repo_file("deny.toml")).contains(&"0BSD".to_string()));
+    }
+
+    #[test]
+    fn deny_svc_config_forbids_gpl3_only_and_bans_slint() {
+        let cfg = repo_file("deny-svc.toml");
+        let allow = allowed_licenses(&cfg);
+        assert!(allow.contains(&"GPL-3.0-or-later".to_string()));
+        assert!(!allow.contains(&"GPL-3.0-only".to_string()));
+        let banned: Vec<&str> = cfg["bans"]["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["crate"].as_str().unwrap())
+            .collect();
+        assert!(banned.contains(&"slint"));
+    }
+
+    #[test]
+    fn deny_svc_policy_is_main_policy_minus_gpl3_only() {
+        let expected: Vec<String> = allowed_licenses(&repo_file("deny.toml"))
+            .into_iter()
+            .filter(|l| l != "GPL-3.0-only")
+            .collect();
+        assert_eq!(allowed_licenses(&repo_file("deny-svc.toml")), expected);
+    }
 
     #[test]
     fn allowlist_parses_tab_separated_pairs() {

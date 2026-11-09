@@ -14,7 +14,7 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 
 | İşlem | Bağlam | Yaşam süresi | Görev |
 |---|---|---|---|
-| `alterdns-svc.exe` | Windows servisi, LocalSystem. Hizmet SID'i tanımlı. `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 \| APPLICATION_DIR)` | Sürekli | Bağlantı motoru (teknolojisi D8'e bağlı; ADR-003), ağ izleyici, ayarlayıcı, itibar DB ve beslemeleri, güncelleyici (indirme + doğrulama), journal, IPC sunucusu, yeniden başlatmada silme |
+| `alterdns-svc.exe` | Windows servisi, LocalSystem. Hizmet SID'i tanımlı. `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 \| APPLICATION_DIR)` | Sürekli | Bağlantı motoru (teknolojisi D8'e bağlı; ADR-003; Wintun seçilirse `wintun.dll`'i yalnızca bu işlem yükler, ağacında GPL-3.0-only yok — `deny-svc.toml`), ağ izleyici, ayarlayıcı, itibar DB ve beslemeleri, güncelleyici (indirme + doğrulama), journal, IPC sunucusu, yeniden başlatmada silme |
 | `alterdns-tray.exe` | Etkileşimli kullanıcı, orta bütünlük | Oturum boyunca | Tepsi simgesi, flyout, toast bildirimleri, indirme klasörü izleyici, tarama aracısı (işçileri başlatır), karantina (kullanıcı dosyaları) |
 | `alterdns-ui.exe` | Kullanıcı | İsteğe bağlı açılır; pencere kapanınca çıkar | Ana pencere |
 | `alterdns-scan.exe` | AppContainer (yetenek yok), Low IL, Job Object | Tarama başına | Tür tespiti, açma, analizörler, YARA-X. Girdi: devralınmış salt okunur handle. Çıktı: pipe üzerinden JSON |

@@ -52,7 +52,8 @@ Yönetim, sistem tepsisi simgesinden açılan flyout ile yapılır. Ana pencere 
 6. **Depo public; gizli ve kişisel bilgi commit edilmez.** Kapsam: token, imza anahtarı, API anahtarı, `CLAUDE.local.md` içeriği, lab sonuçları, ağ adresleri ve loglar. Güncelleme istemcisine token gömülmez.
 7. **Bulgu uydurma.** Doğrulamadığın sürüm, lisans veya API davranışını "doğrulandı" diye yazma; `THIRD_PARTY.md` durum sütununu güncel tut.
 8. **Lisans uyumu (GPL-3.0-or-later + SignPath "kapalı bileşen yok" şartı).** Yeni bağımlılık OSI onaylı ve GPL-3.0 ile uyumlu olmalı.
-   - İzin verilenler: MIT, Apache-2.0, BSD, ISC, Zlib, MPL-2.0, LGPL-3.0, GPL-3.0, Unicode-3.0.
+   - İzin verilenler: MIT, Apache-2.0, BSD, 0BSD, ISC, Zlib, MPL-2.0, LGPL-3.0, GPL-3.0, Unicode-3.0.
+   - `alterdns-svc` ağacında GPL-3.0-only yasak (`wintun.dll` ek izni; `deny-svc.toml`, ADR-003).
    - Yasaklılar: kapalı veya özgür olmayan lisanslar (UnRAR dahil), GPL-2.0-only bağlama, Slint royalty-free lisansı (Slint yalnızca GPL-3.0 seçeneğiyle).
    - Denetim `cargo deny check licenses` ile yapılır.
 

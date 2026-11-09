@@ -1,0 +1,47 @@
+# AlterDNS — alterdns-svc bağımlılık ağacı için ek lisans kuralı (ADR-003 / D8).
+#
+# wintun.dll yalnızca alterdns-svc işleminde yüklenir. AlterDNS'in GPL-3.0 §7 ek izni
+# yalnızca kendi kodunu kapsar; üçüncü taraf GPL-3.0-only kod (ör. Slint) bu işlemin
+# bağımlılık ağacında bulunamaz. `cargo xtask check`, apps/svc/Cargo.toml varsa bu
+# yapılandırmayla yalnızca svc kökünden başlayan grafiği denetler.
+#
+# İzin listesi = deny.toml listesi − "GPL-3.0-only" (birim testi eşitliği denetler).
+
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+all-features = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+    "GPL-3.0-or-later",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.93
+exceptions = []
+unused-allowed-license = "allow"
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+deny = [
+    { crate = "slint", reason = "GPL-3.0-only; wintun.dll yükleyen işlemde bulunamaz (ADR-003 / D8)" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
