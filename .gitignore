@@ -1,0 +1,50 @@
+# Rust (kök ve spikes/* altındaki derleme dizinleri)
+target/
+**/*.rs.bk
+
+# Node / uzantı
+node_modules/
+extension/dist/
+extension/*.zip
+
+# Gizli bilgiler ve imza anahtarları — asla depoya girmez
+secrets/
+*.pfx
+*.p12
+*.key
+*.pem
+.env
+.env.*
+*.minisign.key
+
+# Yerel Claude Code ayarları ve geliştirici makinesine özgü bilgiler (public depoya girmez)
+.claude/settings.local.json
+CLAUDE.local.md
+docs/local/
+
+# Lab ve ölçüm çıktıları (kişisel ağ verisi içerebilir)
+lab/results/
+lab/bin/
+lab/local/
+
+# Plan yürütme çalışma alanı (superpowers ledger)
+.superpowers/
+perf/results/raw/
+*.etl
+*.pcapng
+
+# Test derlemleri (betiklerle yeniden üretilir)
+corpus/
+fixtures/generated/
+
+# Paketleme çıktıları
+dist/
+staging/
+
+# Editör / işletim sistemi
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.log
+Thumbs.db
+desktop.ini
