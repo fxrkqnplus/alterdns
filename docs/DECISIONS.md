@@ -68,7 +68,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 - **GoodbyeDPI veya zapret winws'i sarmalamak:** WinDivert'e bağlıdır; WinDivert askıda olduğu için düşer.
 
 **Wintun lisans önlemleri (2026-11-09, kullanıcı kararı; ayrıntı `THIRD_PARTY.md` §1.1):**
-1. **GPL-3.0 §7 ek izni:** AlterDNS kodunun değiştirilmemiş, Wintun projesinin dağıttığı imzalı `wintun.dll` ile birleştirilmesine izin veren ek izin `LICENSE`'a eklenir (metin kullanıcı onayından sonra). Ek izin yalnızca telif sahibinin kodunu kapsar.
+1. **GPL-3.0 §7 ek izni:** AlterDNS kodunun değiştirilmemiş, Wintun projesinin dağıttığı imzalı `wintun.dll` ile birleştirilmesine izin veren ek izin `LICENSE`'ın sonuna eklendi (kullanıcı onayı, 2026-11-09; GPL metni değişmedi). Ek izin yalnızca telif sahibinin ve bu izni kabul eden katkıcıların kodunu kapsar; katkılar GPL-3.0-or-later + bu ek izinle kabul edilir.
 2. **Yalnızca `alterdns-svc` yükler:** `wintun.dll`'i başka hiçbir işlem yüklemez. `alterdns-svc` bağımlılık ağacında GPL-3.0-only kod (ör. Slint) bulunamaz; `deny-svc.toml` ve `cargo xtask check` bunu crate düzeyinde zorunlu kılar.
 3. **Yedek — kurulumda indirme:** DLL'i pakete koymayıp bileşen yöneticisiyle wintun.net'ten sabit hash'le indirmek. **Yalnızca SignPath DLL'in pakette bulunmasına itiraz ederse** uygulanır.
 4. **SignPath ön sorusu:** Faz 6'yı beklemeden SignPath Foundation'a Wintun DLL'i ve bağlantı modülü ("hacking tool" maddesi) hakkında ön soru gönderilir; yanıt D7 ve D8'e işlenir.
