@@ -1,0 +1,36 @@
+# AlterDNS — CI: Windows üzerinde `cargo xtask check`
+# Action'lar tam commit SHA'sıyla sabitlenir; en az 14 günlük sürümler seçilir.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Zorunlu durum kontrolünün adı: "check".
+    name: check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust araç zinciri (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: cargo xtask check
+        run: cargo xtask check
