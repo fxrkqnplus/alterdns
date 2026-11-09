@@ -1,0 +1,40 @@
+# Faz 0 UI spike'ı (T-SPK-001 → ADR-002). Ana workspace'in dışındadır (kök `exclude = ["spikes"]`).
+[workspace]
+resolver = "3"
+members = ["common", "win32", "slint", "measure"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+authors = ["Furkan Okan"]
+publish = false
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+serde_json = "1.0.154"
+ui-common = { path = "common" }
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Performance",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+] }
+
+# Bütün varyantlar aynı release profiliyle derlenir (plan Görev 6).
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

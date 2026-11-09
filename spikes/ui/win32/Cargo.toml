@@ -1,0 +1,13 @@
+[package]
+name = "ui-win32"
+description = "UI spike: Win32 + Direct2D/DirectWrite flyout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ui-common.workspace = true
+windows.workspace = true

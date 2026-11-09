@@ -1,0 +1,19 @@
+[package]
+name = "ui-slint"
+description = "UI spike: Slint (GPL-3.0 seçeneği) flyout"
+# Slint bu spike'ta GPL-3.0-only seçeneğiyle kullanılır (THIRD_PARTY.md); birleşik ikili GPL-3.0 koşullarına tabidir.
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+# Çizici varyantı derlemede seçilir; ikili boyutu ve bellek ayrı ölçülür.
+sw = ["slint/renderer-software"]
+gl = ["slint/renderer-femtovg"]
+
+[dependencies]
+anyhow.workspace = true
+ui-common.workspace = true
+slint = { version = "1.18.1", default-features = false, features = ["compat-1-2", "std", "accessibility", "backend-winit"] }

@@ -19,7 +19,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 ---
 
-## ADR-002 — UI çatısı · Önerilen: Slint (Faz 0 spike'ı bekliyor)
+## ADR-002 — UI çatısı · Kabul (2026-11-09): Slint (GPL-3.0 seçeneği) + yazılım çizici
 
 **Seçenekler:**
 1. **Slint (GPL-3.0 seçeneği):** Bildirimsel; yerel çizim (yazılım, femtovg veya skia çizici); animasyon ve tema desteği. D2 ve SignPath şartları nedeniyle yalnızca GPL-3.0 seçeneğiyle kullanılır; Royalty-free lisans kapalı bir lisans olduğu için uygun değil.
@@ -39,6 +39,31 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 - İkili boyutu
 
 **Karar kuralı:** Bütçeleri karşılayan en düşük emekli seçenek. Slint seçilirse GPL-3.0 koşulları uygulanır; Hakkında ekranında Slint'e teşekkür edilir.
+
+**Spike sonucu (2026-11-09; ayrıntı `spikes/ui/RESULTS.md`):** Release derlemeler, aynı flyout taslağı. Bellek özel bayt (MB), süre ms.
+
+| Varyant | Boşta | Açık | Kapandıktan sonra | Sıcak p95 | Soğuk en çok | İkili | UIA |
+|---|---|---|---|---|---|---|---|
+| Win32 + D2D donanım | 1,8 | **53,2** | **53,2** | 13,9 | 185 | 0,17 MB | ❌ tek düğüm |
+| Win32 + D2D yazılım | 1,7 | 6,7 | 6,7 (50 döngüde **8,4**) | 13,6 | 33 | 0,17 MB | ❌ tek düğüm |
+| Slint + yazılım çizici | 3,0 | 4,1 | 4,1 (50 döngüde 4,1) | 12,7 | 22 | 9,1 MB | ✅ 14 düğüm |
+| Slint + FemtoVG (OpenGL) | **113,6** | **125,4** | **125,4** | 13,1 | 41 | 8,9 MB | — |
+
+**Öneri:** Slint + **yazılım çizici**, `hide` kapanış kipi.
+- Bütçeleri karşılayan seçenekler arasında en az emek isteyen bu: bildirimsel UI, hazır erişilebilirlik ve Türkçe glifler.
+- GPU çiziciler, GPU sürücüsünü işleme yüklediği için bütçeyi aşıyor; ürün tepsi ajanında kullanılmaz.
+
+**Bu seçimle gelen yükümlülükler:**
+- winit, pencere stillerini (`WS_EX_TOOLWINDOW`, sistem menüsü) geri yazıyor. Görev çubuğundan gizleme için winit'e özgü API gerekir (Faz 1'de doğrulanacak).
+- İkili ~9 MB: tepsi ve ana pencere tek exe olmalı (çekirdek kurulum ≤ 25 MB).
+- Çalışma kümesi 27–29 MB'tır (bütçe ölçütü özel bellek).
+
+**Kabul (2026-11-09):** Kullanıcının elle denetiminde (gerçek odak kaybı, Alt+Space ve sürükleme, görev çubuğu ve Alt+Tab, %125/%150 DPI) sorun gözlenmedi; kullanıcı devam onayı verdi.
+
+**Açık maddeler (Faz 1):**
+- winit'in `WS_EX_TOOLWINDOW` bayrağını geri yazması otomatik denetimde görüldü; görev çubuğu ve Alt+Tab davranışı tepsi ajanında winit API'siyle ayrıca doğrulanacak.
+- İkinci monitör ve görev çubuğunun farklı kenarları denenmedi.
+- Tepsi GUID yaklaşımı, i18n seçimi (Slint `@tr` + gettext ya da Fluent) ve vurgu rengi Faz 1'e kaldı.
 
 ---
 
