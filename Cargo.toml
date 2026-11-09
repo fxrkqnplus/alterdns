@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["xtask"]
+# Spike'lar ürün kodu değildir; kendi Cargo.lock'larıyla ayrı derlenir.
+exclude = ["spikes"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-or-later"
+authors = ["Furkan Okan"]
+repository = "https://github.com/fxrkqnplus/alterdns"
+publish = false
+
+[workspace.lints.rust]
+# FFI crate'leri (winsys) `#[allow(unsafe_code)]` ile açar; diğerleri `#![forbid(unsafe_code)]` kullanır.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
