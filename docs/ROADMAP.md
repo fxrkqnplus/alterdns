@@ -26,26 +26,28 @@ Test kimlikleri (T-…) `TESTING.md` belgesindedir.
    - CodeQL'in Rust desteği varsa etkinleştirilir
 4. **`THIRD_PARTY.md` doğrulaması.** "Doğrulanacak" satırlarının her biri için kaynak bağlantısı ve tarih yazılır. WinDivert 2.2.2-A arşivinin SHA-256 değeri ve sürücü imzası kaydedilir.
 5. **Spike: UI (ADR-002).** Slint ve Win32/D2D ile flyout prototipi hazırlanır. Ölçülecekler ADR-002'de listelidir. Rapor ölçüm tablosu içerir.
-6. **Spike: WinDivert (ADR-003).**
-   - 2.2.2-A sürücüsü kendi servisiyle HVCI açıkken yükleniyor mu?
-   - Seçici filtreyle CPU ve gecikme ölçümü.
-   - Motor kapanınca trafiğin normale dönmesi.
-   - Spike sonunda sürücü servisinin kalktığı doğrulanır.
+6. **Spike: Wintun (ADR-003 / D8).** WinDivert, Defender tespiti nedeniyle askıda (2026-11-09).
+   - wintun.net'ten resmi arşiv: hash, imza ve Defender tepkisi.
+   - Adaptör oluşturma, tek bir test IP'si için journal'lı rota.
+   - Kullanıcı modunda küçük bir TCP/UDP iletimi; CPU, RAM ve gecikme ölçümü.
+   - Bekçi rotayı ve adaptörü geri alır; spike sonunda ikisinin de kalktığı doğrulanır.
 7. **Spike: sandbox.** AppContainer + Low IL + Job Object + handle aktarımı. İşçinin dosya sistemine, ağa ve alt işleme erişemediği kanıtlanır.
-8. **Bağlantı araştırma düzeneği (`xtask lab`).** `research/CONNECTIVITY_RESEARCH.md` §5 protokolü uygulanır. Sonuçlar §7'ye yazılır.
+8. **Bağlantı araştırma düzeneği (`xtask lab`).** `research/CONNECTIVITY_RESEARCH.md` §5 protokolü uygulanır: S0, S1, sürücüsüz soket teknikleri (S2-U), Wintun spike'ından sonra gerçek istemciler (S4), D5'e bağlı S5, S6. WinDivert'e bağlı S2–S3 iptal edildi. Sonuçlar §7'ye yazılır.
 
 Not (2026-11-09): Geliştirici makinesindeki eski DPI paketi Faz 0 başında kaldırıldı (D6 kapandı). Yerel paket hash karşılaştırması bu fazdan çıktı; aynı adlı `WinDivert` servisi çakışması Faz 6 uyumluluk matrisine taşındı.
 
-**Kullanıcı onayı gereken noktalar:** WinDivert spike'ı (sürücü servisinin kurulup kaldırılması), upstream motor denemeleri, D5 (TTL 128 karşılaştırması), push ve depo ayarları.
+Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini engelledi. Bağlantı motoru D8 ile yeniden değerlendiriliyor (aday: Wintun TUN + kullanıcı modu motor; yedek: yerel aktarıcı/PAC; WinDivert askıda). Karar Faz 0 ölçümlerinden sonra kesinleşir (ADR-003).
+
+**Kullanıcı onayı gereken noktalar:** Wintun spike'ı (indirme, adaptör ve rota), gerçek istemci testleri, D5 (TTL 128 karşılaştırması), push ve depo ayarları.
 
 **Testler:** T-LAB-001…006, T-SPK-001…004
 
 **Çıkış ölçütleri**
 - [ ] `cargo build` çalışıyor; CI taslağı yeşil.
 - [ ] Depoda kişisel veri yok (`CLAUDE.local.md` ve lab sonuçları git dışı); güvenlik ayarları açık.
-- [ ] ADR-002 ve ADR-003 ölçümlerle kesinleşti.
+- [ ] ADR-002 ölçümle kesinleşti. ADR-003 / D8 için ölçümler (S2-U, Wintun spike'ı) tamamlandı ve karar kullanıcıya sunuldu.
 - [ ] TTL 65 hipotezleri için ölçüm tablosu var. Her hipotezin durumu destekleniyor, çürütüldü veya belirsiz olarak işaretlendi; belirsizlerin gerekçesi yazıldı.
-- [ ] Ağ ayarları başlangıç durumunda; spike ve lab'ın kurduğu WinDivert sürücü servisi kaldırıldı. Hop limit değişmedi.
+- [ ] Ağ ayarları başlangıç durumunda; Wintun spike'ının adaptörü ve test rotası kaldırıldı. Hop limit değişmedi.
 
 ---
 

@@ -119,7 +119,7 @@
 
 ### Spike ve performans
 - **T-SPK-001** UI spike ölçüm tablosu (ADR-002 ölçütleri).
-- **T-SPK-002** WinDivert 2.2.2-A: sürücü kendi servisiyle HVCI açıkken yükleniyor; motor kapanınca trafik normale dönüyor; spike sonunda sürücü servisi kalkıyor.
+- **T-SPK-002** Wintun (D8): resmi arşivin hash'i, imzası ve Defender tepkisi; adaptör HVCI açıkken oluşuyor; tek IP rotası yalnızca o IP'yi etkiliyor; kullanıcı modu TCP/UDP iletimi; CPU/RAM/gecikme; spike işlemi öldürülünce rota ve adaptör ≤ 60 sn içinde kalkıyor. (İlk hâli WinDivert 2.2.2-A içindi; Defender tespiti nedeniyle değişti.)
 - **T-SPK-003** Sandbox: işçinin dosya sistemi, ağ ve alt işlem erişimi yok.
 - **T-SPK-004** DNR kapasitesi (Faz 4): `requestDomains` paketleme sınırı, bellek, güncelleme süresi.
 - **T-PERF-001** Servis boşta private bytes ≤ 12 MB.
@@ -174,7 +174,7 @@
 
 Bütün kombinasyonlar denenmez; çift yönlü (pairwise) kapsama ile seçilen alt küme kullanılır. Geliştirici makinesinin yapılandırması (`CLAUDE.local.md`: HVCI açık, telefon hotspot'u, hop limit 65) her zaman matristedir.
 
-- **T-CMP-001** Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (GoodbyeDPI kurulu VM; sürücü yüklü ve yüklü değil) AlterDNS bağlantı modülünün davranışı: hangi sürücüyü kullandığı, sürüm uyumsuzluğunda verilen hata kodu, kaldırmada diğer aracın servisine dokunulmaması.
+- **T-CMP-001** (Yalnızca WinDivert modu geri gelirse; D8.) Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (GoodbyeDPI kurulu VM; sürücü yüklü ve yüklü değil) AlterDNS bağlantı modülünün davranışı: hangi sürücüyü kullandığı, sürüm uyumsuzluğunda verilen hata kodu, kaldırmada diğer aracın servisine dokunulmaması.
 
 ## 7. Güvenlik testleri
 

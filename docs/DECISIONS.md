@@ -42,24 +42,29 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 ---
 
-## ADR-003 — Paket motoru · Önerilen: kendi Rust motoru + resmi WinDivert 2.2.2-A
+## ADR-003 — Bağlantı motoru · Yeniden değerlendiriliyor (D8, 2026-11-09)
 
-**Seçenekler:**
-1. **Kendi motoru (Rust) + WinDivert:**
-   - Tek işlem ve seçici filtreyle düşük CPU.
-   - UDP/QUIC ve DNS aktarıcı aynı motorda.
-   - Saf fonksiyonlu teknikler pcap ile test edilir.
-   - GoodbyeDPI teknikleri (Apache-2.0) uyarlanabilir.
-2. **GoodbyeDPI ikilisini sarmalamak:** Hızlı başlar. UDP yok, süreç denetimi kaba, ayrı bir ikili güvencesi gerekir.
-3. **zapret winws'i sarmalamak:** En geniş teknik seti. Cygwin bağımlılığı var, lisans doğrulanmadı, iki ayrı motor mantığı oluşur.
+**Geçmiş:**
+- İlk öneri: kendi Rust motoru + resmi WinDivert 2.2.2-A.
+- 2026-11-09: Microsoft Defender, resmi sürüm sayfasından indirilen `WinDivert-2.2.2-A.zip` arşivini `Misleading:Win32/Malgent!AMTB` tespitiyle engelledi ve kaldırdı. Varsayılan Defender'lı kullanıcı sistemlerinde kurulumun engellenmesi riski doğdu. AV kapatılmadı, istisna eklenmedi (CLAUDE.md kural 4). Kullanıcı D8'i açtı; karar Faz 0 ölçümlerinden sonra kesinleşecek.
 
-**Karar (önerilen):** 1. Upstream ikililer yalnızca lab'da referans ölçüm için kullanılır (fark testi). Faz 0 ölçümleri kendi motorumuzla eşdeğerliği engelleyen bir durum gösterirse (ör. UDP tekniği), sarmalama seçeneği isteğe bağlı bir bileşen olarak yeniden değerlendirilir.
+**Seçenekler (D8):**
+1. **Aday — Wintun TUN adaptörü + kullanıcı modunda kendi motorumuz (Rust):**
+   - Yalnızca engelli servislerin IP'leri adaptöre yönlendirilir; diğer trafik doğrudan gider.
+   - TCP bağlantıları motorda sonlandırılır ve kendi soketlerimizle yeniden kurulur. Teknikler: ClientHello bölme, TLS kaydı bölme, `IP_TTL` ile ters sıra, sahte gönderim, OOB.
+   - UDP datagramları kendi UDP soketlerimizle iletilir; gerekirse düşük TTL'li gürültü datagramı eklenir.
+   - Sistem hop limitine dokunulmaz (ADR-010); TTL yalnızca motorun kendi soketlerinde ayarlanır.
+   - Açık sorular: Wintun lisansı ve SignPath uyumu (`THIRD_PARTY.md` §1.1), Defender'ın `wintun.dll`'e tepkisi, rota yönetimi ve geri alma, servis çökünce rotaların bırakılması (T-REC-001), motorun kendi soketlerinin TUN'a geri dönmemesi (`IP_UNICAST_IF`), CPU/RAM/gecikme, kullanıcı modu TCP/IP yığını seçimi.
+2. **Yedek mod — aynı motor, yerel aktarıcı (PAC):** Yönetici yetkisi gerektirmez; tarayıcı ve PAC'a uyan uygulamalar için. Sistem dışı uygulamaları (ör. oyun istemcisi) kapsamayabilir; sınırlama belgelenir.
+3. **Askıda — WinDivert + kendi motor:** Ürün motoru olarak kullanılmaz. Defender durumu değişirse ileride isteğe bağlı "gelişmiş mod" adayı. Aynı adlı `WinDivert` servisi çakışması (T-CMP-001) bu mod geri gelirse Faz 6'da ölçülür.
 
-**Açık sorular (Faz 0 spike'ı):**
-- 2.2.2-A sürücüsünün kendi servisiyle HVCI ve çekirdek yığın koruması altında yüklenmesi.
-- Sürücü servisinin yaşam döngüsü: kurulma, handle'lar kapanınca boşalma, kaldırma.
+**Elenenler (2026-11-09, kullanıcı kararı):**
+- **Kendi çekirdek sürücümüz:** Yayın için EV kod imzalama sertifikası ve Microsoft imza süreci gerekir; bunlar ücretli ve şirket ister. D3 (yalnız ücretsiz yollar) ile çelişir. (Kullanıcı gerekçesi; Microsoft sürücü imzalama belgesiyle ayrıca doğrulanacak.)
+- **Npcap** (lisans dosyasından doğrulandı)**:** Lisans dosyası yazılımın açık kaynak olmadığını, yeniden dağıtılamayacağını ve ücretsiz sürümün sınırlı sayıda sisteme kurulabildiğini söylüyor; dağıtım ücretli OEM lisansı ister. Ayrıca yakalama/enjeksiyon modelidir; özgün paketi durduramaz.
+- **Windows Packet Filter (WinpkFilter)** (README ve lisans sayfasından doğrulandı)**:** Kullanıcı modu kütüphanesi (`ndisapi`) MIT, ama sürücü ayrı lisanslı: ücretsiz katmanda ticari yeniden dağıtım hakkı ve sürücü kaynak kodu yok; dağıtım için ücretli ikili lisans, kaynak için ayrı ücretli lisans gerekir. Kapalı bileşen yasağıyla (SignPath) ve D3 ile çelişir.
+- **GoodbyeDPI veya zapret winws'i sarmalamak:** WinDivert'e bağlıdır; WinDivert askıda olduğu için düşer.
 
-**Faz 6'ya taşınan soru (2026-11-09):** Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (ör. GoodbyeDPI kurulu sistem) AlterDNS'in davranışı. Geliştirici makinesindeki eski paket kaldırıldığı için bu soru Faz 6 uyumluluk matrisinde, GoodbyeDPI kurulu bir VM'de ölçülür.
+**Ölçüm planı (Faz 0):** Sürücüsüz soket teknikleri (S2-U) ve Wintun spike'ı (`docs/superpowers/plans/2026-11-09-faz-0.md` Görev 7–8). Karar kuralı: hotspot ağında Discord ve Roblox web/API problarını geçen, bütçeleri karşılayan, lisans ve SignPath şartlarına uyan en az müdahaleci seçenek.
 
 ---
 
@@ -184,4 +189,5 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 |---|---|---|---|---|
 | D4 | Ticari mi, ticari olmayan mı | (a) Ücretsiz / ticari olmayan. (b) Ticari | Faz 4 başı | Safe Browsing ↔ Web Risk, abuse.ch aboneliği, VirusTotal koşulları. SignPath ticari ikili lisansı zaten yasaklıyor |
 | D5 | Lab'da TTL 128 karşılaştırması | (a) Evet, kısa ve bekçili. (b) Hayır | Faz 0 | H7 testi; operatörün tethering tespiti riski |
+| D8 | Bağlantı motoru teknolojisi (ADR-003) | (a) Wintun TUN + kullanıcı modu motor, yedek olarak yerel aktarıcı (PAC). (b) Yalnız yerel aktarıcı. (c) WinDivert'e dönüş (Defender durumu değişirse). Elenenler ADR-003'te | Faz 0 sonu (S2-U ve Wintun spike ölçümlerinden sonra) | Kurulabilirlik (Defender), lisans ve SignPath uyumu (Wintun ön derlenmiş ikili lisansı), UDP/oyun kapsamı, yönetici yetkisi |
 | D7 | SignPath reddederse veya bağlantı modülünü kapsam dışı sayarsa | (a) İmzasız dağıtıma devam. (b) Bağlantı modülünü ayrı, imzasız bir proje olarak dağıtmak, çekirdeği imzalı tutmak. (c) Başka ücretsiz bir program çıkarsa değerlendirmek | Faz 6 | Kurulabilirlik (SmartScreen, SAC), mimari bölünme |
