@@ -84,10 +84,14 @@ Otomatik denetim betiği (`scripts/behavior-check.ps1`) canlı masaüstünde gü
 6. **Çalışma kümesi:** Slint-sw'de çalışma kümesi 27–29 MB (özel bellek 3–4 MB). Bütçe ölçütü özel bellek; çalışma kümesi bilgi olarak raporlanır.
 7. **Ölçüm yöntemi:** `WH_CALLWNDPROCRET`, `WM_PAINT`'i göremez (kuyruktan alınır); `WH_GETMESSAGE` + kuyruklanan ileti gerekir. Canlı masaüstünde odak değişimleri ölçümü bozar; ölçüm kipi ve açık komutlar gerekli.
 
-## Elle denetim (kullanıcıyla; bekliyor)
+## Elle denetim (kullanıcı, 2026-11-09)
 
+Denetlenenler:
 - Gerçek odak kaybında kapanma: masaüstüne tıklama, başka pencere, Win tuşu.
 - Alt+Space ve fareyle sürükleme denemesi.
 - Slint penceresinin görev çubuğunda ve Alt+Tab'da görünüp görünmediği.
-- DPI: %125, %150 ve %200 ölçek; varsa ikinci monitöre taşıma.
-- Görev çubuğu farklı kenardayken konum.
+- DPI: %125 ve %150 ölçek.
+
+**Sonuç:** Kullanıcı Slint (yazılım çizici) ve Win32 (D2D yazılım) prototiplerinde **sorun gözlemedi.**
+
+**Açık madde (Faz 1):** Otomatik stil denetimi Slint penceresinde `WS_EX_TOOLWINDOW` bayrağının winit tarafından geri yazıldığını gösterdi. Kullanıcı görev çubuğunda veya Alt+Tab'da bir sorun görmedi. Faz 1'de tepsi ajanı kurulurken bu davranış winit'e özgü API ile ayrıca doğrulanacak. İkinci monitör ve görev çubuğunun farklı kenarları bu fazda denenmedi.

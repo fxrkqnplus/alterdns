@@ -19,7 +19,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 ---
 
-## ADR-002 — UI çatısı · Önerilen (ölçüldü): Slint + yazılım çizici — elle denetim ve kullanıcı onayı bekliyor
+## ADR-002 — UI çatısı · Kabul (2026-11-09): Slint (GPL-3.0 seçeneği) + yazılım çizici
 
 **Seçenekler:**
 1. **Slint (GPL-3.0 seçeneği):** Bildirimsel; yerel çizim (yazılım, femtovg veya skia çizici); animasyon ve tema desteği. D2 ve SignPath şartları nedeniyle yalnızca GPL-3.0 seçeneğiyle kullanılır; Royalty-free lisans kapalı bir lisans olduğu için uygun değil.
@@ -58,7 +58,12 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 - İkili ~9 MB: tepsi ve ana pencere tek exe olmalı (çekirdek kurulum ≤ 25 MB).
 - Çalışma kümesi 27–29 MB'tır (bütçe ölçütü özel bellek).
 
-**Kabul için:** elle denetim (gerçek odak kaybı, Alt+Tab ve görev çubuğu, DPI ölçekleri, görev çubuğu kenarları) ve kullanıcı onayı.
+**Kabul (2026-11-09):** Kullanıcının elle denetiminde (gerçek odak kaybı, Alt+Space ve sürükleme, görev çubuğu ve Alt+Tab, %125/%150 DPI) sorun gözlenmedi; kullanıcı devam onayı verdi.
+
+**Açık maddeler (Faz 1):**
+- winit'in `WS_EX_TOOLWINDOW` bayrağını geri yazması otomatik denetimde görüldü; görev çubuğu ve Alt+Tab davranışı tepsi ajanında winit API'siyle ayrıca doğrulanacak.
+- İkinci monitör ve görev çubuğunun farklı kenarları denenmedi.
+- Tepsi GUID yaklaşımı, i18n seçimi (Slint `@tr` + gettext ya da Fluent) ve vurgu rengi Faz 1'e kaldı.
 
 ---
 
