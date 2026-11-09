@@ -20,7 +20,8 @@ Bu nedenle her bağımlılık şu kurallardan geçer:
 
 | Durum | Lisanslar |
 |---|---|
-| ✅ Kabul | MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0, LGPL-2.1+/3.0, GPL-3.0(-or-later), CC0 (veri için) |
+| ✅ Kabul | MIT, Apache-2.0, BSD-2/3-Clause, 0BSD (2026-11-09, smoltcp için), ISC, Zlib, Unicode-3.0, MPL-2.0, LGPL-2.1+/3.0, GPL-3.0(-or-later), CC0 (veri için) |
+| 🚫 svc ağacında yasak | GPL-3.0-only (ör. Slint): `wintun.dll`'i yükleyen `alterdns-svc` işleminde bulunamaz. `deny-svc.toml` + `cargo xtask check` ile zorunlu (ADR-003) |
 | ⚠️ Dikkat | GPL-2.0-only bağlanamaz; yalnızca ayrı işlem olarak toplu dağıtılabilir (ClamAV gibi). LGPL kütüphaneler dinamik bağlanır ve değiştirilebilirlik korunur |
 | ❌ Ret | Kapalı veya özgür olmayan lisanslar (UnRAR lisansı, Slint Royalty-free 2.0, Elastic License 2.0, "ticari olmayan kullanım" lisanslı kod), lisanssız kod |
 
@@ -67,10 +68,12 @@ Hukuki görüş değildir; SignPath başvurusunda ve gerekirse hukuki danışman
 
 **Değerlendirme:**
 - **OSI ve SignPath:** Ön derlenmiş ikili lisansı OSI onaylı değil. DLL'in kaynağı açık (GPL-2.0) olsa da dağıtılan ikili bu lisansla gelir. SignPath'in "OSI lisansı / kapalı bileşen yok" şartı açısından **risk**; başvuruda açıkça sorulmalı (D7 ile ilişkili).
-- **GPL-3.0-or-later ile birleşim:** DLL, AlterDNS işlemine yüklendiğinde birleşik eser sayılabilir. Ön derlenmiş lisansın değiştirme yasağı GPL-3.0 ile uyumlu değil; GPL-2.0-only kaynak da GPL-3.0 ile birleştirilemez. Değerlendirilecek önlemler:
-  - (i) Telif sahibi, kendi kodu için GPL-3.0 §7 kapsamında `wintun.dll` ile birlikte çalışmaya ek izin (bağlama istisnası) ekler.
-  - (ii) Üçüncü taraf GPL-3.0-only kod (Slint) `wintun.dll`'i yükleyen işlemde bulunmaz. Mimari bunu sağlar: motor `alterdns-svc` işleminde, arayüz ayrı işlemlerde.
-  - (iii) DLL kurulum paketine konmaz; bileşen yöneticisi onu wintun.net'ten sabit hash'le indirir. Ön derlenmiş lisans paketle dağıtıma izin veriyor, ama bu yol SignPath ve GPL riskini azaltır.
+- **GPL-3.0-or-later ile birleşim:** DLL, AlterDNS işlemine yüklendiğinde birleşik eser sayılabilir. Ön derlenmiş lisansın değiştirme yasağı GPL-3.0 ile uyumlu değil; GPL-2.0-only kaynak da GPL-3.0 ile birleştirilemez.
+- **Kararlaştırılan önlemler (2026-11-09, kullanıcı kararı; ADR-003):**
+  - (i) **Uygulandı (2026-11-09):** Telif sahibi, kendi kodu için GPL-3.0 §7 kapsamında, değiştirilmemiş ve Wintun projesinin dağıttığı imzalı `wintun.dll` ile birleştirmeye ek izin verdi. Metin `LICENSE`'ın sonunda (GPL metni değişmedi); README'de duyuruldu. Katkılar bu ek izinle kabul edilir.
+  - (ii) **Uygulanır:** `wintun.dll` yalnızca `alterdns-svc` işleminde yüklenir. Bu işlemin bağımlılık ağacında üçüncü taraf GPL-3.0-only kod (ör. Slint) bulunamaz. `deny-svc.toml` ve `cargo xtask check` bunu crate düzeyinde zorunlu kılar (svc crate'i oluştuğunda; Slint açıkça yasaklı). Negatif deneme: Slint'e bağlı deneme crate'i bu yapılandırmayla `bans FAILED, licenses FAILED` verdi (2026-11-09).
+  - (iii) **Yedek:** DLL'i kurulum paketine koymayıp bileşen yöneticisiyle wintun.net'ten sabit hash'le indirmek. Yalnızca SignPath, DLL'in pakette bulunmasına itiraz ederse uygulanır.
+- **SignPath ön sorusu:** Faz 6'yı beklemeden SignPath Foundation'a Wintun DLL'i (ön derlenmiş ikili lisansı) ve bağlantı modülü ("hacking tool" maddesi) hakkında ön soru gönderilecek. Yanıt ADR-003, D7 ve D8'e işlenir.
 - **Ad kullanımı:** Ürün tanıtımında WireGuard/Wintun adı geçmez; Hakkında ekranında ve `THIRD_PARTY_NOTICES`'te atıf yapılır.
 - **Sonuç:** 🔶 Teknik aday olarak uygun; lisans ve SignPath riski açık. Alternatif bir TUN sürücüsü (ör. OpenVPN `tap-windows6`, GPL-2.0, yalnız IOCTL ile konuşulur) ayrıca değerlendirilebilir (doğrulanacak).
 
@@ -80,7 +83,7 @@ crates.io API, 2026-11-09. "İndirme" son 90 gündür.
 
 | Crate | Lisans | Kararlı sürüm | Son güncelleme | İndirme (90 gün) | Durum / not |
 |---|---|---|---|---|---|
-| `smoltcp` | 0BSD | 0.14.0 | 2026-08-17 | 2,76 milyon | 🔶 Olgun. 0BSD OSI onaylı ve GPL ile uyumlu, ama `deny.toml` izin listesinde yok; seçilirse listeye eklenmesi karar ister |
+| `smoltcp` | 0BSD | 0.14.0 | 2026-08-17 | 2,76 milyon | ✅ Olgun. 0BSD OSI onaylı ve GPL ile uyumlu; `deny.toml` ve `deny-svc.toml` izin listelerine eklendi (2026-11-09) |
 | `netstack-smoltcp` | MIT OR Apache-2.0 | 0.2.5 | 2026-11-05 | 91 bin | ✅ smoltcp üstünde TUN yığını |
 | `ipstack` | Apache-2.0 | 1.0.1 | 2026-07-12 | 43 bin | ✅ tun2proxy'nin kullandığı yığın |
 | `lwip` | MIT/Apache-2.0 (eski sözdizimi; lwIP C kodu BSD-3) | 0.4.0 | 2026-07-30 | 283 | ⚠️ Kullanım çok düşük; depo bağlantısı yok |
@@ -121,6 +124,7 @@ Seçim Wintun spike'ında (Görev 7) yapılır; güvenlik geçmişi (RustSec) `c
 | MV3 DNR sınırları | Statik 30.000 + 300.000 paylaşımlı; dinamik 30.000; oturum 5.000 | 🔶 |
 | Native messaging | Host exe'si tarayıcının başlatabileceği konumda olmalı. Paket yalıtımı (MSIX) engel olabilir | 🔶 |
 | **SignPath Foundation** | Ücretsiz OSS Authenticode. Şartlar: OSI lisansı, ikili lisans yok, kapalı bileşen yok; aktif bakım ve yayımlanmış sürüm; MFA; roller (Yazar/İnceleyen/Onaylayan); doğrulanabilir otomatik derleme; her sürüm için elle onay; ürün adı = proje adı; "Code signing policy" sayfası ve zorunlu ifade; gizlilik politikası; sistem değişikliği uyarıları; kaldırma desteği; "hacking tool" ve PUP yasağı. Sertifika SignPath Foundation adına; **yayıncı SignPath Foundation** | ✅ signpath.org/terms (2026-11-09) |
+| SignPath ön sorusu (Wintun ve bağlantı modülü) | Faz 6'yı beklemeden gönderilecek: (1) Wintun ön derlenmiş DLL'inin (OSI dışı ikili lisansı, kaynağı GPL-2.0) imzalanacak pakette bulunması "kapalı bileşen yok" şartına uyar mı; (2) bağlantı modülü "hacking tool" maddesine girer mi. Olumsuzsa Wintun için yedek yol: kurulumda wintun.net'ten sabit hash'le indirme (ADR-003) | ⏳ gönderilecek |
 | Microsoft'un imzalama seçenekleri sayfası | Açık kaynak için SignPath Foundation'ı öneriyor. Store'da MSIX imzası ücretsiz ama bu mimariye uymuyor (sürücü + servis) | ✅ learn.microsoft.com |
 | GitHub Artifact Attestations | Public depolarda bütün planlarda ücretsiz; Sigstore Public Good Instance; `gh attestation verify` ile doğrulama | ✅ docs.github.com |
 | Azure Artifact Signing | Bireysel public trust ABD/Kanada ile sınırlı; ücretli | 🔶 (kullanılmayacak) |
