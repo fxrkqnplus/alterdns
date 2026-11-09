@@ -6,6 +6,7 @@
 #   github-api  — GitHub sürüm varlığının `digest` alanı
 #   cross-check — bağımsız paket bildirimlerinde kayıtlı değer
 #   first-use   — ilk indirmede hesaplanıp sabitlendi
+# status: kullanılmıyor veya diskten kaldırıldıysa "deleted"; kayıt geçmiş için tutulur.
 
 [[artifact]]
 name = "windivert"
@@ -15,7 +16,8 @@ size = 405137
 sha256 = "63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15"
 digest_source = "cross-check"
 local_verified = false
-note = "Beş bağımsız paket bildirimi aynı SHA-256'yı veriyor. 2026-11-09: Microsoft Defender arşive erişimi Misleading:Win32/Malgent!AMTB tespitiyle engelledi; yerel hash ve imza doğrulanamadı."
+status = "deleted"
+note = "Defender tespiti nedeniyle silindi (2026-11-09). Beş bağımsız paket bildirimi aynı SHA-256'yı veriyor. Microsoft Defender arşive erişimi Misleading:Win32/Malgent!AMTB tespitiyle engelledi ve dosyayı kaldırdı; yerel hash ve imza doğrulanamadı. WinDivert askıda (D8)."
 
 [[artifact]]
 name = "goodbyedpi"
@@ -26,4 +28,5 @@ sha256 = "37f96b32d050dadcc930a639eba68e1ccd57ed5c04a5f77dfca908f01905a4c5"
 md5 = "55d4ce5319b22fd3e034d0eaad96c770"
 digest_source = "first-use"
 local_verified = true
-note = "SHA-256 ilk indirmede kaydedildi; MD5 tek bağımsız kaynakla eşleşti (2026-11-09). İçinde WinDivert bulunduğu için açılması, WinDivert tespiti çözülene kadar ertelendi."
+status = "deleted"
+note = "Defender tespiti nedeniyle silindi (2026-11-09): içinde WinDivert bulunduğu için açılmadan kullanıcı tarafından kaldırıldı. SHA-256 ilk indirmede kaydedilmişti; MD5 tek bağımsız kaynakla eşleşmişti. WinDivert'e bağlı S2–S3 iptal (D8)."
