@@ -14,7 +14,7 @@ use super::journal::{IpFamily, OpKind, SystemOps};
 pub struct RealOps;
 
 /// PowerShell'e gömülecek değer: tek tırnak içermemeli.
-fn quoted(v: &str) -> anyhow::Result<String> {
+pub(crate) fn quoted(v: &str) -> anyhow::Result<String> {
     if v.contains('\'') {
         bail!("geçersiz değer: {v}");
     }
@@ -22,7 +22,7 @@ fn quoted(v: &str) -> anyhow::Result<String> {
 }
 
 /// Salt okunur PowerShell sorgusu; çıktının ilk satırını döndürür.
-fn ps_query(script: &str) -> anyhow::Result<String> {
+pub(crate) fn ps_query(script: &str) -> anyhow::Result<String> {
     let out = Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()

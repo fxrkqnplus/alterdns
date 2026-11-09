@@ -1,0 +1,17 @@
+# AlterDNS lab — Discord web/API probları (TCP + TLS + HTTP durum satırı).
+# Ses sunucuları (discord.media, UDP) burada değil; Wintun spike'ında ayrı ölçülür.
+
+[[probe]]
+name = "discord-web"
+domain = "discord.com"
+role = "target"
+
+[[probe]]
+name = "discord-gateway"
+domain = "gateway.discord.gg"
+role = "target"
+
+[[probe]]
+name = "discord-cdn"
+domain = "cdn.discordapp.com"
+role = "target"

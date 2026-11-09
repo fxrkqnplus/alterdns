@@ -1,0 +1,15 @@
+# AlterDNS lab — kontrol probları (CONNECTIVITY_RESEARCH §4). Engelsiz olması beklenen HTTPS uç noktaları.
+# Kontrol başarısızsa senaryo durur; hiçbir hedef "engelli" diye kaydedilmez.
+# Not: www.msftconnecttest.com HTTPS'te sertifika adı uyuşmuyor (2026-11-10), bu yüzden listede yok.
+
+[[probe]]
+name = "gstatic-204"
+domain = "connectivitycheck.gstatic.com"
+path = "/generate_204"
+role = "control"
+
+[[probe]]
+name = "cloudflare-trace"
+domain = "www.cloudflare.com"
+path = "/cdn-cgi/trace"
+role = "control"
