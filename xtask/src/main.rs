@@ -5,10 +5,9 @@
 
 #![forbid(unsafe_code)]
 
-mod check;
-mod scan;
-
 use std::process::ExitCode;
+
+use xtask::{check, lab};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,8 +19,15 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("lab") => match lab::run(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("xtask lab başarısız: {e:#}");
+                ExitCode::FAILURE
+            }
+        },
         _ => {
-            eprintln!("kullanım: cargo xtask check");
+            eprintln!("kullanım: cargo xtask check | cargo xtask lab <komut>");
             ExitCode::from(2)
         }
     }
