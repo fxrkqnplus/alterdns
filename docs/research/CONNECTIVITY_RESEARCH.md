@@ -32,15 +32,15 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 
 | # | Hipotez | Destekleyen | Test | Destek ölçütü / çürütme ölçütü |
 |---|---|---|---|---|
-| H1 | Başarısız olan yapılandırma TTL'e bağlı bir sahte paket kipiydi (`-5`/`--auto-ttl`/`--set-ttl`). Mobil yolda bu kipteki sahte paketler düşürülüyor, normalleştiriliyor veya DPI'a ulaşmıyor | E8, E9 | Aynı ağda, hop limit 65 iken `-5`, `-6`, `-7`, `-8`, `-9`; her biri 3 tekrar | `-5` başarısız, `-6` başarılı → destek. `-5` başarılı → çürür |
+| H1 | Başarısız olan yapılandırma TTL'e bağlı bir sahte paket kipiydi (`-5`/`--auto-ttl`/`--set-ttl`). Mobil yolda bu kipteki sahte paketler düşürülüyor, normalleştiriliyor veya DPI'a ulaşmıyor | E8, E9 | ~~GoodbyeDPI kipleri~~ (iptal, D8). **S2-U:** hop limit 65 iken TTL'e bağlı `Fake`/`Disorder` (kendi soketimizde `IP_TTL`) ile TTL'den bağımsız `Split`/`TlsRecordSplit`/`Oob`; her biri 3 tekrar | TTL'e bağlı teknikler başarısız, bağımsızlar başarılı → destek. TTL'e bağlılar başarılı → çürür |
 | H2 | Karıştırıcı değişken: TTL değişikliğiyle aynı dönemde ağ da değişti (ev ağı → iPhone hotspot); fark operatör DPI'ından kaynaklanıyor | Kullanım bağlamı | Başka bir ağ (ev Wi-Fi/Ethernet) varsa aynı matris. Yoksa kullanıcıdan TTL değişikliği öncesi hangi ağı kullandığı sorulur | Ev ağında 65 ve 128 arasında fark yoksa ama hotspot'ta varsa → ağ kaynaklı |
 | H3 | DNS yolu: hazır betikler DNS'i şifresiz biçimde standart dışı porta (Yandex `77.88.8.8:1253`) yönlendiriyor. Hotspot/operatör yolunda bu UDP trafiği engelleniyor veya DNS telefonda önbellekleniyor ya da değiştiriliyor | E3, E5 (DoH ile çalışıyor) | Hedef alan adları için sistem DNS, DoH ve `77.88.8.8:1253` yanıt karşılaştırması; motor kapalı | DoH dışındakiler başarısız veya farklı yanıt → destek |
-| H4 | Hatalı checksum'lı sahte paketler iPhone NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | `-7` tek başına; mümkünse telefon tarafı gözlem yok, yalnız sonuç | `-7` başarısız, `-6` başarılı → destek (H1 ile birlikte yorumlanır) |
+| H4 | Hatalı checksum'lı sahte paketler iPhone NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | ~~`-7` tek başına~~ (iptal, D8). Hatalı checksum'lı paket kendi soketimizle gönderilemez; sürücüsüz yöntemle test edilemez | Faz 0'da "belirsiz" (gerekçe: test yöntemi yok) |
 | H5 | "Çalışmıyor" gözlemi web değil, UDP trafiğiyle ilgili (Discord sesi, Roblox oyun). GoodbyeDPI bunları kapsamıyor | E11 | Discord masaüstü sesli kanal, Roblox oyuna katılım; web probları geçerken | Web geçiyor, ses/oyun başarısız → destek |
 | H6 | Yerel durum: DPI servisi durmuş veya çökmüş, zamanlanmış görev tetiklenmemiş, başka bir WinDivert istemcisi var, Defender müdahalesi | E4 (yerel) | Paket kaldırıldığı için canlı durum gözlenemez. Tarihsel kanıt: olay günlüğü (Service Control Manager 7031/7034, WinDivert), Defender koruma geçmişi, paketten kalan bağlantı logları (`CLAUDE.local.md`) | Hata kaydı varsa destek; kanıt yetersizse belirsiz |
 | H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab, D5 onayıyla**: kısa süreli 128 ↔ 65 karşılaştırması; aynı matris. Bekçi ≤ 60 sn içinde 65'e döner | 128'de çalışan kip 65'te başarısızsa (veya tersi) → destek |
-| H8 | GoodbyeDPI'ın otomatik TTL mantığı, gelen paket TTL'inden mesafe tahmin eder (128/64 − TTL). Giden TTL'in (65) bu hesaba doğrudan etkisi olmamalı | E8 | H1 testindeki `-5` sonuçları, `--auto-ttl` ve `--set-ttl N` (N = 3…8) taraması | Giden TTL'den bağımsızlık beklenir; aksi görülürse ayrıca incelenir |
-| H9 | MTU veya parçalama: hücresel yolda etkin MTU daha düşük; ters parçalama ve `--max-payload` etkileşimi | — | `-6` ile `--native-frag` / `--reverse-frag` / `--frag-by-sni` varyantları; Path MTU ölçümü | Varyantlar arasında anlamlı fark → destek |
+| H8 | GoodbyeDPI'ın otomatik TTL mantığı, gelen paket TTL'inden mesafe tahmin eder (128/64 − TTL). Giden TTL'in (65) bu hesaba doğrudan etkisi olmamalı | E8 | S2-U: sabit `IP_TTL` taraması (N = 1…8) ile `Fake`. GoodbyeDPI'ın gelen TTL'den otomatik hesabı ölçülmez (iptal, D8) | Giden TTL'den bağımsızlık beklenir; kısmi test, gerekçesiyle |
+| H9 | MTU veya parçalama: hücresel yolda etkin MTU daha düşük; ters parçalama ve `--max-payload` etkileşimi | — | S2-U: bölme konumu taraması (sabit ofset, SNI ortası) ve `TlsRecordSplit`; Path MTU ölçümü | Varyantlar arasında anlamlı fark → destek |
 
 Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla yazılır.
 
@@ -50,7 +50,7 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 - Her senaryo başlamadan önce kullanıcıya şunlar gösterilir ve onay alınır: ne değişecek, ne kadar sürecek, geri alma nasıl olacak.
 - Başlangıç anlık görüntüsü alınır: hop limit v4/v6, DNS, DoH tablosu, servisler, görevler, WinDivert durumu.
 - Değişiklikler journal'a yazılır. Ayrı bir bekçi işlemi kurulur: süre (varsayılan 60 sn) dolunca başlangıç durumuna döner.
-- Upstream ikililer resmi GitHub sürümlerinden indirilir. SHA-256 değerleri `lab/pins.toml` dosyasında sabittir. Ayrı bir dizinde çalıştırılır, iş bitince silinir.
+- Upstream ikililer yalnızca resmi sürüm sayfalarından (GitHub sürümleri, wintun.net) indirilir. SHA-256 değerleri `lab/pins.toml` dosyasında sabittir. Ayrı bir dizinde çalıştırılır, iş bitince silinir.
 - Aynı anda yalnızca bir motor çalışır. Lab dışından çalışan bir DPI aracı (`goodbyedpi.exe`, `winws.exe`) veya lab dizini dışına işaret eden bir `WinDivert` servisi varsa senaryo başlamaz; kullanıcıya bildirilir ve ona onaysız dokunulmaz.
 - Upstream motorun kurduğu WinDivert sürücü servisi journal'a yazılır; motor ailesi bitince durdurulur ve servisin kalktığı doğrulanır.
 - Senaryo bitince başlangıç anlık görüntüsü karşılaştırılır; fark varsa geri alınır ve rapor edilir.
@@ -70,12 +70,13 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 
 1. **S0 — Envanter (salt okunur):** E1–E7'yi yeniden topla. Olay günlüğünden GoodbyeDPI ve WinDivert hata kayıtlarını çıkar (H6). Kullanıcıya şunu sor: "TTL'i değiştirdiğiniz dönemde ağınız da değişti mi? Hangi GoodbyeDPI kipini veya betiğini kullanıyordunuz? Çalışmayan şey web siteleri mi, Discord sesi mi, Roblox oyunu mu?"
 2. **S1 — Motor kapalı temel ölçüm:** DNS karşılaştırması (H3) ve TCP/TLS sınıflandırma (DNS / SNI / IP / yok).
-3. **S2 — Upstream GoodbyeDPI kip matrisi** (hop limit 65): `-5`, `-6`, `-7`, `-8`, `-9`, `-6 --frag-by-sni`, `-6 --native-frag`; her biri DNS modu {sistem, DoH} ile 3 tekrar (H1, H4, H8, H9).
-4. **S3 — zapret (winws) karşılaştırması:** TCP stratejileri (fake, multisplit, fakedsplit varyantları) ve UDP stratejileri (QUIC fake, Discord). Lisans doğrulandıktan sonra yalnızca ölçüm için kullanılır (H5).
-5. **S4 — Gerçek istemciler (el ile, yönergeli):** Discord masaüstü (giriş, metin, sesli kanal), Roblox (oyuna katılım). En iyi 2 yapılandırmayla (H5).
-6. **S5 — D5 onaylanırsa:** S2'nin özeti, hop limit 128 ile ≤ 10 dk içinde tekrarlanır. Bekçi 65'e döner (H7).
-7. **S6 — Başka ağ varsa:** S1–S2 tekrarlanır (H2).
-8. **Rapor:** Hipotez tablosu (destek / çürüdü / belirsiz + kanıt), Faz 2 için başlangıç strateji kataloğu ve sıralama önerisi.
+3. ~~**S2 — Upstream GoodbyeDPI kip matrisi**~~ ve ~~**S3 — zapret (winws)**~~: **iptal** (2026-11-09, D8). Defender WinDivert arşivini engelledi; WinDivert'e bağlı motorlar çalıştırılmaz.
+4. **S2-U — Sürücüsüz soket teknikleri** (hop limit 65; sistem değişikliği yok): `None`, `Split`, `TlsRecordSplit`, `Disorder { IP_TTL 1…8 }`, `Fake { IP_TTL 1…8 }`, `Oob` × bölme konumu {sabit ofset, SNI ortası} × DNS {sistem, DoH} × 3 tekrar. `IP_TTL` yalnızca probun kendi soketindedir. Path MTU ölçümü (H1, H8, H9).
+5. **Wintun spike'ı** (onaylı, yönetici terminali): tek bir test IP'si için TUN rotası, kullanıcı modunda TCP sonlandırma + teknikli yeniden kurma, UDP iletimi; CPU, bellek ve gecikme ölçümü (H5'in UDP kısmı).
+6. **S4 — Gerçek istemciler (el ile, yönergeli; Wintun spike'ından sonra):** Discord masaüstü (giriş, metin, sesli kanal), Roblox (oyuna katılım). S2-U'nun en iyi 2 tekniğiyle, Wintun yolundan (H5).
+7. **S5 — D5 onaylanırsa:** S2-U'nun en iyi 3 tekniği, hop limit 128 ile ≤ 10 dk içinde tekrarlanır. Bekçi 65'e döner (H7).
+8. **S6 — Başka ağ varsa:** S1 ve S2-U tekrarlanır (H2).
+9. **Rapor:** Hipotez tablosu (destek / çürüdü / belirsiz + kanıt), Faz 2 için başlangıç strateji kataloğu ve sıralama önerisi.
 
 ## 6. Uyumluluk etkenleri (farklı bilgisayarlar)
 
@@ -131,6 +132,6 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 
 ## 9. Faz 2 için ön tasarım notları
 
-- Başlangıç sıralaması kanıtlara dayanır. Bu ağda ilk aday: DoH aktarıcı + wrong-seq sahte paket + ters segmentasyon (E5/E6). Son karar Faz 0 sonuçlarından sonra verilir.
+- Başlangıç sıralaması kanıtlara dayanır. E5/E6'ya göre ilk aday DoH aktarıcı + wrong-seq sahte paket + ters segmentasyondu; wrong-seq paket sürücüsü ister ve WinDivert askıda olduğu için D8'e bağlıdır. Sürücüsüz motorda karşılığı S2-U sonuçlarından seçilir. Son karar Faz 0 sonuçlarından sonra verilir.
 - Puanlama: başarı zorunludur; sonra kararlılık (3/3), p95 el sıkışma süresi, yönlendirilen paket/sn (CPU vekili). Eşitlikte daha az müdahaleci teknik seçilir.
 - Profil anahtarı: ağ parmak izi hash'i + hop limit + IPv6 varlığı. Profil 30 gün kullanılmazsa önceliği düşer.

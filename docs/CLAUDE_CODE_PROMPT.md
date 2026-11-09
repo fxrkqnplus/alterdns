@@ -55,11 +55,12 @@ Sen bu projenin baş geliştiricisisin. Hedefin AlterDNS'i aşağıdaki gereksin
   Alternatifler (C++, C#/.NET + WinUI 3, Go) ADR-001'de karşılaştırıldı. Uzantı zorunlu olarak TypeScript.
 - **Lisans: GPL-3.0-or-later** (D2). SignPath Foundation'ın ücretsiz OSS imzası için OSI lisansı ve "kapalı bileşen yok" şartı gerekiyor.
 - **Arayüz:** Varsayılan aday **Slint**, **GPL-3.0 lisans seçeneğiyle**. Royalty-free lisansı kapalı bir lisans olduğu için kullanılmaz. Slint "GPL-3.0-only" olduğundan dağıtılan birleşik ikili GPL-3.0 koşullarına tabidir; proje kodu "or-later" kalır. Seçim Faz 0 UI spike'ında kesinleşir. Yedekler: Win32 + Direct2D/DirectWrite, iced/egui (MIT/Apache). WebView2 tabanlı seçenekler RAM bütçesi nedeniyle varsayılan değil.
-- **Paket motoru:** Resmi, imzalı **WinDivert 2.2.2-A**. LGPL-3.0 seçeneği kullanılır; DLL dinamik bağlanır. Teknikler Rust'ta yeniden uygulanır:
-  - GoodbyeDPI Apache-2.0 lisanslı; GPL-3.0 ile uyumlu. Kod uyarlanırsa NOTICE dosyasına yazılır.
-  - zapret'ten kod alınmadan önce lisansı doğrulanır ve GPL-3.0 uyumu kontrol edilir.
-
-  Upstream ikililer yalnızca lab'da kullanılır; ürünle dağıtılmaz.
+- **Bağlantı motoru — D8 ile yeniden değerlendiriliyor (2026-11-09; ADR-003):** Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini engelledi; WinDivert askıda.
+  - **Aday:** Wintun TUN adaptörü + kullanıcı modunda kendi Rust motorumuz. Yalnızca engelli servislerin IP'leri adaptöre yönlendirilir. TCP bağlantıları motorda yeniden kurulup kendi soketlerimizle gönderilir (ClientHello ve TLS kaydı bölme, `IP_TTL` ile ters sıra, sahte, OOB); UDP kendi soketlerimizle iletilir. Sistem hop limitine dokunulmaz.
+  - **Yedek mod:** Aynı motor, yönetici yetkisi olmadan yerel aktarıcı (PAC).
+  - **Elenenler:** kendi çekirdek sürücümüz, Npcap, Windows Packet Filter (gerekçeler ADR-003'te).
+  - Teknik referansları: GoodbyeDPI (Apache-2.0), zapret/zapret2 (MIT), byedpi (MIT). Kod uyarlanırsa telif bildirimi NOTICE'e eklenir.
+  - Karar Faz 0 ölçümlerinden (S2-U, Wintun spike'ı) sonra kesinleşir. Wintun ön derlenmiş DLL lisansının SignPath uyumu açık risk (`THIRD_PARTY.md` §1.1).
 - **Tarama:**
   - YARA-X (BSD-3)
   - Defender entegrasyonu (MpCmdRun, AMSI)
@@ -173,7 +174,7 @@ Her madde bir veya daha fazla teste bağlıdır. Test kimlikleri `docs/TESTING.m
 
 **Amaç:** Kullanıcının kendi cihazında ve kullanmaya yetkili olduğu bağlantıda, VPN veya proxy kullanmadan DPI kaynaklı engelleri aşmak (Discord, Roblox, engelli siteler). IP tabanlı engel aşılamaz ve bu durum kullanıcıya açıkça bildirilir.
 
-**Teknik kataloğu:** `data/strategies/*.toml`. Her strateji DNS × TCP × UDP tekniklerinin bir birleşimidir.
+**Teknik kataloğu:** `data/strategies/*.toml`. Her strateji DNS × TCP × UDP tekniklerinin bir birleşimidir. Not (D8): katalog motor kararına bağlıdır. Sürücüsüz/TUN motorda ham paket teknikleri (hatalı checksum, geçmiş SEQ/ACK, pasif DPI engelleme) yoktur; soket düzeyindeki karşılıkları S2-U'da ölçülür.
 - **TCP:**
   - Segmentasyon (sabit konumda veya SNI'dan önce), ters sıra
   - Sahte paketler: TTL/otomatik TTL, hatalı checksum, geçmiş SEQ/ACK, sahte SNI
@@ -308,7 +309,7 @@ Kullanıcının Claude Code ortamında 2026-11-09'da yüklü olduğu doğrulanan
 
 | Faz | İçerik | Bağımlılık |
 |---|---|---|
-| 0 | Ortam doğrulama (Windows SDK), depo ve güvenlik ayarları, lisans doğrulama, spike'lar (UI, WinDivert, sandbox), **bağlantı araştırması ve TTL 65 deneyleri** | — |
+| 0 | Ortam doğrulama (Windows SDK), depo ve güvenlik ayarları, lisans doğrulama, spike'lar (UI, Wintun, sandbox), **bağlantı araştırması ve TTL 65 deneyleri** (D8) | — |
 | 1 | Çekirdek: workspace, hata kataloğu, log, config, IPC, journal, servis, tepsi/flyout/ana pencere kabukları, dev-install, CI | 0 |
 | 2 | Bağlantı yönetimi | 1 |
 | 3 | Dosya güvenliği | 1 |
@@ -365,8 +366,8 @@ En düşük hedef makine: 2 çekirdek x64, 4 GB RAM, SSD.
 2. Discord sesi ve Roblox oyunu UDP kullanır. Fizibilite ölçülecek; port aralıkları doğrulanacak.
 3. Roblox Hyperion ile WinDivert etkileşimi bilinmiyor; gerçek oyun testiyle görülecek.
 4. Roblox engelinin durumu haberlerde çelişkili. Engel listesi sabit kodlanmaz, ölçülür.
-5. WinDivert ARM64'ü resmi olarak desteklemiyor; hedef yalnız x64.
-6. WinDivert ve DPI araçları AV'lerde HackTool/RiskTool olarak işaretlenebilir. Şeffaflık esastır; AV kapattırılmaz.
+5. WinDivert ARM64'ü resmi olarak desteklemiyor; hedef yalnız x64. (WinDivert askıda; Wintun arşivinde ARM64 DLL'i var. ARM64 kapsamı D8 kararıyla yeniden değerlendirilir.)
+6. WinDivert ve DPI araçları AV'lerde HackTool/RiskTool olarak işaretlenebilir. Şeffaflık esastır; AV kapattırılmaz. **2026-11-09:** Defender resmi WinDivert 2.2.2-A arşivini `Misleading:Win32/Malgent!AMTB` olarak engelledi (D8). Wintun DLL'inin Defender tepkisi spike'ta ölçülür.
 7. **İmza:** SignPath başvurusu onaylanana kadar ikililer imzasızdır. Bu sürede SmartScreen uyarısı çıkar ve Smart App Control açık sistemler uygulamayı engeller. SignPath imzasında yayıncı "SignPath Foundation" görünür. "Hacking tool" maddesi riski var (D7).
 8. **Lisans:** UnRAR kullanılmaz. Slint yalnız GPL-3.0 seçeneğiyle kullanılır. ClamAV UnRAR'sız kullanılır. YARA kuralları yalnız açık lisanslı olur. Kapalı bileşen kabul edilmez.
 9. **Kullanım koşulları:** Google Safe Browsing ve VirusTotal public API ticari olmayan kullanım içindir. abuse.ch ticari kullanımda abonelik isteyebilir (D4).
@@ -376,7 +377,7 @@ En düşük hedef makine: 2 çekirdek x64, 4 GB RAM, SSD.
 13. Windows Sandbox yalnız Pro ve üzeri sürümlerde var.
 14. Tarama yeni bir zararlıyı garanti yakalayamaz.
 15. Tepsi GUID'i exe yoluna bağlıdır; sabit başlatıcı yolu gerekir.
-16. Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (ör. GoodbyeDPI kurulu sistem) ne olur? Faz 6 uyumluluk matrisinde, GoodbyeDPI kurulu bir VM'de ölçülecek.
+16. Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (ör. GoodbyeDPI kurulu sistem) ne olur? WinDivert modu geri gelirse Faz 6 uyumluluk matrisinde, GoodbyeDPI kurulu bir VM'de ölçülecek.
 17. TTL 128 lab deneyi operatörün tethering tespitini tetikleyebilir (D5).
 
 ## 12. Kullanıcı kararları
@@ -391,6 +392,7 @@ En düşük hedef makine: 2 çekirdek x64, 4 GB RAM, SSD.
 **Açık kararlar (zamanı gelince sor):**
 - **D4 — Ticari olmayan / ticari** (Faz 4 başı)
 - **D5 — Lab'da TTL 128 karşılaştırması** (Faz 0)
+- **D8 — Bağlantı motoru teknolojisi** (Faz 0 sonu; S2-U ve Wintun spike ölçümlerinden sonra; ADR-003)
 - **D7 — SignPath reddederse veya bağlantı modülünü kapsam dışı sayarsa** (Faz 6). Seçenekler:
   - İmzasız dağıtıma devam etmek
   - Bağlantı modülünü ayrı bir proje veya depo olarak imzasız dağıtmak
@@ -439,10 +441,11 @@ Sonraki faz önerisi:
    - libarchive'in RAR5 desteği
    - Slint GPL kullanım koşulları
    - YARA kural setlerinin lisansları
-   - WinDivert 2.2.2-A hash'i ve imzası
+   - ~~WinDivert 2.2.2-A hash'i ve imzası~~ (Defender engelledi; D8)
+   - Wintun lisansı ve SignPath uyumu; kullanıcı modu TCP/IP yığını crate adayları
 6. **Spike'lar:**
    - UI (Slint GPL vs Win32/D2D)
-   - WinDivert 2.2.2-A sürücü yükleme, HVCI ve kaldırma (**onay**)
+   - Wintun: adaptör, tek IP rotası, kullanıcı modu iletim, ölçüm (**onay**)
    - Sandbox
-7. **Bağlantı araştırma düzeneği:** `CONNECTIVITY_RESEARCH.md` §5. Önce salt okunur ölçümler; sonra onayla upstream motorlar; D5 onaylanırsa TTL 128. Sonuçlar `lab/results/` (git dışı) altına yazılır. Özet `CONNECTIVITY_RESEARCH.md` §7'ye yalnızca genelleştirilmiş biçimde girer; kişisel ağ ayrıntıları `CLAUDE.local.md`'de kalır.
+7. **Bağlantı araştırma düzeneği:** `CONNECTIVITY_RESEARCH.md` §5. Önce salt okunur ölçümler; sonra sürücüsüz soket teknikleri (S2-U); Wintun spike'ından sonra gerçek istemciler; D5 onaylanırsa TTL 128. Sonuçlar `lab/results/` (git dışı) altına yazılır. Özet `CONNECTIVITY_RESEARCH.md` §7'ye yalnızca genelleştirilmiş biçimde girer; kişisel ağ ayrıntıları `CLAUDE.local.md`'de kalır.
 8. Faz 0 raporu hazırlanır. ADR-002 ve ADR-003 ölçümlerle kesinleşir.

@@ -30,14 +30,18 @@ Bu nedenle her bağımlılık şu kurallardan geçer:
 
 | Bileşen | Kullanım | Lisans | Kaynak | Sürüm (kontrol tarihi) | Durum | Yükümlülükler / notlar |
 |---|---|---|---|---|---|---|
-| WinDivert | Paket yakalama ve enjeksiyon sürücüsü + DLL | LGPL-3.0 **veya** GPL-2.0 (ikisi de "veya sonrası"); **LGPL-3.0 seçilir** | reqrypt.org/windivert.html, github.com/basil00/WinDivert | 2.2.2 (sürüm 2022-09-21; hâlâ en son, 2026-11-09). Varlık `WinDivert-2.2.2-A.zip`, 405.137 bayt. 2.2.0 varyantları yalnızca sürücü imzasıyla farklı | ✅ lisans, sürüm. 🔶 arşiv hash'i: GitHub API bu eski varlık için `digest` vermiyor; beş bağımsız paket bildirimi (Scoop kovaları, CI betikleri) aynı SHA-256'yı kaydediyor: `63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15`. ⚠️ **2026-11-09: Microsoft Defender indirilen arşive erişimi `Misleading:Win32/Malgent!AMTB` tespitiyle engelledi** (boyut 405.137 bayt doğru; okuma engellendiği için yerel hash ve sürücü imzası doğrulanamadı). İstisna eklenmedi, AV kapatılmadı | DLL dinamik bağlanır; kaynak ve lisans dağıtıma eklenir. Resmi sürücü yazarı tarafından imzalıdır; biz imzalamayız (SignPath: üçüncü taraf ikili pakette bulunabilir). ARM64 resmi belgede yok |
-| GoodbyeDPI | **Yalnız lab karşılaştırması**; teknik referans | Apache-2.0 (GPL-3.0 ile uyumlu) | github.com/ValdikSS/GoodbyeDPI | 0.2.3rc3 (2024-09-14); varlık `goodbyedpi-0.2.3rc3-2.zip`, 1.084.060 bayt. Daha yeni sürüm yok; son commit 2026-01-19 (kontrol 2026-11-09) | ✅ lisans, sürüm. 🔶 hash: API `digest` yok; tek bağımsız kaynak yalnız MD5 veriyor (`55d4ce5319b22fd3e034d0eaad96c770`). İndirmede SHA-256 ilk kullanımda sabitlenir | Ürünle dağıtılmaz. Kod uyarlanırsa NOTICE eklenir |
+| WinDivert | Paket yakalama ve enjeksiyon sürücüsü + DLL | LGPL-3.0 **veya** GPL-2.0 (ikisi de "veya sonrası"); **LGPL-3.0 seçilir** | reqrypt.org/windivert.html, github.com/basil00/WinDivert | 2.2.2 (sürüm 2022-09-21; hâlâ en son, 2026-11-09). Varlık `WinDivert-2.2.2-A.zip`, 405.137 bayt. 2.2.0 varyantları yalnızca sürücü imzasıyla farklı | ✅ lisans, sürüm. 🔶 arşiv hash'i: GitHub API bu eski varlık için `digest` vermiyor; beş bağımsız paket bildirimi (Scoop kovaları, CI betikleri) aynı SHA-256'yı kaydediyor: `63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15`. ⚠️ **2026-11-09: Microsoft Defender indirilen arşive erişimi `Misleading:Win32/Malgent!AMTB` tespitiyle engelledi** (boyut 405.137 bayt doğru; okuma engellendiği için yerel hash ve sürücü imzası doğrulanamadı). İstisna eklenmedi, AV kapatılmadı. **Defender tespiti nedeniyle silindi** (Defender kaldırdı). **Askıda (D8):** ürün motoru olarak kullanılmıyor; ileride isteğe bağlı gelişmiş mod adayı | DLL dinamik bağlanır; kaynak ve lisans dağıtıma eklenir. Resmi sürücü yazarı tarafından imzalıdır; biz imzalamayız (SignPath: üçüncü taraf ikili pakette bulunabilir). ARM64 resmi belgede yok |
+| GoodbyeDPI | **Yalnız lab karşılaştırması**; teknik referans | Apache-2.0 (GPL-3.0 ile uyumlu) | github.com/ValdikSS/GoodbyeDPI | 0.2.3rc3 (2024-09-14); varlık `goodbyedpi-0.2.3rc3-2.zip`, 1.084.060 bayt. Daha yeni sürüm yok; son commit 2026-01-19 (kontrol 2026-11-09) | ✅ lisans, sürüm. 🔶 hash: API `digest` yok; tek bağımsız kaynak yalnız MD5 veriyor (`55d4ce5319b22fd3e034d0eaad96c770`); indirilen arşivin MD5'i eşleşti, SHA-256 `37f96b32d050dadcc930a639eba68e1ccd57ed5c04a5f77dfca908f01905a4c5` ilk kullanımda sabitlendi. **Defender tespiti nedeniyle silindi** (içinde WinDivert bulunduğu için açılmadan kaldırıldı; 2026-11-09) | Ürünle dağıtılmaz. Kod uyarlanırsa NOTICE eklenir. WinDivert'e bağlı lab karşılaştırması (S2) iptal (D8) |
 | zapret / zapret2 (winws) | **Yalnız lab karşılaştırması**; UDP/QUIC referansı | **MIT** (`docs/LICENSE.txt`: zapret "2016-2024 bol-van", zapret2 "2016-2026 bol-van"; GitHub lisansı algılamıyor çünkü dosya `docs/` altında) | github.com/bol-van/zapret, github.com/bol-van/zapret2, github.com/bol-van/zapret-win-bundle | zapret1 EOL (README: yalnız hata düzeltmesi); zapret2 etkin (son push 2026-11-09). zapret-win-bundle'da sürüm yok; `master` `bb6a20a` (2026-11-05) | ✅ lisans (2026-11-09) | MIT, GPL-3.0 ile uyumlu; uyarlanırsa telif bildirimi korunur. Bundle cygwin ve başka bileşenler içerir; yalnız lab'da, dağıtılmaz. README ilk bölümü dolandırıcılara karşı uyarı: zapret özgür ve açık kaynaktır; yalnız belirli bir kaynaktan indirmeye zorlayan veya bağlantı/video kaldırtmaya çalışanlara itibar edilmemeli (özet) |
+| Wintun | TUN adaptörü (D8 adayı) | Kaynak: GPL-2.0 (`COPYING`; "veya sonrası" ifadesi yok, yani GPL-2.0-only). API başlığı `wintun.h`: `GPL-2.0 OR MIT` (MIT seçilir). İmzalı `wintun.dll`: ayrı **Prebuilt Binaries License** (OSI onaylı değil) | wintun.net, git.zx2c4.com/wintun (ayna: github.com/WireGuard/wintun) | 0.14.1: `wintun-0.14.1.zip`, 750.540 bayt (HEAD, Last-Modified 2021-10-17). wintun.net SHA2-256 `07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51` (2026-11-09) | 🔶 lisans metinleri okundu; uyum değerlendirmesi §1.1; Defender tepkisi ve imza Görev 7'de | Ürün tanıtımında WireGuard/Wintun adı kullanılmaz; telif bildirimleri korunur. Kendi derlememiz imza ister (D3'e aykırı); README "Wintun" adlı sürücü dağıtmayın, resmi `wintun.dll`'i dağıtın diyor |
+| byedpi | **Yalnız teknik referans**: sürücüsüz soket teknikleri (split, disorder, fake, OOB, TLS kaydı bölme) | MIT | github.com/hufrea/byedpi | v0.17.3 (2025-09-22); son push 2026-11-04 | ✅ lisans (2026-11-09) | Kod uyarlanırsa MIT telif bildirimi korunur; ürünle dağıtılmaz |
 | YARA-X (`yara-x`) | Kural eşleme | BSD-3-Clause | github.com/VirusTotal/yara-x | Crate 1.23.0, rust-version 1.95 (crates.io, 2026-11-09) | ✅ | — |
 | Slint | UI çatısı (aday) | Crate ifadesi: `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0` | slint.dev, github.com/slint-ui/slint `LICENSE.md` | 1.18.1 (2026-09-21), rust-version 1.92 | ✅ seçenekler ve koşullar (2026-11-09) | **GPL-3.0-only seçeneği kullanılır.** Slint kullanımını açıklama (AboutSlint / rozet) şartı yalnızca Royalty-free lisansta; GPL seçeneğinde ek atıf şartı yok. Bazı üçüncü taraf varlık ve kodlar kendi lisanslarını korur (`cargo deny` denetler). Birleşik ikili GPL-3.0 koşullarına tabidir |
 | ClamAV (isteğe bağlı) | İmza tabanlı tarama | GPL-2.0; UnRAR modülü özgür değil | github.com/Cisco-Talos/clamav | 1.5.x (1.5.4, 2026-08-07, ikincil kaynak) | 🔶 | Ayrı işlemde çalışır. **UnRAR'sız** derlenir veya dağıtılır (`ENABLE_UNRAR=OFF`, doğrulanacak). Kaynak teklifi gerekir. freshclam ≤ saatte 1. DB ≈ 80 + 22 MB |
 | libarchive (RAR4/RAR5 okuma için aday) | RAR ve diğer arşivler | Büyük ölçüde BSD-2-Clause. `COPYING`: birkaç dosya 3 maddeli UC Regents (BSD-3), bir dosya kamu malı, blake2 dosyaları CC0-1.0 / OpenSSL / Apache-2.0 arasında seçimli (CC0 veya Apache seçilir); derleme betiklerinin lisansları değişken | github.com/libarchive/libarchive | RAR 5.0 okuyucu NEWS'te 2018-10-06; ilk sürümü 3.4.0 (2019-06-11). Güncel 3.8.11 (2026-10-30) | ✅ RAR5 okuma ve lisans (2026-11-09). 🔶 Windows derleme yolu Faz 3'te | C kütüphanesi; yalnızca sandbox işçisinde çalışır. Rust bağlantısı `compress-tools` 0.16.1 (MIT OR Apache-2.0); libarchive'i sistemden/vcpkg'den ister |
 | UnRAR | — | Özgür olmayan lisans | rarlab.com | — | ❌ | **Kullanılmaz** (SignPath ve GPL politikası) |
+| Npcap | — (D8'de elendi) | Npcap lisansı: açık kaynak değil; yeniden dağıtılamaz; ücretsiz sürüm sınırlı sayıda sisteme kurulur; dağıtım ücretli OEM lisansı ister | github.com/nmap/npcap `LICENSE` | — | ❌ (2026-11-09) | Yakalama/enjeksiyon modelidir; özgün paketi durduramaz |
+| Windows Packet Filter (WinpkFilter) | — (D8'de elendi) | `ndisapi` kullanıcı modu kütüphanesi MIT; sürücü ayrı lisanslı: ücretsiz katmanda ticari yeniden dağıtım hakkı ve sürücü kaynağı yok; ikili dağıtım ve kaynak ayrı ücretli lisanslar | github.com/wiresock/ndisapi, ntkernel.com lisans sayfası | — | ❌ (2026-11-09) | Kapalı kaynak sürücü; SignPath "kapalı bileşen yok" ve D3 ile çelişir |
 | `windows` / `windows-sys` | Win32/WinRT | MIT OR Apache-2.0 | microsoft/windows-rs | `windows` 0.62.2, `windows-sys` 0.61.2 (crates.io, 2026-11-09) | ✅ | — |
 | `windivert` / `windivert-sys` crate | WinDivert bağları (aday) | LGPL-3.0-or-later | crates.io | Kararlı: `windivert` 0.6.0, `windivert-sys` 0.10.0; en yeni sürümler beta (0.7.0-beta.4, 0.11.0-beta.2). Son güncelleme 2025-09/10 | ✅ lisans; 🔶 bakım (beta ağırlıklı) | Alternatif: kendi ince FFI katmanı (`winsys`); ADR-003 spike'ı DLL'i doğrudan yükler |
 | TLS yığını (`rustls`, `rustls-platform-verifier`, `rustls-native-certs`) | Problar, güncelleyici, beslemeler | `rustls` ve `rustls-native-certs`: Apache-2.0 OR ISC OR MIT; `rustls-platform-verifier`: MIT OR Apache-2.0. `webpki-roots` (CDLA-Permissive-2.0) kullanılmaz | crates.io | `rustls` 0.23.46 kararlı (0.24 geliştirme sürümünde), `rustls-platform-verifier` 0.7.1, `rustls-native-certs` 0.8.5 (2026-11-09) | ✅ | Kripto sağlayıcısı: `ring` 0.17.14 (Apache-2.0 AND ISC) veya `aws-lc-rs` 1.19.0. `aws-lc-sys` 0.47.0 ifadesi OpenSSL içermiyor (ISC, Apache-2.0, MIT, BSD-3-Clause ve seçimli MIT-0); lisans engeli yok. `aws-lc-sys` Windows'ta ek derleme araçları isteyebileceği için önce `ring` denenir (Görev 8) |
@@ -46,6 +50,49 @@ Bu nedenle her bağımlılık şu kurallardan geçer:
 | Geliştirme araçları (dağıtılmaz) | Lisans denetimi, SBOM, test | `cargo-deny`, `cargo-about`: MIT OR Apache-2.0; `cargo-cyclonedx`: Apache-2.0; `cargo-nextest`: MIT OR Apache-2.0 (crates.io) | crates.io | cargo-deny 0.20.2, cargo-about 0.9.3 (`--features cli` ile), cargo-cyclonedx 0.5.10, cargo-nextest 0.9.151 (2026-11-09) | ✅ kurulu | CI cargo-deny'ı 0.20.2'ye sabitler |
 | Arşiv ve ayrıştırıcı crate'leri (`zip`, `sevenz-rust2`, `tar`, `flate2`, `cab`, `cfb`, `goblin`/`pelite`/`object`, `lopdf` …) | Açıcılar ve analizörler | ⏳ | crates.io | ⏳ | ⏳ | Bakım ve güvenlik geçmişi kontrol edilir; sandbox'ta çalışır |
 | Uzantı bağımlılıkları (npm) | Derleme ve test | ⏳ | npm | ⏳ | ⏳ | Çalışma zamanı bağımlılığı en aza indirilir; `npm ci` + lockfile; lisans denetimi |
+
+### 1.1 Wintun lisans değerlendirmesi (D8)
+
+Hukuki görüş değildir; SignPath başvurusunda ve gerekirse hukuki danışmanlıkla teyit edilir.
+
+**Kaynaktan okunan gerçekler (2026-11-09):**
+1. Depodaki kaynak kod GPLv2 ile lisanslı. README, wintun.net'teki ön derlenmiş ikililerin "daha serbest" ayrı bir lisansla verildiğini söylüyor.
+2. `prebuilt-binaries-license.txt` şartları:
+   - Kullanım hakkı münhasır değil ve devredilemez.
+   - Tersine mühendislik, değiştirme ve türev eser yasak; yalnızca `wintun.h` arayüzü ("Permitted API") üzerinden kullanım serbest.
+   - Yeniden dağıtım yalnızca DLL'i yalnızca bu API üzerinden kullanan yazılımla birlikte serbest.
+   - Telif bildirimleri kaldırılamaz; WireGuard/Wintun adları tanıtımda kullanılamaz.
+   - Lisans şartları WireGuard LLC tarafından değiştirilebilir (madde 8).
+3. `wintun.h` başlığı `GPL-2.0 OR MIT`.
+
+**Değerlendirme:**
+- **OSI ve SignPath:** Ön derlenmiş ikili lisansı OSI onaylı değil. DLL'in kaynağı açık (GPL-2.0) olsa da dağıtılan ikili bu lisansla gelir. SignPath'in "OSI lisansı / kapalı bileşen yok" şartı açısından **risk**; başvuruda açıkça sorulmalı (D7 ile ilişkili).
+- **GPL-3.0-or-later ile birleşim:** DLL, AlterDNS işlemine yüklendiğinde birleşik eser sayılabilir. Ön derlenmiş lisansın değiştirme yasağı GPL-3.0 ile uyumlu değil; GPL-2.0-only kaynak da GPL-3.0 ile birleştirilemez. Değerlendirilecek önlemler:
+  - (i) Telif sahibi, kendi kodu için GPL-3.0 §7 kapsamında `wintun.dll` ile birlikte çalışmaya ek izin (bağlama istisnası) ekler.
+  - (ii) Üçüncü taraf GPL-3.0-only kod (Slint) `wintun.dll`'i yükleyen işlemde bulunmaz. Mimari bunu sağlar: motor `alterdns-svc` işleminde, arayüz ayrı işlemlerde.
+  - (iii) DLL kurulum paketine konmaz; bileşen yöneticisi onu wintun.net'ten sabit hash'le indirir. Ön derlenmiş lisans paketle dağıtıma izin veriyor, ama bu yol SignPath ve GPL riskini azaltır.
+- **Ad kullanımı:** Ürün tanıtımında WireGuard/Wintun adı geçmez; Hakkında ekranında ve `THIRD_PARTY_NOTICES`'te atıf yapılır.
+- **Sonuç:** 🔶 Teknik aday olarak uygun; lisans ve SignPath riski açık. Alternatif bir TUN sürücüsü (ör. OpenVPN `tap-windows6`, GPL-2.0, yalnız IOCTL ile konuşulur) ayrıca değerlendirilebilir (doğrulanacak).
+
+### 1.2 Kullanıcı modu TCP/IP yığını ve TUN crate adayları (D8)
+
+crates.io API, 2026-11-09. "İndirme" son 90 gündür.
+
+| Crate | Lisans | Kararlı sürüm | Son güncelleme | İndirme (90 gün) | Durum / not |
+|---|---|---|---|---|---|
+| `smoltcp` | 0BSD | 0.14.0 | 2026-08-17 | 2,76 milyon | 🔶 Olgun. 0BSD OSI onaylı ve GPL ile uyumlu, ama `deny.toml` izin listesinde yok; seçilirse listeye eklenmesi karar ister |
+| `netstack-smoltcp` | MIT OR Apache-2.0 | 0.2.5 | 2026-11-05 | 91 bin | ✅ smoltcp üstünde TUN yığını |
+| `ipstack` | Apache-2.0 | 1.0.1 | 2026-07-12 | 43 bin | ✅ tun2proxy'nin kullandığı yığın |
+| `lwip` | MIT/Apache-2.0 (eski sözdizimi; lwIP C kodu BSD-3) | 0.4.0 | 2026-07-30 | 283 | ⚠️ Kullanım çok düşük; depo bağlantısı yok |
+| `netstack-lwip` | — | — | — | — | crates.io'da bulunamadı |
+| `tun2proxy` | MIT | 0.8.7 | 2026-10-31 | 7 bin | Referans uygulama (TUN → proxy; `wintun-bindings` + `ipstack`) |
+| `wintun-bindings` | MIT | 0.7.40 | 2026-08-17 | 256 bin | ✅ Etkin Wintun bağları |
+| `wintun` | MIT | 0.5.1 | 2025-01-29 | 142 bin | 🔶 Bakım yavaş |
+| `tun-rs` | Apache-2.0 | 2.8.18 | 2026-11-04 | 299 bin | ✅ Çok platformlu TUN |
+| `tun` | WTFPL | 0.8.14 | 2026-07-21 | 559 bin | ❌ WTFPL OSI onaylı değil |
+| `etherparse` | MIT OR Apache-2.0 | 0.21.0 | 2026-07-21 | 2,64 milyon | ✅ Paket ayrıştırma/kurma |
+
+Seçim Wintun spike'ında (Görev 7) yapılır; güvenlik geçmişi (RustSec) `cargo deny` ile denetlenir.
 
 ## 2. İtibar ve tehdit veri kaynakları
 

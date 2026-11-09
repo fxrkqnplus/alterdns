@@ -11,7 +11,7 @@ AlterDNS, Windows için modüler bir masaüstü güvenlik ve bağlantı uygulama
 
 1. **Dosya güvenliği:** İndirilen dosyaları ve gömülü içeriklerini çalıştırmadan, sandbox içinde inceler. Sonuç `Güvenli` / `Şüpheli` / `Riskli` olarak verilir; incelenemeyen kısımlar ayrıca belirtilir. Karantina ve silme işlemleri doğrulanır.
 2. **Tarayıcı koruması:** MV3 uzantısı ve native messaging host'tan oluşur. Riskli adreslere girilmeden önce AlterDNS engelleme sayfası gösterilir. Uzantı mağazada yayımlanmaz; uygulama klasöründen **geliştirici moduyla** yüklenir (ADR-011).
-3. **Bağlantı yönetimi:** WinDivert tabanlı yerel DPI atlatma motorudur; VPN veya proxy kullanmaz. Ağa göre ayar yapar, zaman sınırlı denemeler yapar ve başarısız değişiklikleri geri alır.
+3. **Bağlantı yönetimi:** Yerel DPI atlatma motorudur; uzak bir VPN veya proxy sunucusu kullanmaz, trafik bu bilgisayarda işlenir. Motor teknolojisi **D8** ile yeniden değerlendiriliyor (ADR-003): aday Wintun TUN + kullanıcı modu motor, yedek yerel aktarıcı (PAC), WinDivert askıda (Defender tespiti). Ağa göre ayar yapar, zaman sınırlı denemeler yapar ve başarısız değişiklikleri geri alır.
 
 Yönetim, sistem tepsisi simgesinden açılan flyout ile yapılır. Ana pencere ayrı bir işlemde çalışır. Kurulum modülerdir.
 
@@ -39,7 +39,7 @@ Yönetim, sistem tepsisi simgesinden açılan flyout ile yapılır. Ana pencere 
 
 ## Değişmez kurallar
 
-1. **Geliştirici makinesinin bağlantısını koparma.** Ağ ayarı, DNS, WinDivert veya hop limit üzerindeki her deneme şu koşullara uyar:
+1. **Geliştirici makinesinin bağlantısını koparma.** Ağ ayarı, DNS, rota, sanal adaptör, paket sürücüsü veya hop limit üzerindeki her deneme şu koşullara uyar:
    - `xtask lab` düzeneğinde, zaman sınırlı çalışır.
    - Ayrı işlemde çalışan bir geri alma bekçisiyle (≤ 60 sn) korunur.
    - Kullanıcının o oturumdaki açık onayını gerektirir.

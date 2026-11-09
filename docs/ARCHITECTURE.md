@@ -5,7 +5,7 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 ## 1. İlkeler
 
 - **En az ayrıcalık:** Yalnızca paket motoru, journal ve güncelleme uygulaması yönetici yetkisiyle çalışır. Güvenilmeyen içerik hiçbir zaman ayrıcalıklı bir işlemde ayrıştırılmaz.
-- **Kapanınca güvenli:** Servis çökerse WinDivert handle'ı kapanır ve trafik normal akar. Yarım kalan sistem değişiklikleri açılışta journal'dan geri alınır.
+- **Kapanınca güvenli:** Servis çökerse motor kaynakları bırakılır ve trafik normal akar (WinDivert'te handle kapanır; TUN tasarımında rota ve adaptörün bırakılması D8 spike'ında ölçülür). Yarım kalan sistem değişiklikleri açılışta journal'dan geri alınır.
 - **Tembel yükleme:** Arayüz, tarama işçisi ve ana pencere ihtiyaç anında başlar ve işi bitince çıkar. Boştayken yalnızca servis ve küçük tepsi ajanı çalışır.
 - **Olay güdümlü çalışma:** Yoklama (polling) yerine Windows bildirimleri kullanılır. Boştayken 60 sn'den sık zamanlayıcı yoktur.
 - **Modülerlik:** Her modül ayrı bir bileşen paketidir. Kurulu olmayan modülün kodu diskte bulunmaz; arayüz bu modülü "Yüklü değil" olarak gösterir.
@@ -14,7 +14,7 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 
 | İşlem | Bağlam | Yaşam süresi | Görev |
 |---|---|---|---|
-| `alterdns-svc.exe` | Windows servisi, LocalSystem. Hizmet SID'i tanımlı. `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 \| APPLICATION_DIR)` | Sürekli | Bağlantı motoru (WinDivert), ağ izleyici, ayarlayıcı, itibar DB ve beslemeleri, güncelleyici (indirme + doğrulama), journal, IPC sunucusu, yeniden başlatmada silme |
+| `alterdns-svc.exe` | Windows servisi, LocalSystem. Hizmet SID'i tanımlı. `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 \| APPLICATION_DIR)` | Sürekli | Bağlantı motoru (teknolojisi D8'e bağlı; ADR-003), ağ izleyici, ayarlayıcı, itibar DB ve beslemeleri, güncelleyici (indirme + doğrulama), journal, IPC sunucusu, yeniden başlatmada silme |
 | `alterdns-tray.exe` | Etkileşimli kullanıcı, orta bütünlük | Oturum boyunca | Tepsi simgesi, flyout, toast bildirimleri, indirme klasörü izleyici, tarama aracısı (işçileri başlatır), karantina (kullanıcı dosyaları) |
 | `alterdns-ui.exe` | Kullanıcı | İsteğe bağlı açılır; pencere kapanınca çıkar | Ana pencere |
 | `alterdns-scan.exe` | AppContainer (yetenek yok), Low IL, Job Object | Tarama başına | Tür tespiti, açma, analizörler, YARA-X. Girdi: devralınmış salt okunur handle. Çıktı: pipe üzerinden JSON |
@@ -116,6 +116,8 @@ ChangeRecord { id, txn_id, component, kind, target, before: Snapshot, after: Val
 ## 7. Modüller
 
 ### 7.1 Bağlantı yönetimi
+
+> **D8 notu (2026-11-09):** Bu bölüm WinDivert tabanlı ilk tasarımı anlatır. Defender resmi WinDivert arşivini engellediği için WinDivert askıdadır. Aday tasarım: Wintun TUN adaptörü + kullanıcı modu motor (yalnızca engelli servislerin IP'leri adaptöre yönlendirilir; TCP motorda yeniden kurulup kendi soketlerimizle gönderilir; UDP kendi soketlerimizle iletilir); yedek: yerel aktarıcı (PAC). Bölüm, D8 kararından sonra yeniden yazılır (ADR-003).
 
 ```
 net-observe ──olay──▶ tuner ──config──▶ dpi engine (WinDivert) ◀──▶ dns relay
@@ -230,7 +232,7 @@ tetik (sağ tık "AlterDNS ile tara", sürükle-bırak, indirme izleyici, uzant�
    "next_key":null}
   ```
 - **Manifest konumu (D1):** `https://github.com/fxrkqnplus/alterdns/releases/latest/download/release-manifest.json` ve `release-manifest.json.sig`. Ön sürüm kanalı için ayrı adlandırılmış manifest kullanılır. API çağrısı yapılmaz; hız sınırı davranışı doğrulanacak.
-- **Bileşenler:** `core` (zorunlu), `file-security`, `file-security.yara-rules`, `file-security.clamav` (isteğe bağlı), `file-security.sandbox` (deneysel), `browser`, `connection` (WinDivert dahil).
+- **Bileşenler:** `core` (zorunlu), `file-security`, `file-security.yara-rules`, `file-security.clamav` (isteğe bağlı), `file-security.sandbox` (deneysel), `browser`, `connection` (paket/TUN sürücüsü D8'e bağlı).
 - **Kurulum txn'i:** indir → hash ve imza doğrula → `%ProgramFiles%\AlterDNS\<sürüm>\` altına aç → journal kayıtlarıyla sistem değişiklikleri → sağlık kontrolü → commit. Her adımın hata kodu vardır.
 - **Güncelleme:** Servis indirip doğrular; `maint` yeni sürümü A/B dizinine kurar → `current` değişir → servis ve tepsi yeniden başlar → 60 sn sağlık kontrolü yapılır (IPC ping, motor öz-testi, UI açılabiliyor mu). Başarısızlıkta önceki sürüme dönülür ve `ADNS-UPD-0xx` kodu gösterilir. Bir önceki sürüm, bir sonraki başarılı güncellemeye kadar saklanır.
 - **Kaldırma:**
