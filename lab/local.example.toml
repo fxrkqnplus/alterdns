@@ -1,0 +1,13 @@
+# AlterDNS lab — yerel ayar örneği (public).
+# Gerçek dosyalar git dışıdır:
+#   lab/local/lab.local.toml     bu dosyanın kopyası
+#   lab/local/probes.local.toml  engelli olduğu bilinen başka siteler; data/probes/*.toml ile aynı biçim:
+#       [[probe]]
+#       name = "ornek"
+#       domain = "ornek.example"
+#       role = "target"
+#   lab/local/private-terms.txt  `cargo xtask check` taramasında yakalanacak kişisel terimler
+
+# S0 (`cargo xtask lab inventory`): eski bir DPI paketinden kalan log klasörleri.
+# Yalnızca dosya adları, boyutları ve tarihleri listelenir; içerik okunmaz ve lab/results/ dışına çıkmaz.
+history_dirs = []

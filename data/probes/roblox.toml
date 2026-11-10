@@ -1,0 +1,17 @@
+# AlterDNS lab — Roblox web/API probları (TCP + TLS + HTTP durum satırı).
+# Oyun trafiği (UDP) burada değil; Wintun spike'ında ve S4'te ölçülür.
+
+[[probe]]
+name = "roblox-web"
+domain = "www.roblox.com"
+role = "target"
+
+[[probe]]
+name = "roblox-apis"
+domain = "apis.roblox.com"
+role = "target"
+
+[[probe]]
+name = "roblox-clientsettings"
+domain = "clientsettings.roblox.com"
+role = "target"
