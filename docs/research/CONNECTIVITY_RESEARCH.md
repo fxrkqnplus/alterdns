@@ -10,18 +10,24 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 
 ## 2. Kanıtlar
 
-**E1–E7 (yerel kanıtlar):** Geliştirici makinesinden salt okunur toplanan ağ, hop limit, DNS, o tarihte kurulu olan DPI paketi, log ve güvenlik ayarı bulguları. Kişisel olduğu için public depoda değil, git dışı `CLAUDE.local.md` dosyasındadır. Eski DPI paketi 2026-11-09'da kaldırıldı; E4 ve E7 o tarihten önceki durumu anlatır.
+**E1–E7, E13–E15 (yerel kanıtlar):** Geliştirici makinesinden salt okunur toplanan ağ, hop limit, DNS, o tarihte kurulu olan DPI paketi, log ve güvenlik ayarı bulguları; S0 envanteri ve yanıtları (2026-11-10). Kişisel olduğu için public depoda değil, git dışı `CLAUDE.local.md` dosyasındadır. Eski DPI paketi 2026-11-09'da kaldırıldı; E4 ve E7 o tarihten önceki durumu anlatır.
 
 **Genel özet:** Telefon hotspot'u üzerinden ve hop limit 65 iken:
 - **Doğrudan erişim:** Discord ve Roblox HTTPS bağlantıları sıfırlanıyor (RST).
 - **TTL'e bağlı olmayan `-6` (wrong-seq) kipi + şifreli DNS:** Web ve API erişimi sağlanıyor.
+- **S0 (2026-11-10):**
+  - Sorunun gözlendiği yapılandırma TTL'e bağlı, sabit TTL'li bir sahte paket kipiydi (E12). DNS, şifresiz olarak standart dışı bir porta yönlendiriliyordu.
+  - Hop limitle aynı dönemde ağ da değişti (H2 karıştırıcı değişkeni gerçek).
+  - Değişiklikten sonra web, uygulama ve ses erişiminin hepsi kayboldu (H5 tek başına açıklayamaz).
+  - Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapanmış. Defender aynı tehdit adını lab indirmesinden önce de tespit etmiş (H6).
 
 | # | Kanıt | Kaynak |
 |---|---|---|
-| E1–E7 | Yerel kanıtlar (yukarıda özetlendi) | `CLAUDE.local.md` |
+| E1–E7, E13–E15 | Yerel kanıtlar (yukarıda özetlendi) | `CLAUDE.local.md` |
 | E8 | GoodbyeDPI kip tanımları: `-5` = `--auto-ttl` (TTL'e bağlı sahte paket); `-6` = `--wrong-seq`; `-7` = `--wrong-chksum`; `-8` = seq + chksum; `-9` = `-8` + `-q` (QUIC engeli, varsayılan). `--wrong-chksum` için "VM'de veya bazı yönlendiricilerde çalışmayabilir" notu var. `--set-ttl`/`--auto-ttl` için "TEHLİKELİ" uyarısı var | GoodbyeDPI README |
 | E9 | GoodbyeDPI yazarının `--wrong-seq` commit notu: yöntem "TTL değerlerinin değiştirilmesini yasaklayan ağlarda (tethering engeli/ücretli özelliği olan mobil ağlar)" işe yarayabilir | Commit `bbb6af89` (2021-12-25) |
 | E10 | Hop limit 65 yöntemi hotspot gizleme amacıyla yaygın: dizüstünün 65 TTL'i telefondan geçince 64 olur ve telefonun kendi trafiğine benzer. Operatörler TTL ile tethering tespiti yapıyor | Çeşitli kaynaklar (doğrulanacak ayrıntı: Türk operatörleri) |
+| E12 | GoodbyeDPI-Turkey `windows/service_install_dnsredir_turkey.cmd` servisi `-5 --set-ttl 5 --dns-addr 77.88.8.8 --dns-port 1253 …` ile kurar. Kaynakta (`src/goodbyedpi.c`) sonra gelen `--set-ttl`, `-5`'in otomatik TTL'ini kapatır: sabit TTL 5'li sahte paket + 2 bayt ters parçalama + en çok 1200 bayt yük; wrong-seq ve wrong-chksum yok | `cagritaskn/GoodbyeDPI-Turkey` (Apache-2.0), dosyanın son commit'i `bd88019`; okuma 2026-11-10 |
 | E11 | Discord sesi ayrı UDP bağlantısı kullanır; GoodbyeDPI UDP'yi işlemez. zapret UDP/QUIC desync ve `--dpi-desync-fake-discord` destekler | GoodbyeDPI issue #276; zapret README |
 
 **Ön gözlem (hipotez değil, kayıt):** Yerel kanıtlar, hop limit 65 iken **TTL'e bağlı olmayan** bir tekniğin (`-6`) web/API düzeyinde çalıştığını gösteriyor. "GoodbyeDPI çalışmıyor" gözlemi muhtemelen belirli bir kipe, DNS yöntemine veya trafik türüne (ses, oyun) özgüdür. Hangisi olduğu ölçülmeden bilinemez.
@@ -102,17 +108,45 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 
 ## 7. Sonuçlar (Faz 0'da doldurulacak)
 
+Ölçümler 2026-11-10'da, geliştirici makinesinde, telefon hotspot'u üzerinden ve sistem hop limiti 65 iken yapıldı. Ham veri `lab/results/` altında, git dışı. Sonuçlar **bu ağ ve bu tarih** içindir; başka ağlarda S6 ile yeniden ölçülecek.
+
+**S1 (motor kapalı, 72 prob):**
+- Kontrol probları her DNS yolunda 3/3 geçti. Discord'un ve Roblox'un 3'er hedefi her DNS yolunda 0/3: TLS sıfırlaması (`TlsReset`).
+- Sistem DNS'i, DoH ve `77.88.8.8:1253` aynı adresleri döndürdü.
+- TCP bağlantısı kuruluyor; sıfırlama ClientHello'dan yaklaşık 30–40 ms sonra geliyor. Bu, SNI tabanlı DPI'ın RST enjeksiyonuyla uyumlu.
+
+**S2-U (sürücüsüz teknikler, 828 prob):** Discord ve Roblox'tan 6 hedef × 3 tekrar × DNS {sistem, DoH} = hücre başına 36 prob. DNS yolu sonucu değiştirmedi.
+
+| Teknik | Bölme: 1. bayt | Bölme: SNI ortası |
+|---|---|---|
+| Yok | 0/36 | — |
+| `Split` (iki TCP bölütü) | **36/36** | 0/36 |
+| `TlsRecordSplit` (iki TLS kaydı) | **36/36** | **36/36** |
+| `Oob` (1 acil bayt) | **36/36** | **36/36** |
+| `Disorder`, ilk bölüt `IP_TTL` 1–2 | 0/72 | 0/72 |
+| `Disorder`, ilk bölüt `IP_TTL` 3–8 | 215/216 (1 TCP zaman aşımı) | 0/216 |
+
+Diğer ölçümler:
+- Başarılı tekniklerde TLS el sıkışması medyan yaklaşık 100–120 ms sürdü.
+- HTTP yanıtları gerçek sunuculardan geldi (200/403/404); TLS doğrulaması Windows sertifika deposuyla yapıldı.
+- Path MTU (DF bayraklı ping, 1.1.1.1): 1500.
+
 | Hipotez | Durum | Kanıt (dosya/ölçüm) | Not |
 |---|---|---|---|
-| H1 | | | |
-| H2 | | | |
-| H3 | | | |
-| H4 | | | |
-| H5 | | | |
-| H6 | | | |
-| H7 | | | |
-| H8 | | | |
-| H9 | | | |
+| H1 | Belirsiz (kısmi kanıt) | S2-U, S0 (E12, E13) | TTL'den bağımsız `TlsRecordSplit`, `Oob` ve `Split` (1. bayt) hop limit 65'te çalışıyor. TTL'e bağlı `Disorder` yalnızca ilk bölüt TTL ≥ 3 ile geçiyor; bu durumda sonuç `Split` (1. bayt) ile aynı. TTL ≤ 2'li bölüt DPI'a ulaşmıyor, TTL ≥ 3'lü ulaşıyor. Eski yapılandırmanın sabit TTL 5'i bu yolda DPI'a ulaşacak büyüklükte; sunucuya varmadan düşüp düşmediği ölçülmedi. Sahte paket (`Fake`) Faz 0'da uygulanmadı. "Sahte paket DPI'a ulaşmıyor" açıklaması bu ağ için desteklenmedi |
+| H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
+| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması |
+| H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
+| H5 | Kısmen | S0 yanıtı (E13) | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Ses/oyun (UDP) kısmı Wintun spike'ında ve S4'te ölçülecek |
+| H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
+| H7 | Ölçülmedi | — | Yalnızca S5 (D5 onayı) ölçebilir |
+| H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
+| H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
+
+**Faz 2 için ilk sinyal (bu ağ):**
+- Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.
+- `Disorder` bir şey katmadı. Düşük TTL'li bölütler sonucu kötüleştirdi.
+- Wintun yolu (Görev 7) aynı teknikleri sistem genelinde uygulayabilir mi, ve UDP (ses/oyun) nasıl davranıyor: bunlar sonraki adım.
 
 ## 8. GoodbyeDPI paketleri ve güvenlik uyarıları
 
