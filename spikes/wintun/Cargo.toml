@@ -1,0 +1,26 @@
+[package]
+name = "wintun-spike"
+description = "Faz 0 spike'ı (T-SPK-002, D8): Wintun TUN adaptörü, tek IP rotası, kullanıcı modu iletim"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+authors = ["Furkan Okan"]
+publish = false
+
+# Spike ana workspace'in dışındadır (kök Cargo.toml `exclude = ["spikes"]`); kendi kökü.
+[workspace]
+
+[dependencies]
+anyhow = "1.0.104"
+ipstack = "1.0.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+socket2 = { version = "0.6.5", features = ["all"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+toml = "1.2.1"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+xtask = { path = "../../xtask" }
+
+[dev-dependencies]
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, anyhow, bail};
 
-use super::journal::{IpFamily, OpKind, SystemOps, lab_temp_path};
+use super::journal::{IpFamily, OpKind, SPIKE_ADAPTER, SystemOps, lab_temp_path};
 
 pub struct RealOps;
 
@@ -136,6 +136,123 @@ fn ensure_lab_temp(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Adres/rota yazma betiği. Kurallar (sahiplik kuralına ek, savunma derinliği):
+/// - Yalnızca `AlterDNS-Spike` arayüzü; yalnızca `ActiveStore` (yeniden başlatmada kalkar).
+/// - Rota yalnızca tek hedef IP'dir (IPv4 /32 veya IPv6 /128); geniş önek ve varsayılan rota yok.
+/// - Adres yalnızca RFC 2544 test aralığındadır (198.18.0.0/15) ve önek /24…/31'dir.
+/// - Değer yalnızca `present` (ekle) veya `absent` (kaldır).
+pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
+    use std::net::IpAddr;
+    let add = match value {
+        "present" => true,
+        "absent" => false,
+        other => bail!("geçersiz hedef değer: {other:?}"),
+    };
+    match op {
+        OpKind::Route { prefix, if_name } => {
+            if if_name != SPIKE_ADAPTER {
+                bail!("rota yalnızca {SPIKE_ADAPTER} arayüzüne yazılır: {if_name}");
+            }
+            let (ip, len) = prefix
+                .split_once('/')
+                .ok_or_else(|| anyhow!("önek yok: {prefix}"))?;
+            let host_len = match ip.parse::<IpAddr>() {
+                Ok(IpAddr::V4(_)) => "32",
+                Ok(IpAddr::V6(_)) => "128",
+                Err(_) => bail!("geçersiz rota hedefi: {prefix}"),
+            };
+            if len != host_len {
+                bail!("rota yalnızca tek IP içindir (/{host_len}): {prefix}");
+            }
+            let (p, i) = (quoted(prefix)?, quoted(if_name)?);
+            Ok(if add {
+                format!(
+                    "New-NetRoute -DestinationPrefix {p} -InterfaceAlias {i} -PolicyStore ActiveStore -ErrorAction Stop | Out-Null"
+                )
+            } else {
+                format!(
+                    "Remove-NetRoute -DestinationPrefix {p} -InterfaceAlias {i} -PolicyStore ActiveStore -Confirm:$false -ErrorAction Stop"
+                )
+            })
+        }
+        OpKind::UnicastAddress { if_name, cidr } => {
+            if if_name != SPIKE_ADAPTER {
+                bail!("adres yalnızca {SPIKE_ADAPTER} arayüzüne yazılır: {if_name}");
+            }
+            let (ip, len) = cidr
+                .split_once('/')
+                .ok_or_else(|| anyhow!("önek yok: {cidr}"))?;
+            let v4: std::net::Ipv4Addr =
+                ip.parse().map_err(|_| anyhow!("geçersiz adres: {cidr}"))?;
+            let len: u8 = len.parse().map_err(|_| anyhow!("geçersiz önek: {cidr}"))?;
+            let [a, b, ..] = v4.octets();
+            if !(a == 198 && (b == 18 || b == 19)) || !(24..=31).contains(&len) {
+                bail!("adres yalnızca 198.18.0.0/15 test aralığında, /24…/31: {cidr}");
+            }
+            let (i, q) = (quoted(if_name)?, quoted(ip)?);
+            Ok(if add {
+                format!(
+                    "New-NetIPAddress -InterfaceAlias {i} -IPAddress {q} -PrefixLength {len} -PolicyStore ActiveStore -ErrorAction Stop | Out-Null"
+                )
+            } else {
+                format!(
+                    "Remove-NetIPAddress -InterfaceAlias {i} -IPAddress {q} -Confirm:$false -ErrorAction Stop"
+                )
+            })
+        }
+        OpKind::TunAdapter { .. } => {
+            bail!("adaptörü Wintun DLL'i oluşturur (record_external); kaldırma pnputil ile yapılır")
+        }
+        OpKind::HopLimit { .. } => bail!("sistem hop limiti yazılmaz (ADR-010)"),
+        OpKind::FileValue { .. } => bail!("FileValue betikle yazılmaz"),
+    }
+}
+
+/// Wintun yazılım aygıtının PnP örnek kimliği: `SWD\WINTUN\{GUID}`.
+pub(crate) fn valid_wintun_instance_id(id: &str) -> bool {
+    let Some(guid) = id
+        .strip_prefix(r"SWD\WINTUN\{")
+        .and_then(|r| r.strip_suffix('}'))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = guid.split('-').collect();
+    parts.len() == 5
+        && parts
+            .iter()
+            .zip([8usize, 4, 4, 4, 12])
+            .all(|(p, n)| p.len() == n && p.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// Adaptör, işlem çöktüğü için kalakaldıysa kaldırır: yalnızca adı `AlterDNS-Spike`, açıklaması
+/// Wintun ve PnP kimliği `SWD\WINTUN\{GUID}` olan aygıt, `pnputil /remove-device` ile.
+fn remove_spike_adapter(name: &str) -> anyhow::Result<()> {
+    if name != SPIKE_ADAPTER {
+        bail!("yalnızca {SPIKE_ADAPTER} kaldırılır: {name}");
+    }
+    let info = ps_query(&format!(
+        "$a = Get-NetAdapter -Name {} -ErrorAction Stop; $a.InterfaceDescription + '|' + $a.PnPDeviceID",
+        quoted(name)?
+    ))?;
+    let (desc, id) = info
+        .split_once('|')
+        .ok_or_else(|| anyhow!("adaptör bilgisi okunamadı"))?;
+    if !desc.starts_with("Wintun") || !valid_wintun_instance_id(id) {
+        bail!("{SPIKE_ADAPTER} bir Wintun aygıtı değil ({desc}, {id}); dokunulmadı");
+    }
+    let status = Command::new(system32("pnputil.exe"))
+        .args(["/remove-device", id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("pnputil çalıştırılamadı")?;
+    if !status.success() {
+        bail!("pnputil /remove-device başarısız: {status}");
+    }
+    Ok(())
+}
+
 impl SystemOps for RealOps {
     fn read(&self, op: &OpKind) -> anyhow::Result<String> {
         match op {
@@ -185,9 +302,14 @@ impl SystemOps for RealOps {
                 }
                 Ok(())
             }
-            other => bail!(
-                "{other:?} yazımı bu görevde desteklenmiyor (adaptör/rota: Görev 7; hop limit yazılmaz, ADR-010)"
-            ),
+            op if !super::journal::owned(op) => {
+                bail!("lab bu öğeye dokunamaz (sahiplik kuralı): {op:?}")
+            }
+            OpKind::TunAdapter { name } if value == "absent" => remove_spike_adapter(name),
+            op => {
+                ps_query(&write_script(op, value)?)?;
+                Ok(())
+            }
         }
     }
 }
@@ -238,5 +360,90 @@ mod tests {
     fn system_tools_use_absolute_paths() {
         assert!(powershell().is_absolute());
         assert!(system32("taskkill.exe").ends_with(r"System32\taskkill.exe"));
+    }
+
+    fn route(prefix: &str, if_name: &str) -> OpKind {
+        OpKind::Route {
+            prefix: prefix.into(),
+            if_name: if_name.into(),
+        }
+    }
+
+    fn addr(cidr: &str, if_name: &str) -> OpKind {
+        OpKind::UnicastAddress {
+            if_name: if_name.into(),
+            cidr: cidr.into(),
+        }
+    }
+
+    #[test]
+    fn route_script_is_host_route_in_active_store_only() {
+        let add = write_script(&route("203.0.113.7/32", SPIKE_ADAPTER), "present").unwrap();
+        assert!(add.starts_with("New-NetRoute "), "{add}");
+        assert!(add.contains("-DestinationPrefix '203.0.113.7/32'"), "{add}");
+        assert!(add.contains("-InterfaceAlias 'AlterDNS-Spike'"), "{add}");
+        assert!(add.contains("-PolicyStore ActiveStore"), "{add}");
+        let del = write_script(&route("203.0.113.7/32", SPIKE_ADAPTER), "absent").unwrap();
+        assert!(del.starts_with("Remove-NetRoute "), "{del}");
+        assert!(del.contains("-Confirm:$false") && del.contains("-PolicyStore ActiveStore"));
+        // Geniş önek, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
+        for (op, v) in [
+            (route("203.0.113.0/24", SPIKE_ADAPTER), "present"),
+            (route("0.0.0.0/0", SPIKE_ADAPTER), "present"),
+            (route("203.0.113.7/32", "Wi-Fi"), "present"),
+            (route("203.0.113.7/32", SPIKE_ADAPTER), "maybe"),
+            (route("not-an-ip/32", SPIKE_ADAPTER), "present"),
+        ] {
+            assert!(write_script(&op, v).is_err(), "{op:?} {v}");
+        }
+    }
+
+    #[test]
+    fn address_script_only_in_rfc2544_range_on_spike_adapter() {
+        let add = write_script(&addr("198.18.0.1/30", SPIKE_ADAPTER), "present").unwrap();
+        assert!(add.starts_with("New-NetIPAddress "), "{add}");
+        assert!(add.contains("-IPAddress '198.18.0.1'") && add.contains("-PrefixLength 30"));
+        assert!(add.contains("-PolicyStore ActiveStore"), "{add}");
+        let del = write_script(&addr("198.18.0.1/30", SPIKE_ADAPTER), "absent").unwrap();
+        assert!(del.starts_with("Remove-NetIPAddress ") && del.contains("-Confirm:$false"));
+        for op in [
+            addr("203.0.113.9/30", SPIKE_ADAPTER),
+            addr("198.18.0.1/30", "Ethernet"),
+            addr("198.18.0.1/8", SPIKE_ADAPTER),
+            addr("198.18.0.1", SPIKE_ADAPTER),
+        ] {
+            assert!(write_script(&op, "present").is_err(), "{op:?}");
+        }
+    }
+
+    #[test]
+    fn adapter_and_hop_limit_have_no_write_script() {
+        let tun = OpKind::TunAdapter {
+            name: SPIKE_ADAPTER.into(),
+        };
+        assert!(
+            write_script(&tun, "present").is_err(),
+            "adaptörü DLL oluşturur"
+        );
+        let hop = OpKind::HopLimit {
+            family: IpFamily::V4,
+        };
+        assert!(write_script(&hop, "128").is_err(), "ADR-010");
+        assert!(RealOps.write(&hop, "128").is_err(), "ADR-010");
+    }
+
+    #[test]
+    fn pnp_instance_id_must_be_a_wintun_software_device() {
+        assert!(valid_wintun_instance_id(
+            r"SWD\WINTUN\{1F0C5B3A-8E2D-4C71-9A6B-2D4E8F1A7C30}"
+        ));
+        for bad in [
+            r"PCI\VEN_8086&DEV_1234",
+            r"SWD\WINTUN\{1F0C5B3A} & calc",
+            r"SWD\WINTUN\..\x",
+            "",
+        ] {
+            assert!(!valid_wintun_instance_id(bad), "{bad:?}");
+        }
     }
 }
