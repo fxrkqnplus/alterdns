@@ -322,21 +322,24 @@ fn inventory() -> anyhow::Result<()> {
     println!("S0 envanteri: {}", path.display());
     if let Some(obj) = v.as_object() {
         for (k, section) in obj {
-            let state = match section {
-                serde_json::Value::Array(a) if a.iter().any(|x| x.get("hata").is_some()) => {
-                    "erişilemedi (yönetici gerekebilir)".to_string()
-                }
-                serde_json::Value::Array(a) => format!("{} kayıt", a.len()),
-                serde_json::Value::Object(o) if o.contains_key("hata") => {
-                    "erişilemedi (yönetici gerekebilir)".to_string()
-                }
-                serde_json::Value::Null => "0 kayıt".to_string(),
-                _ => "1 kayıt".to_string(),
-            };
-            println!("  {k}: {state}");
+            println!("  {k}: {}", section_state(section));
         }
     }
     Ok(())
+}
+
+/// S0 bölümünün özeti. PowerShell 5.1 boş diziyi `{}`, tek öğeli diziyi nesne olarak yazar.
+fn section_state(section: &serde_json::Value) -> String {
+    use serde_json::Value;
+    let denied = "erişilemedi (yönetici gerekebilir)".to_string();
+    match section {
+        Value::Array(a) if a.iter().any(|x| x.get("hata").is_some()) => denied,
+        Value::Array(a) => format!("{} kayıt", a.len()),
+        Value::Object(o) if o.contains_key("hata") => denied,
+        Value::Object(o) if o.is_empty() => "0 kayıt".to_string(),
+        Value::Null => "0 kayıt".to_string(),
+        _ => "1 kayıt".to_string(),
+    }
 }
 
 fn baseline() -> anyhow::Result<()> {
@@ -542,6 +545,16 @@ pub fn dispatch(cmd: Option<&str>, rest: &[String]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn s0_section_state_reads_powershell_shapes() {
+        use serde_json::json;
+        assert_eq!(section_state(&json!({})), "0 kayıt");
+        assert_eq!(section_state(&json!(null)), "0 kayıt");
+        assert_eq!(section_state(&json!({ "Name": "x" })), "1 kayıt");
+        assert_eq!(section_state(&json!([1, 2])), "2 kayıt");
+        assert!(section_state(&json!({ "hata": "erişim reddedildi" })).starts_with("erişilemedi"));
+    }
 
     #[test]
     fn repo_probe_files_parse_with_control_first() {
