@@ -194,11 +194,57 @@ fn decode_chunked(mut b: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
         if size == 0 {
             return Ok(Some(out));
         }
-        let (Some(data), Some(rest)) = (b.get(..size), b.get(size + 2..)) else {
+        let after = size
+            .checked_add(2)
+            .ok_or_else(|| anyhow!("parça boyutu çok büyük"))?;
+        let (Some(data), Some(rest)) = (b.get(..size), b.get(after..)) else {
             return Ok(None);
         };
         out.extend_from_slice(data);
         b = rest;
+    }
+}
+
+/// Soketin okuma/yazma zaman aşımını aşama son tarihine kalan süreye (en çok `PROBE_TIMEOUT`)
+/// indirir. Böylece veriyi damla damla gönderen bir karşı taraf aşamayı uzatamaz.
+pub fn arm(sock: &Socket, deadline: Instant) -> io::Result<()> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "aşama süresi doldu",
+        ));
+    }
+    let t = left.min(PROBE_TIMEOUT);
+    sock.set_read_timeout(Some(t))?;
+    sock.set_write_timeout(Some(t))
+}
+
+/// Durum satırını okur; her okumadan önce `arm` ile son tarih uygulanır.
+fn read_status_line(r: &mut impl Read, sock: &Socket, deadline: Instant) -> io::Result<(u16, u64)> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        if let Some(end) = find(&buf, b"\r\n") {
+            let line = String::from_utf8_lossy(buf.get(..end).unwrap_or_default());
+            return parse_status_line(&line)
+                .map(|code| (code, buf.len() as u64))
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "HTTP durum satırı yok")
+                });
+        }
+        if buf.len() >= MAX_STATUS_READ {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "durum satırı çok uzun",
+            ));
+        }
+        arm(sock, deadline)?;
+        let n = r.read(&mut chunk)?;
+        if n == 0 {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+        }
+        buf.extend_from_slice(chunk.get(..n).unwrap_or_default());
     }
 }
 
@@ -234,44 +280,30 @@ pub fn handshake_with(sock: Socket, sni: &str, tech: &SockTech) -> io::Result<Tl
     while conn.wants_write() {
         conn.write_tls(&mut hello)?;
     }
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    arm(&sock, deadline)?;
     sockettech::send_first_flight(&sock, &hello, tech)?;
     let mut s = StreamOwned::new(conn, sock);
     while s.conn.is_handshaking() {
+        arm(&s.sock, deadline)?;
         s.conn.complete_io(&mut s.sock)?;
     }
     Ok(s)
 }
 
 /// `GET path` gönderir ve yalnızca durum satırını okur; (durum, okunan düz metin baytı).
+/// Bütün aşama `PROBE_TIMEOUT` ile sınırlıdır.
 fn http_status(s: &mut TlsStream, host: &str, path: &str) -> io::Result<(u16, u64)> {
+    let deadline = Instant::now() + PROBE_TIMEOUT;
     let req = format!(
         "GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {USER_AGENT}\r\nAccept: */*\r\nConnection: close\r\n\r\n"
     );
+    arm(&s.sock, deadline)?;
     s.write_all(req.as_bytes())?;
     s.flush()?;
-    let mut buf = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        if let Some(end) = find(&buf, b"\r\n") {
-            let line = String::from_utf8_lossy(buf.get(..end).unwrap_or_default());
-            return parse_status_line(&line)
-                .map(|code| (code, buf.len() as u64))
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidData, "HTTP durum satırı yok")
-                });
-        }
-        if buf.len() >= MAX_STATUS_READ {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "durum satırı çok uzun",
-            ));
-        }
-        let n = s.read(&mut chunk)?;
-        if n == 0 {
-            return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
-        }
-        buf.extend_from_slice(chunk.get(..n).unwrap_or_default());
-    }
+    // Aynı sokete ikinci tutamaç: zaman aşımı ayarı TLS akışı ödünç alınmışken de yapılabilsin.
+    let guard = s.sock.try_clone()?;
+    read_status_line(s, &guard, deadline)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -451,6 +483,61 @@ mod tests {
         assert!(parse_targets(bad_domain).is_err());
         let bad_path = "[[probe]]\nname = \"k\"\ndomain = \"a.com\"\npath = \"/ HTTP/1.1\"\nrole = \"target\"\n";
         assert!(parse_targets(bad_path).is_err());
+    }
+
+    #[test]
+    fn arm_caps_timeout_and_rejects_expired_deadline() {
+        let sock = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
+        let past = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
+        assert_eq!(
+            arm(&sock, past).unwrap_err().kind(),
+            io::ErrorKind::TimedOut
+        );
+        arm(&sock, Instant::now() + Duration::from_secs(60)).unwrap();
+        assert!(sock.read_timeout().unwrap().unwrap() <= PROBE_TIMEOUT);
+        arm(&sock, Instant::now() + Duration::from_secs(1)).unwrap();
+        assert!(sock.read_timeout().unwrap().unwrap() <= Duration::from_secs(1));
+    }
+
+    /// Her okumada bir bayt gönderen (satır sonu göndermeyen) sunucu aşama süresini uzatamaz.
+    #[test]
+    fn slow_drip_hits_stage_deadline() {
+        use std::net::{Ipv4Addr, TcpListener};
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            for _ in 0..20 {
+                if s.write_all(b"H").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
+        let sock = connect_tcp(addr).unwrap();
+        let start = Instant::now();
+        let deadline = start + Duration::from_millis(1200);
+        let err = read_status_line(&mut &sock, &sock, deadline).unwrap_err();
+        assert!(
+            matches!(
+                err.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+            ),
+            "{err:?}"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            start.elapsed()
+        );
+        drop(sock);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn chunked_size_overflow_is_not_a_panic() {
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffff\r\nab";
+        assert!(parse_http_response(raw).is_err());
     }
 
     /// Ağ gerektirir: `cargo test -p xtask --lib -- --ignored net_control_probe_ok`.

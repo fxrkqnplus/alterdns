@@ -11,7 +11,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Get-Section([scriptblock]$Block) {
     try { @(& $Block) } catch { @{ hata = $_.Exception.Message } }
@@ -37,4 +36,7 @@ $inventory = [ordered]@{
     tarihsel_loglar = Get-Section { foreach ($d in ($HistoryDirs -split '\|' | Where-Object { $_ })) { Get-ChildItem -LiteralPath $d -Recurse -File -ErrorAction SilentlyContinue | Select-Object FullName, Length, LastWriteTime } }
 }
 
-$inventory | ConvertTo-Json -Depth 5
+$json = $inventory | ConvertTo-Json -Depth 5
+# Konsol kod sayfasından bağımsız olsun diye ASCII dışı karakterler \uXXXX olarak kaçışlanır
+# (konsolun kod sayfası değiştirilmez).
+-join ($json.ToCharArray() | ForEach-Object { if ([int]$_ -lt 128) { [string]$_ } else { '\u{0:x4}' -f [int]$_ } })

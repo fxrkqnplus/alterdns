@@ -46,6 +46,8 @@ pub enum Abort {
     WinDivertPresent(String),
     NoInternet,
     WatchdogLost(String),
+    /// Bekçi ebeveynin iş nesnesinden ayrılamadı; ebeveyn ölünce bekçi de ölebilir.
+    WatchdogInJob,
 }
 
 impl std::fmt::Display for Abort {
@@ -69,8 +71,23 @@ impl std::fmt::Display for Abort {
                 "kontrol probu başarısız (internet yok veya captive portal); hiçbir hedef engelli sayılmadı"
             ),
             Abort::WatchdogLost(e) => write!(f, "geri alma bekçisine ulaşılamadı: {e}"),
+            Abort::WatchdogInJob => write!(
+                f,
+                "geri alma bekçisi ebeveynin iş nesnesinden ayrılamadı (ör. `cargo xtask` altında); \
+                 sistem değiştiren senaryo başlamadı. Derlenmiş ikiliyi doğrudan çalıştırın: \
+                 `target\\xtask\\debug\\xtask.exe lab ...` (lab/RUNBOOK.md)"
+            ),
         }
     }
+}
+
+/// Bekçi kapısı: sistem değiştiren senaryo yalnızca bekçi iş nesnesi dışındaysa başlar.
+/// Sistem değiştirmeyen senaryolarda (S1, S2-U) uyarı yeter.
+pub fn job_gate(outside_job: bool, changes_system: bool) -> Result<(), Abort> {
+    if changes_system && !outside_job {
+        return Err(Abort::WatchdogInJob);
+    }
+    Ok(())
 }
 
 impl std::error::Error for Abort {}
@@ -215,6 +232,10 @@ pub fn run_cells(
         if let Err(why) = cell_guard(env) {
             return stop(hooks, why, rows);
         }
+        // Denetim (PowerShell + kontrol probu) uzun sürmüş olabilir: kira yeniden tazelenir.
+        if let Err(e) = hooks.heartbeat() {
+            return stop(hooks, Abort::WatchdogLost(format!("{e:#}")), rows);
+        }
         for _ in 0..cell.reps {
             for t in targets {
                 if let Err(e) = hooks.heartbeat() {
@@ -268,7 +289,16 @@ pub fn confirm_with(
     input: &mut dyn BufRead,
     out: &mut dyn std::io::Write,
 ) -> bool {
-    let _ = writeln!(out, "{summary}");
+    ask_evet_with(&summary.to_string(), input, out)
+}
+
+/// Soruyu gösterir; yalnızca tam olarak `evet` yazılırsa kabul eder.
+pub fn ask_evet_with(
+    question: &str,
+    input: &mut dyn BufRead,
+    out: &mut dyn std::io::Write,
+) -> bool {
+    let _ = writeln!(out, "{question}");
     let _ = write!(out, "Devam etmek için `evet` yazın: ");
     let _ = out.flush();
     let mut line = String::new();
@@ -276,6 +306,15 @@ pub fn confirm_with(
         return false;
     }
     line.trim_end_matches(['\r', '\n']) == "evet"
+}
+
+/// Standart giriş/çıkışla `evet` sorusu.
+pub fn ask_evet(question: &str) -> bool {
+    ask_evet_with(
+        question,
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout(),
+    )
 }
 
 /// Standart giriş/çıkışla onay.
@@ -301,8 +340,8 @@ pub fn lab_bin_cleanup(env: &dyn LabEnv, bin: &Path) -> anyhow::Result<()> {
     }
 }
 
-/// Salt okunur betikte izin verilen cmdlet'ler (`Get-*` dışında).
-const PS_ALLOWED: [&str; 6] = [
+/// Salt okunur betikte izin verilen komutlar (`Get-*` dışında; küçük harf).
+const PS_COMMANDS_ALLOWED: [&str; 6] = [
     "select-object",
     "where-object",
     "foreach-object",
@@ -310,68 +349,50 @@ const PS_ALLOWED: [&str; 6] = [
     "measure-object",
     "convertto-json",
 ];
-/// Salt okunur betikte bulunmaması gereken yerel araçlar.
-const PS_NATIVE_DENY: [&str; 10] = [
-    "netsh",
-    "sc",
-    "reg",
-    "wmic",
-    "bcdedit",
-    "pnputil",
-    "wevtutil",
-    "cmd",
-    "net",
-    "powershell",
-];
+/// İzin verilen .NET üye çağrıları (yan etkisiz dönüşümler).
+const PS_MEMBERS_ALLOWED: [&str; 2] = ["ToString", "ToCharArray"];
+/// İzin verilen dinamik çağrı (S0'ın bölüm yardımcısı).
+const PS_DYNAMIC_ALLOWED: [&str; 1] = ["& $Block"];
 
-/// PowerShell metnindeki yazma riskleri: `Get-*` ve izinli yardımcılar dışındaki cmdlet'ler,
-/// yerel araç çağrıları, `.exe` ve `>` yönlendirmesi. Yorumlar ve dize içerikleri yok sayılır.
-pub fn ps_write_violations(text: &str) -> Vec<String> {
+/// PowerShell betiğinin salt okunurluk ihlalleri, PowerShell'in kendi AST'sinden
+/// (`lab/scripts/ps-ast-dump.ps1`; betik çalıştırılmaz). İzin listesi: `Get-*` ve
+/// `PS_COMMANDS_ALLOWED` komutları, `PS_MEMBERS_ALLOWED` üye çağrıları, yerel değişkene atama.
+/// Takma adlar (`rm`, `%`), yerel araçlar, diğer .NET çağrıları, özellik/ortam atamaları,
+/// yönlendirmeler ve ayrıştırma hataları ihlaldir.
+pub fn ps_script_violations(script: &Path) -> anyhow::Result<Vec<String>> {
+    let dump = Path::new(env!("CARGO_MANIFEST_DIR")).join("../lab/scripts/ps-ast-dump.ps1");
+    let out = std::process::Command::new(super::ops::powershell())
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(&dump)
+        .arg("-Path")
+        .arg(script)
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "AST dökümü başarısız: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
     let mut found = Vec::new();
-    for line in text.lines() {
-        let code = strip_ps_strings(line);
-        let code = code.split('#').next().unwrap_or_default();
-        if code.contains('>') {
-            found.push(format!("yönlendirme: {}", line.trim()));
-        }
-        let words: Vec<&str> = code
-            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_'))
-            .filter(|w| !w.is_empty())
-            .collect();
-        for w in words {
-            let lower = w.to_ascii_lowercase();
-            let bare = lower.trim_end_matches(".exe");
-            if lower.ends_with(".exe") || PS_NATIVE_DENY.contains(&bare) {
-                found.push(format!("yerel araç: {w}"));
-                continue;
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let Some((kind, value)) = line.trim_end().split_once('|') else {
+            continue;
+        };
+        let ok = match kind {
+            "command" => {
+                let l = value.to_ascii_lowercase();
+                l.starts_with("get-") || PS_COMMANDS_ALLOWED.contains(&l.as_str())
             }
-            if let Some((verb, noun)) = lower.split_once('-') {
-                let cmdlet = !verb.is_empty()
-                    && !noun.is_empty()
-                    && verb.chars().all(|c| c.is_ascii_alphabetic())
-                    && noun.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
-                if cmdlet && verb != "get" && !PS_ALLOWED.contains(&lower.as_str()) {
-                    found.push(format!("cmdlet: {w}"));
-                }
-            }
+            "member" => PS_MEMBERS_ALLOWED.contains(&value),
+            "dynamic" => PS_DYNAMIC_ALLOWED.contains(&value.trim()),
+            "assign-var" => true,
+            _ => false,
+        };
+        if !ok {
+            found.push(format!("{kind}: {value}"));
         }
     }
-    found
-}
-
-/// Tek ve çift tırnaklı dizelerin içeriğini siler (betik satırı düzeyinde).
-fn strip_ps_strings(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut quote: Option<char> = None;
-    for c in line.chars() {
-        match quote {
-            Some(q) if c == q => quote = None,
-            Some(_) => {}
-            None if c == '\'' || c == '"' => quote = Some(c),
-            None => out.push(c),
-        }
-    }
-    out
+    Ok(found)
 }
 
 #[cfg(test)]
@@ -605,6 +626,14 @@ mod tests {
     }
 
     #[test]
+    fn watchdog_in_job_blocks_only_system_changes() {
+        assert_eq!(job_gate(false, true), Err(Abort::WatchdogInJob));
+        assert_eq!(job_gate(false, false), Ok(()));
+        assert_eq!(job_gate(true, true), Ok(()));
+        assert_eq!(job_gate(true, false), Ok(()));
+    }
+
+    #[test]
     fn heartbeat_failure_stops_run() {
         struct Dead;
         impl CellHooks for Dead {
@@ -802,7 +831,7 @@ mod tests {
     fn s0_script_is_read_only() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../lab/scripts/s0-inventory.ps1");
         let raw = std::fs::read_to_string(&path).unwrap();
-        let violations = ps_write_violations(&raw);
+        let violations = ps_script_violations(&path).unwrap();
         assert!(
             violations.is_empty(),
             "S0 betiği salt okunur olmalı: {violations:?}"
@@ -812,20 +841,33 @@ mod tests {
 
     #[test]
     fn ps_checker_catches_writes() {
+        let dir = std::env::temp_dir().join(format!("alterdns-pscheck-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let check = |i: usize, text: &str| {
+            let p = dir.join(format!("{i}.ps1"));
+            std::fs::write(&p, text).unwrap();
+            ps_script_violations(&p).unwrap()
+        };
         let hop = ["Set-NetIPv4", "Protocol -DefaultHopLimit 1"].concat();
-        for bad in [
+        let bad = [
             hop.as_str(),
             "Stop-Service GoodbyeDPI",
             "Remove-Item C:\\x",
+            "rm C:\\x",
             "netsh int ipv4 show glob",
             "Get-Process | Out-File x.txt",
             "Get-Process > x.txt",
             "sc.exe query",
             "Invoke-Expression $x",
-        ] {
-            assert!(!ps_write_violations(bad).is_empty(), "{bad:?} yakalanmalı");
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+            "[scriptblock]::Create('x').Invoke()",
+            "$env:X = 1",
+        ];
+        for (i, b) in bad.iter().enumerate() {
+            assert!(!check(i, b).is_empty(), "{b:?} yakalanmalı");
         }
-        let ok = "# Set-Content yorumda sorun değil\nGet-Service -Name 'Set-Thing' | Select-Object Name | ConvertTo-Json";
-        assert!(ps_write_violations(ok).is_empty());
+        let ok = "# Set-Content yorumda sorun değil\nGet-Service -Name 'Set-Thing' | Select-Object Name | ConvertTo-Json\n$x = 1\n(Get-Date).ToString('o')\n";
+        assert_eq!(check(99, ok), Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

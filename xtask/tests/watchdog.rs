@@ -103,16 +103,40 @@ fn watchdog_reverts_when_parent_dies() {
     ));
 }
 
+/// Ebeveyn kendi geri aldıktan sonra DONE: bekçi kapanmış kayda (ve sonraki kullanıcı
+/// değişikliğine) dokunmaz.
 #[test]
 fn watchdog_clean_done_does_not_revert() {
     let f = fixture("done");
     let mut w = spawn(&f);
     w.renew(30).unwrap();
-    w.done().unwrap();
-    std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(content(&f), "after");
     let mut j = Journal::open(&f.journal).unwrap();
     j.revert_all(&RealOps).unwrap();
+    std::fs::write(&f.file, "kullanici").unwrap();
+    w.done().unwrap();
+    assert_eq!(content(&f), "kullanici");
+    assert_eq!(outcome(&f), "CleanExit");
+}
+
+/// Ebeveyn bir kaydı açık bırakıp DONE derse bekçi onu da geri alır.
+#[test]
+fn watchdog_done_reverts_entries_left_open() {
+    let f = fixture("done-open");
+    let mut w = spawn(&f);
+    w.renew(30).unwrap();
+    w.done().unwrap();
+    assert_eq!(content(&f), "before");
+    assert_eq!(outcome(&f), "CleanExit");
+}
+
+/// Bekçi öldüyse sonraki yenileme hata verir (ebeveyn koşuyu durdurur).
+#[test]
+fn renew_fails_when_watchdog_is_gone() {
+    let f = fixture("gone");
+    let mut w = spawn(&f);
+    w.renew(1).unwrap();
+    assert!(wait_for(|| content(&f) == "before", Duration::from_secs(5)));
+    assert!(wait_for(|| w.renew(30).is_err(), Duration::from_secs(3)));
 }
 
 #[test]

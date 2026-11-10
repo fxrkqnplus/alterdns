@@ -17,8 +17,8 @@ use super::ops::{self, RealOps};
 use super::probe::{self, Outcome, ProbeResult, ProbeTarget, Role};
 use super::report;
 use super::scenario::{
-    self, Abort, Cell, CellHooks, LabEnv, ProbeRunner, Summary, confirm, estimate_bytes, preflight,
-    run_cells,
+    self, Abort, Cell, CellHooks, LabEnv, ProbeRunner, Summary, confirm, estimate_bytes, job_gate,
+    preflight, run_cells,
 };
 use super::sockettech::SockTech;
 use super::watchdog::{MAX_LEASE_SECS, WatchdogHandle};
@@ -97,18 +97,26 @@ impl LabEnv for RealEnv {
     }
 
     fn stale_journals(&self) -> Vec<PathBuf> {
-        Journal::find_stale(&self.journal_dir).unwrap_or_else(|_| vec![self.journal_dir.clone()])
+        Journal::find_stale(&self.journal_dir).unwrap_or_else(|e| {
+            eprintln!("uyarı: journal dizini okunamadı, bayat sayıldı: {e:#}");
+            vec![self.journal_dir.clone()]
+        })
     }
 
     fn foreign_process(&self, image: &str) -> bool {
         let stem = image.trim_end_matches(".exe");
-        ops::quoted(stem)
-            .and_then(|q| {
-                ops::ps_query(&format!(
-                    "if (Get-Process -Name {q} -ErrorAction SilentlyContinue) {{ 'present' }} else {{ 'absent' }}"
-                ))
-            })
-            .map_or(true, |v| v != "absent")
+        let answer = ops::quoted(stem).and_then(|q| {
+            ops::ps_query(&format!(
+                "if (Get-Process -Name {q} -ErrorAction SilentlyContinue) {{ 'present' }} else {{ 'absent' }}"
+            ))
+        });
+        match answer {
+            Ok(v) => v != "absent",
+            Err(e) => {
+                eprintln!("uyarı: {image} denetlenemedi, var sayıldı: {e:#}");
+                true
+            }
+        }
     }
 
     fn windivert_service(&self) -> Option<String> {
@@ -122,11 +130,15 @@ impl LabEnv for RealEnv {
     }
 
     fn spike_adapter_present(&self) -> bool {
-        RealOps
-            .read(&OpKind::TunAdapter {
-                name: SPIKE_ADAPTER.into(),
-            })
-            .map_or(true, |v| v != "absent")
+        match RealOps.read(&OpKind::TunAdapter {
+            name: SPIKE_ADAPTER.into(),
+        }) {
+            Ok(v) => v != "absent",
+            Err(e) => {
+                eprintln!("uyarı: {SPIKE_ADAPTER} denetlenemedi, var sayıldı: {e:#}");
+                true
+            }
+        }
     }
 
     fn control_probe(&self) -> Outcome {
@@ -191,11 +203,14 @@ impl CellHooks for LiveHooks<'_> {
     }
 }
 
-/// Senaryo akışı. Sistem değişikliği yapan senaryolar (Görev 7, 9) `needs_admin` ile gelir.
+/// Senaryo akışı. Sistem değişikliği yapan senaryolar (Görev 7, 9) `changes_system = true`
+/// ile gelir: bekçi ebeveynin iş nesnesinden ayrılamazsa başlamazlar (`job_gate`).
+#[allow(clippy::too_many_arguments)]
 fn run_scenario(
     title: &str,
     prefix: &str,
     changes: &str,
+    changes_system: bool,
     cells: &[Cell],
     targets: &[ProbeTarget],
     env: &RealEnv,
@@ -211,9 +226,15 @@ fn run_scenario(
     let summary = Summary {
         scenario: title.to_string(),
         changes: changes.to_string(),
-        revert: format!(
-            "Sistem değişikliği yok. Bekçi yine de ayrı işlemde çalışır (kira ≤ {MAX_LEASE_SECS} sn); Ctrl+C veya çökmede journal'ı denetler."
-        ),
+        revert: if changes_system {
+            format!(
+                "Her değişiklik önce journal'a yazılır; ayrı işlemdeki bekçi (kira ≤ {MAX_LEASE_SECS} sn) Ctrl+C, çökme veya süre dolunca geri alır."
+            )
+        } else {
+            format!(
+                "Sistem değişikliği yok. Bekçi yine de ayrı işlemde çalışır (kira ≤ {MAX_LEASE_SECS} sn); Ctrl+C veya çökmede journal'ı denetler."
+            )
+        },
         probes,
         bytes: estimate_bytes(cells, targets.len()),
     };
@@ -227,6 +248,15 @@ fn run_scenario(
     extra(&out_dir)?;
     let mut journal = Journal::create(&journal_dir(&root), &id)?;
     let mut wd = WatchdogHandle::spawn(journal.path(), &out_dir)?;
+    if let Err(why) = job_gate(wd.outside_job(), changes_system) {
+        let _ = wd.done();
+        bail!("{why}");
+    }
+    if !wd.outside_job() {
+        eprintln!(
+            "Uyarı: bekçi ebeveynin iş nesnesinden ayrılamadı (ör. `cargo xtask` altında). Bu senaryo sistem değiştirmediği için devam ediliyor; Ctrl+C sonrasında bekçi raporu yazılmayabilir. Ctrl+C denemesi için ikiliyi doğrudan çalıştırın (lab/RUNBOOK.md)."
+        );
+    }
     wd.renew(MAX_LEASE_SECS)?;
     let outcome = {
         let mut hooks = LiveHooks {
@@ -238,7 +268,11 @@ fn run_scenario(
         };
         run_cells(env, &LiveRunner, cells, targets, &mut hooks)
     };
-    wd.done()?;
+    // Bekçi bu arada ölmüş olabilir; sonuç dosyaları yine yazılır.
+    let watchdog_done = wd.done().map_err(|e| format!("{e:#}"));
+    if let Err(e) = &watchdog_done {
+        eprintln!("Uyarı: bekçiye DONE iletilemedi: {e}");
+    }
     std::fs::write(
         out_dir.join("meta.json"),
         serde_json::to_string_pretty(&serde_json::json!({
@@ -247,6 +281,7 @@ fn run_scenario(
             "targets": targets.iter().map(|t| &t.name).collect::<Vec<_>>(),
             "rows": outcome.rows,
             "aborted": outcome.aborted.as_ref().map(ToString::to_string),
+            "watchdog_done_error": watchdog_done.err(),
         }))?,
     )?;
     let rows = report::read_rows(&out_dir)?;
@@ -262,7 +297,7 @@ fn run_scenario(
 fn inventory() -> anyhow::Result<()> {
     let root = repo_root();
     let cfg = local_config(&root)?;
-    let mut cmd = Command::new("powershell.exe");
+    let mut cmd = Command::new(ops::powershell());
     cmd.args(["-NoProfile", "-NonInteractive", "-File"])
         .arg(root.join("lab").join("scripts").join("s0-inventory.ps1"));
     if !cfg.history_dirs.is_empty() {
@@ -312,6 +347,7 @@ fn baseline() -> anyhow::Result<()> {
         "S1 — motor kapalı temel ölçüm (DNS: sistem, DoH, 77.88.8.8:1253)",
         "s1",
         "Yok. Yalnızca problar gönderilir; DNS ayarına, rotaya ve hop limite dokunulmaz.",
+        false,
         &scenario::s1_cells(),
         &targets,
         &env,
@@ -322,7 +358,7 @@ fn baseline() -> anyhow::Result<()> {
 /// Path MTU (H9): DF bayraklı `ping` ile ikili arama; sistem ayarına dokunmaz.
 fn path_mtu(host: &str) -> Option<u32> {
     scenario::bisect_mtu(576, 1500, &mut |mtu| {
-        Command::new("ping")
+        Command::new(ops::system32("PING.EXE"))
             .args([
                 "-n",
                 "1",
@@ -347,6 +383,7 @@ fn techniques() -> anyhow::Result<()> {
         "S2-U — sürücüsüz soket teknikleri (DNS: sistem, DoH)",
         "s2u",
         "Yok. IP_TTL yalnızca probun kendi soketinde, tek yazma için değişir; sistem hop limiti okunmaz bile.",
+        false,
         &scenario::s2u_cells(),
         &targets,
         &env,
@@ -370,18 +407,75 @@ fn recover() -> anyhow::Result<()> {
         println!("Bitmemiş journal yok.");
         return Ok(());
     }
+    let mut open_problems = 0usize;
     for p in stale {
-        let mut j = Journal::open(&p)?;
-        let r = j.revert_all(&RealOps)?;
-        println!(
-            "{}: {} geri alındı, çakışma {:?}, hata {:?}",
-            p.display(),
-            r.reverted.len(),
-            r.conflicts,
-            r.failed
+        // Her dosya ayrı ele alınır: biri bozuksa diğerleri yine geri alınır.
+        let mut j = match Journal::open(&p) {
+            Ok(j) => j,
+            Err(e) => {
+                open_problems += 1;
+                eprintln!(
+                    "{}: okunamadı: {e:#}\n  Onarım: lab/RUNBOOK.md, \"Bozuk journal\"",
+                    p.display()
+                );
+                continue;
+            }
+        };
+        let r = match j.revert_all(&RealOps) {
+            Ok(r) => r,
+            Err(e) => {
+                open_problems += 1;
+                eprintln!("{}: geri alma başlatılamadı: {e:#}", p.display());
+                continue;
+            }
+        };
+        println!("{}: {} kayıt geri alındı", p.display(), r.reverted.len());
+        for (id, err) in &r.failed {
+            open_problems += 1;
+            println!(
+                "  kayıt {id}: geri alınamadı ({err}); kayıt açık kaldı, nedeni giderip yeniden çalıştırın"
+            );
+        }
+        if r.conflicts.is_empty() {
+            continue;
+        }
+        for e in j.entries().iter().filter(|e| r.conflicts.contains(&e.id)) {
+            println!(
+                "  çakışma {}: {:?}; önceki {:?}, bizim yazdığımız {:?}. Şu anki değer ikisinden farklı ya da öğe lab'a ait değil; dokunulmadı.",
+                e.id, e.op, e.before, e.after
+            );
+        }
+        let question = format!(
+            "{} çakışma var. Değerlere dokunmadan bu kayıtlar kapatılsın mı?",
+            r.conflicts.len()
         );
+        if scenario::ask_evet(&question) {
+            let ids = j.acknowledge_conflicts()?;
+            println!("  {} kayıt kapatıldı.", ids.len());
+        } else {
+            open_problems += 1;
+            println!("  Çakışmalar açık kaldı; yeni koşu başlamaz.");
+        }
+    }
+    if open_problems > 0 {
+        bail!("{open_problems} sorun açık kaldı (lab/RUNBOOK.md)");
     }
     Ok(())
+}
+
+/// Bekçinin ebeveynin iş nesnesinden ayrılıp ayrılamadığını, boş bir geçici journal'la sınar.
+fn watchdog_job_check() -> anyhow::Result<bool> {
+    let dir = std::env::temp_dir().join(format!("alterdns-wdcheck-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let result = (|| {
+        let j = Journal::create(&dir.join("journal"), "wdcheck")?;
+        let wd = WatchdogHandle::spawn(j.path(), &dir.join("results"))?;
+        let outside = wd.outside_job();
+        wd.done()?;
+        anyhow::Ok(outside)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
 }
 
 /// Salt okunur ön kontrol: eski journal, lab dışı DPI aracı, WinDivert servisi, kontrol probu.
@@ -402,6 +496,15 @@ fn preflight_cmd() -> anyhow::Result<()> {
             "yok"
         }
     );
+    match watchdog_job_check() {
+        Ok(true) => {
+            println!("Bekçi: iş nesnesi dışında (sistem değiştiren senaryolar başlayabilir)")
+        }
+        Ok(false) => println!(
+            "Bekçi: ebeveynin iş nesnesinde (ör. `cargo xtask` altında); sistem değiştiren senaryolar başlamaz, ikiliyi doğrudan çalıştırın (lab/RUNBOOK.md)"
+        ),
+        Err(e) => println!("Bekçi denetlenemedi: {e:#}"),
+    }
     match preflight(&env, false) {
         Ok(()) => {
             println!("Ön kontrol geçti.");

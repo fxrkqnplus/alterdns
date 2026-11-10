@@ -129,12 +129,17 @@ fn doh(domain: &str) -> anyhow::Result<Vec<Ipv4Addr>> {
         probe::USER_AGENT,
         q.len()
     );
+    // İstek + yanıt aşaması da `PROBE_TIMEOUT` ile sınırlı (damla damla yanıta karşı).
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    let guard = s.sock.try_clone()?;
+    probe::arm(&guard, deadline)?;
     s.write_all(head.as_bytes())?;
     s.write_all(&q)?;
     s.flush()?;
     let mut raw = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
+        probe::arm(&guard, deadline).context("DoH yanıtı zaman aşımı")?;
         if let Some((status, body)) = probe::parse_http_response(&raw)? {
             if status != 200 {
                 bail!("DoH HTTP {status}");
