@@ -88,7 +88,47 @@ adaptöre, rotaya, DNS ayarına veya DPI aracına dokunmayın.
    Remove-NetRoute -InterfaceAlias 'AlterDNS-Spike' -PolicyStore ActiveStore -Confirm:$false
    ```
 3. **Adaptör:** Aygıt Yöneticisi → Ağ bağdaştırıcıları → `AlterDNS-Spike` → Cihazı kaldır.
-   Adaptör kalkınca `lab clean-bin` çalışabilir.
+   Ya da (yönetici) PnP kimliğini okuyup kaldırın; kimlik `SWD\WINTUN\{…}` biçiminde olmalı:
+   ```powershell
+   (Get-NetAdapter -Name 'AlterDNS-Spike').PnPDeviceID
+   pnputil /remove-device '<yukarıdaki kimlik>'
+   ```
+   Adaptör `Get-NetAdapter`'da görünmüyor ama yeni adaptör oluşturulamıyorsa gizli bir kalıntı
+   olabilir: `pnputil /enum-devices /class Net`. Adaptör kalkınca `lab clean-bin` çalışabilir.
+   **Wintun sürücü paketini (`pnputil /delete-driver`) silmeyin:** bu makinede paket başka bir
+   yazılıma aittir; lab ona hiç dokunmaz.
 4. **Hop limit:** Yalnızca okunur. Değer S0 envanterindeki başlangıç değerinden farklıysa lab onu
    değiştirmemiştir. Kullanıcıya bildirin; geri yazmayın.
 5. Bağlantıyı doğrulayın: `target\xtask\debug\xtask.exe lab preflight`. Kontrol probu geçmelidir.
+
+## 6. Wintun spike'ı (Görev 7)
+
+Komutlar yönetici terminalinde, derlenmiş ikililerle çalıştırılır (`cargo run` ile değil):
+
+```powershell
+cargo build -p xtask --target-dir target/xtask
+cargo build --release --manifest-path spikes/wintun/Cargo.toml
+target\xtask\debug\xtask.exe lab preflight
+spikes\wintun\target\release\wintun-spike.exe status
+spikes\wintun\target\release\wintun-spike.exe kill-test
+spikes\wintun\target\release\wintun-spike.exe run
+spikes\wintun\target\release\wintun-spike.exe status
+```
+
+- **Sıra:** önce `kill-test`. Bu komut, kurtarma yolunu (bekçinin geri alması) gerçek
+  adaptörle sınar; ancak o geçerse `run` çalıştırılır.
+- **Ön koşullar:**
+  - `lab preflight` "Bekçi: iş nesnesi dışında" demeli.
+  - `status` "Yükseltilmiş çalıştırma ön koşulları: tamam" demeli.
+  - `xtask.exe` kaynaklardan eskiyse spike çalışmaz; yeniden derleyin.
+- **Ctrl+C güvenlidir:**
+  - `evet` sorusunda ve doğrudan ölçümde henüz hiçbir şey değişmemiştir.
+  - Tünel açıkken Ctrl+C'de spike işlemi ölür. Ayrı işlemdeki bekçi stdin kapanmasını görür,
+    rotayı, adresi ve kalakaldıysa adaptörü geri alır; raporu `ParentGone`dur.
+  - Sonra yaklaşık 10 sn bekleyip `wintun-spike status` çalıştırın. Bir şey kaldıysa
+    `xtask lab recover`, o da yetmezse bölüm 5.
+- **Sonuçlar** `lab/results/wintun-*/` altındadır (git dışı):
+  - `wintun-run.json`: başlangıç verisi baştan yazılır.
+  - `kill-test.json`.
+  - `watchdog-report.json`.
+- **Gizlilik:** Çıktıda test IP'si ve yerel yollar görünür; paylaşmadan önce ayıklayın.

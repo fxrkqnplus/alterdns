@@ -21,6 +21,8 @@ pub enum DnsMode {
     System,
     Doh,
     AltUdp1253,
+    /// DNS yok; prob verilen IP'ye gider (Wintun spike'ı, `probe::run_probe_at`).
+    Fixed,
 }
 
 /// DoH sunucusunun TLS adı; bağlantı doğrudan `1.1.1.1:443` adresine yapılır.
@@ -78,6 +80,7 @@ pub fn resolve(domain: &str, mode: DnsMode) -> anyhow::Result<Vec<IpAddr>> {
         DnsMode::System => system(domain),
         DnsMode::Doh => doh(domain).map(v4),
         DnsMode::AltUdp1253 => alt_udp(domain).map(v4),
+        DnsMode::Fixed => bail!("sabit IP kipinde DNS çözümü yapılmaz"),
     }
 }
 

@@ -137,11 +137,21 @@ Diğer ölçümler:
 | H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
 | H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
-| H5 | Kısmen | S0 yanıtı (E13) | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Ses/oyun (UDP) kısmı Wintun spike'ında ve S4'te ölçülecek |
+| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor: test IP'sinin 443/UDP portu sürüm anlaşması datagramlarına doğrudan ve TUN üzerinden 3/3 yanıt verdi. Discord sesi ve Roblox oyunu S4'te ölçülecek |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
 | H7 | Ölçülmedi | — | Yalnızca S5 (D5 onayı) ölçebilir |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
 | H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
+
+**Wintun spike'ı (2026-11-11; ayrıntı `spikes/wintun/RESULTS.md`):**
+- **Kurulum:** Yalnızca test IP'si (S1'de engelli `discord-web` adreslerinden biri) /32 rotayla Wintun adaptörüne yönlendirildi. Kullanıcı modu motor (`ipstack`) TCP akışını sonlandırıp tekniği kendi soketinde uyguladı.
+- **Sonuç:** Uygulamanın hiçbir şey yapmadığı bağlantılar sistem genelinde geçti.
+  - Motor tekniksiz: 0/3.
+  - `TlsRecordSplit@SNI`, `Oob@SNI`, `Split@1`: her biri 3/3.
+  - `TlsRecordSplit@SNI` ×50: 50/50.
+- **Diğer trafik:** etkilenmedi. UDP iletildi.
+- **Gecikme:** toplam p50 +12 ms, p95 +231 ms.
+- **Kurtarma:** işlem öldürülünce adaptör ve rota 1,6 sn içinde kalktı.
 
 **Faz 2 için ilk sinyal (bu ağ):**
 - Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.

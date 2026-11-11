@@ -23,19 +23,19 @@ use super::scenario::{
 use super::sockettech::SockTech;
 use super::watchdog::{MAX_LEASE_SECS, WatchdogHandle};
 
-fn repo_root() -> PathBuf {
+pub fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-fn results_dir(root: &Path) -> PathBuf {
+pub fn results_dir(root: &Path) -> PathBuf {
     root.join("lab").join("results")
 }
 
-fn journal_dir(root: &Path) -> PathBuf {
+pub fn journal_dir(root: &Path) -> PathBuf {
     results_dir(root).join("journal")
 }
 
-fn run_id(prefix: &str) -> String {
+pub fn run_id(prefix: &str) -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -64,7 +64,7 @@ fn local_config(root: &Path) -> anyhow::Result<LocalConfig> {
 }
 
 /// `data/probes/*.toml` + varsa `lab/local/probes.local.toml`.
-fn load_targets(root: &Path) -> anyhow::Result<Vec<ProbeTarget>> {
+pub fn load_targets(root: &Path) -> anyhow::Result<Vec<ProbeTarget>> {
     let mut all = Vec::new();
     let mut files: Vec<PathBuf> = ["control", "discord", "roblox"]
         .iter()
@@ -146,7 +146,7 @@ impl LabEnv for RealEnv {
     }
 }
 
-fn real_env(root: &Path, targets: &[ProbeTarget]) -> anyhow::Result<RealEnv> {
+pub fn real_env(root: &Path, targets: &[ProbeTarget]) -> anyhow::Result<RealEnv> {
     let control = targets
         .iter()
         .find(|t| t.role == Role::Control)

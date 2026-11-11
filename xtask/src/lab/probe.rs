@@ -348,7 +348,29 @@ pub fn run_probe_with(t: &ProbeTarget, dns_mode: DnsMode, tech: &SockTech) -> Pr
         bytes_in: 0,
         detail: None,
     };
-    r.outcome = probe_stages(t, dns_mode, tech, &mut r);
+    r.outcome = probe_stages(t, dns_mode, None, tech, &mut r);
+    r.total_ms = ms(start.elapsed());
+    r
+}
+
+/// DNS'siz prob: bağlantı doğrudan `ip`'ye, SNI alan adıyla kurulur (`DnsMode::Fixed`).
+pub fn run_probe_at(t: &ProbeTarget, ip: std::net::IpAddr, tech: &SockTech) -> ProbeResult {
+    let start = Instant::now();
+    let mut r = ProbeResult {
+        target: t.name.clone(),
+        domain: t.domain.clone(),
+        dns_mode: DnsMode::Fixed,
+        tech: *tech,
+        addrs: Vec::new(),
+        outcome: Outcome::DnsFail,
+        dns_ms: None,
+        tcp_ms: None,
+        tls_ms: None,
+        total_ms: 0,
+        bytes_in: 0,
+        detail: None,
+    };
+    r.outcome = probe_stages(t, DnsMode::Fixed, Some(ip), tech, &mut r);
     r.total_ms = ms(start.elapsed());
     r
 }
@@ -356,6 +378,7 @@ pub fn run_probe_with(t: &ProbeTarget, dns_mode: DnsMode, tech: &SockTech) -> Pr
 fn probe_stages(
     t: &ProbeTarget,
     dns_mode: DnsMode,
+    fixed: Option<std::net::IpAddr>,
     tech: &SockTech,
     r: &mut ProbeResult,
 ) -> Outcome {
@@ -364,14 +387,20 @@ fn probe_stages(
         classify_io(stage, e)
     };
     let t0 = Instant::now();
-    let addrs = match dns::resolve(&t.domain, dns_mode) {
+    let resolved = match fixed {
+        Some(ip) => Ok(vec![ip]),
+        None => dns::resolve(&t.domain, dns_mode),
+    };
+    let addrs = match resolved {
         Ok(a) => a,
         Err(e) => {
             r.detail = Some(format!("DNS: {e:#}"));
             return Outcome::DnsFail;
         }
     };
-    r.dns_ms = Some(ms(t0.elapsed()));
+    if fixed.is_none() {
+        r.dns_ms = Some(ms(t0.elapsed()));
+    }
     r.addrs = addrs.iter().map(ToString::to_string).collect();
     let Some(ip) = addrs.iter().find(|a| a.is_ipv4()).or(addrs.first()) else {
         r.detail = Some("DNS: boş yanıt".into());
@@ -538,6 +567,27 @@ mod tests {
     fn chunked_size_overflow_is_not_a_panic() {
         let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffff\r\nab";
         assert!(parse_http_response(raw).is_err());
+    }
+
+    /// Sabit IP'ye prob DNS'i atlar (Wintun spike'ında yalnızca test IP'si TUN'a yönlendirilir).
+    #[test]
+    fn probe_at_fixed_ip_skips_dns() {
+        use std::net::{IpAddr, Ipv4Addr, TcpListener};
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener); // kapalı port: bağlantı reddedilir
+        let t = ProbeTarget {
+            name: "yerel".into(),
+            domain: "example.com".into(),
+            port,
+            path: "/".into(),
+            role: Role::Target,
+        };
+        let r = run_probe_at(&t, IpAddr::V4(Ipv4Addr::LOCALHOST), &SockTech::None);
+        assert_eq!(r.dns_mode, DnsMode::Fixed);
+        assert_eq!(r.addrs, vec!["127.0.0.1".to_string()]);
+        assert!(r.dns_ms.is_none());
+        assert_eq!(r.outcome, Outcome::TcpRefused, "{:?}", r.detail);
     }
 
     /// Ağ gerektirir: `cargo test -p xtask --lib -- --ignored net_control_probe_ok`.
