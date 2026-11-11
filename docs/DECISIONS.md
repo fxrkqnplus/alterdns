@@ -67,7 +67,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 ---
 
-## ADR-003 — Bağlantı motoru · Önerilen (Wintun spike'ı sonrası, 2026-11-11): Wintun + kullanıcı modu motor; D8 kullanıcı kararı bekliyor
+## ADR-003 — Bağlantı motoru · Koşullu kabul (2026-11-11, kullanıcı kararı D8): Wintun + kullanıcı modu motor
 
 **Geçmiş:**
 - İlk öneri: kendi Rust motoru + resmi WinDivert 2.2.2-A.
@@ -114,11 +114,11 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 - **Sistem:** Defender tespiti yok; sürücü HVCI açıkken yüklendi; sürücü deposu değişmedi.
 - **Kurulum dersi:** Wintun adaptörü, oturum açılana kadar bağlantısız görünür. Adres, oturum açıldıktan sonra kullanılabilir olur.
 
-**Öneri (D8 için):**
+**Karar (D8, koşullu kabul, 2026-11-11):** Kullanıcı öneriyi şimdilik kabul etti. Faz 2 planı bu moda göre yazılır.
 - **Birincil mod:** Wintun + kullanıcı modu motor (yığın: `ipstack`).
 - **Yedek:** PAC.
 - **WinDivert:** askıda kalır.
-- **Kabulden önce kalan şartlar:**
+- **Kesinleşme şartları** (biri olumsuz çıkarsa D8 yeniden açılır):
   - SignPath ön sorusunun yanıtı (Wintun ön derlenmiş DLL lisansı).
   - S4: gerçek istemciler, UDP teknikleri.
 - **Kabul edilen risk (spike):** Yükseltilmiş çalışmada kullanıcının yazabildiği ikililer kullanıldı. Ürün, yalnızca yöneticinin yazabildiği Program Files altına kurulur (Faz 5).
@@ -238,6 +238,7 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 | D2 | Proje lisansı | **GPL-3.0-or-later**. Ad ve logo lisans dışı (`TRADEMARK.md`) | 2026-11-09 |
 | D3 | Kod imzalama | **Yalnız ücretsiz yollar:** SignPath Foundation başvurusu + Artifact Attestations + Ed25519 (ADR-012) | 2026-11-09 |
 | — | Uzantı dağıtımı | **Mağaza yok**; geliştirici modu + "Tarayıcıda kur" düğmesi (ADR-011) | 2026-11-09 |
+| D8 | Bağlantı motoru teknolojisi (ADR-003) | **Koşullu kabul:** Wintun TUN + kullanıcı modu motor; yedek PAC; WinDivert askıda. Kesinleşme şartları: SignPath ön sorusunun yanıtı ve S4 (gerçek istemciler, UDP teknikleri) | 2026-11-11 |
 | D6 | Makinedeki eski DPI paketi | **Kapandı:** kullanıcı paketi Faz 0 başında tamamen kaldırdı (servis, görev, sürücü, program klasörü). Aynı adlı servis çakışması Faz 6 matrisinde ölçülür | 2026-11-09 |
 
 ### Açık kararlar
@@ -246,5 +247,4 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 |---|---|---|---|---|
 | D4 | Ticari mi, ticari olmayan mı | (a) Ücretsiz / ticari olmayan. (b) Ticari | Faz 4 başı | Safe Browsing ↔ Web Risk, abuse.ch aboneliği, VirusTotal koşulları. SignPath ticari ikili lisansı zaten yasaklıyor |
 | D5 | Lab'da TTL 128 karşılaştırması | (a) Evet, kısa ve bekçili. (b) Hayır | Faz 0 | H7 testi; operatörün tethering tespiti riski |
-| D8 | Bağlantı motoru teknolojisi (ADR-003) | (a) Wintun TUN + kullanıcı modu motor, yedek olarak yerel aktarıcı (PAC). (b) Yalnız yerel aktarıcı. (c) WinDivert'e dönüş (Defender durumu değişirse). Elenenler ADR-003'te | Faz 0 sonu (S2-U ve Wintun spike ölçümlerinden sonra) | Kurulabilirlik (Defender), lisans ve SignPath uyumu (Wintun ön derlenmiş ikili lisansı), UDP/oyun kapsamı, yönetici yetkisi |
 | D7 | SignPath reddederse veya bağlantı modülünü kapsam dışı sayarsa | (a) İmzasız dağıtıma devam. (b) Bağlantı modülünü ayrı, imzasız bir proje olarak dağıtmak, çekirdeği imzalı tutmak. (c) Başka ücretsiz bir program çıkarsa değerlendirmek | Faz 6 | Kurulabilirlik (SmartScreen, SAC), mimari bölünme |
