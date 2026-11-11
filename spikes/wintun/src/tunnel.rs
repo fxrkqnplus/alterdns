@@ -20,7 +20,7 @@ use xtask::lab::scenario::job_gate;
 use xtask::lab::sockettech::SockTech;
 use xtask::lab::watchdog::{MAX_LEASE_SECS, WatchdogHandle};
 
-use crate::config::{self, TUN_CIDR, WintunConfig};
+use crate::config::{self, TUN_CIDR, TUN_IP, TUN_PREFIX, WintunConfig};
 use crate::ffi::{self, Adapter, Wintun};
 use crate::forward::{self, Engine, TunDevice};
 
@@ -318,8 +318,13 @@ impl Tunnel {
         if !wait_for(Duration::from_secs(20), || !is_absent(&tun_op())) {
             bail!("{SPIKE_ADAPTER} oluşturuldu ama Get-NetAdapter'da görünmedi");
         }
-        // 2. Adres (198.18.0.1/30, ActiveStore).
-        journal.apply(&RealOps, addr_op(), "present")?;
+        // 2. Adres (198.18.0.1/30): Wintun örneğindeki gibi doğrudan `Preferred` (DAD yok).
+        // Değişikliği Windows API'si yapar; önce journal'a `Pending` yazılır. Geri alma
+        // (spike, bekçi, `lab recover`) Remove-NetIPAddress ile yapılır.
+        let id = journal.record_external(&RealOps, addr_op(), "present")?;
+        ffi::create_unicast_address(&ffi::address_row(adapter.luid(), TUN_IP, TUN_PREFIX))
+            .context("adaptör adresi oluşturulamadı (CreateUnicastIpAddressEntry)")?;
+        journal.mark_applied(id)?;
         wd.renew(MAX_LEASE_SECS)?;
         let preferred = format!(
             "(Get-NetIPAddress -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4 -ErrorAction SilentlyContinue).AddressState"
@@ -327,7 +332,14 @@ impl Tunnel {
         if !wait_for(Duration::from_secs(15), || {
             ps_query(&preferred).is_ok_and(|s| s == "Preferred")
         }) {
-            bail!("adaptör adresi kullanılabilir (Preferred) duruma geçmedi");
+            let state = ps_query(&preferred).unwrap_or_else(|e| format!("okunamadı: {e}"));
+            let media = ps_query(&format!(
+                "(Get-NetAdapter -Name '{SPIKE_ADAPTER}').MediaConnectionState"
+            ))
+            .unwrap_or_else(|e| format!("okunamadı: {e}"));
+            bail!(
+                "adaptör adresi kullanılabilir (Preferred) duruma geçmedi: adres durumu {state:?}, bağlantı {media:?}"
+            );
         }
         let mtu = ps_query(&format!(
             "(Get-NetIPInterface -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4).NlMtu"

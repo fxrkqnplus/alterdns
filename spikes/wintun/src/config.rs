@@ -11,6 +11,8 @@ use serde::Deserialize;
 
 /// Adaptör adresi (RFC 2544 test aralığı).
 pub const TUN_CIDR: &str = "198.18.0.1/30";
+pub const TUN_IP: Ipv4Addr = Ipv4Addr::new(198, 18, 0, 1);
+pub const TUN_PREFIX: u8 = 30;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct WintunConfig {
@@ -62,6 +64,11 @@ pub fn load(root: &Path) -> anyhow::Result<WintunConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tun_address_constants_agree() {
+        assert_eq!(format!("{TUN_IP}/{TUN_PREFIX}"), TUN_CIDR);
+    }
 
     #[test]
     fn test_ip_must_be_public_ipv4() {

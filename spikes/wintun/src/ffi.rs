@@ -129,6 +129,46 @@ pub fn restrict_dll_search() -> std::io::Result<()> {
     unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) }.map_err(std::io::Error::other)
 }
 
+/// Wintun örneğindeki gibi (example.c) doğrudan `Preferred` durumda başlayan IPv4 adres satırı:
+/// DAD atlanır. `New-NetIPAddress` bu durumu veremez; ARP'siz L3 tünelde DAD bitmeyebilir.
+pub fn address_row(
+    luid: windows::Win32::NetworkManagement::Ndis::NET_LUID_LH,
+    ip: Ipv4Addr,
+    prefix: u8,
+) -> windows::Win32::NetworkManagement::IpHelper::MIB_UNICASTIPADDRESS_ROW {
+    use windows::Win32::NetworkManagement::IpHelper::{
+        InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
+    };
+    use windows::Win32::Networking::WinSock::{AF_INET, IN_ADDR, IN_ADDR_0, IpDadStatePreferred};
+    let mut row = MIB_UNICASTIPADDRESS_ROW::default();
+    // SAFETY: `row` geçerli, yazılabilir yerel bir yapıdır; işlev yalnızca varsayılanları doldurur.
+    unsafe { InitializeUnicastIpAddressEntry(&mut row) };
+    row.Address.Ipv4.sin_family = AF_INET;
+    row.Address.Ipv4.sin_addr = IN_ADDR {
+        S_un: IN_ADDR_0 {
+            S_addr: u32::from_ne_bytes(ip.octets()),
+        },
+    };
+    row.InterfaceLuid = luid;
+    row.OnLinkPrefixLength = prefix;
+    row.DadState = IpDadStatePreferred;
+    row
+}
+
+/// Adres satırını sisteme ekler (yönetici). `Preferred` durumu satırdan gelir.
+pub fn create_unicast_address(
+    row: &windows::Win32::NetworkManagement::IpHelper::MIB_UNICASTIPADDRESS_ROW,
+) -> std::io::Result<()> {
+    use windows::Win32::NetworkManagement::IpHelper::CreateUnicastIpAddressEntry;
+    // SAFETY: `row` çağrı boyunca canlı, `address_row` ile tam doldurulmuş bir yapıdır.
+    let rc = unsafe { CreateUnicastIpAddressEntry(row) };
+    if rc.0 == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::from_raw_os_error(rc.0 as i32))
+    }
+}
+
 type AdapterHandle = *mut std::ffi::c_void;
 type SessionHandle = *mut std::ffi::c_void;
 type RawProc = unsafe extern "system" fn() -> isize;
@@ -155,6 +195,10 @@ type ReceivePacketFn = unsafe extern "system" fn(SessionHandle, *mut u32) -> *mu
 type ReleaseReceivePacketFn = unsafe extern "system" fn(SessionHandle, *const u8);
 type AllocateSendPacketFn = unsafe extern "system" fn(SessionHandle, u32) -> *mut u8;
 type SendPacketFn = unsafe extern "system" fn(SessionHandle, *const u8);
+type GetAdapterLuidFn = unsafe extern "system" fn(
+    AdapterHandle,
+    *mut windows::Win32::NetworkManagement::Ndis::NET_LUID_LH,
+);
 
 pub struct Wintun {
     create_adapter: CreateAdapterFn,
@@ -167,6 +211,7 @@ pub struct Wintun {
     release_receive_packet: ReleaseReceivePacketFn,
     allocate_send_packet: AllocateSendPacketFn,
     send_packet: SendPacketFn,
+    get_adapter_luid: GetAdapterLuidFn,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -286,6 +331,9 @@ impl Wintun {
                 send_packet: std::mem::transmute::<RawProc, SendPacketFn>(sym(
                     c"WintunSendPacket",
                 )?),
+                get_adapter_luid: std::mem::transmute::<RawProc, GetAdapterLuidFn>(sym(
+                    c"WintunGetAdapterLUID",
+                )?),
             }
         };
         Ok(Arc::new(lib))
@@ -344,6 +392,14 @@ unsafe impl Send for Adapter {}
 unsafe impl Sync for Adapter {}
 
 impl Adapter {
+    /// Adaptörün ağ arabirimi LUID'i.
+    pub fn luid(&self) -> windows::Win32::NetworkManagement::Ndis::NET_LUID_LH {
+        let mut luid = windows::Win32::NetworkManagement::Ndis::NET_LUID_LH::default();
+        // SAFETY: `handle` bu adaptör yaşadıkça geçerlidir; `luid` yazılabilir yerel bir değerdir.
+        unsafe { (self.lib.get_adapter_luid)(self.handle, &mut luid) };
+        luid
+    }
+
     pub fn start_session(self: &Arc<Self>) -> anyhow::Result<Arc<Session>> {
         // SAFETY: `handle` bu adaptör yaşadıkça geçerlidir; kapasite izin verilen aralıkta.
         let handle = unsafe { (self.lib.start_session)(self.handle, RING_CAPACITY) };
@@ -487,6 +543,26 @@ mod tests {
         // Hash tutsa bile göreli yol reddedilir (arama yolu ele geçirilmesin).
         assert!(Wintun::load(Path::new("wintun.dll"), &sha256_hex(b"sahte")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn address_row_is_preferred_ipv4_on_given_luid() {
+        use windows::Win32::NetworkManagement::Ndis::NET_LUID_LH;
+        use windows::Win32::Networking::WinSock::{AF_INET, IpDadStatePreferred};
+        let luid = NET_LUID_LH { Value: 0x1234_5678 };
+        let row = address_row(luid, Ipv4Addr::new(198, 18, 0, 1), 30);
+        // SAFETY (test): birlik alanları, address_row'un yazdığı IPv4 kolundan okunuyor.
+        unsafe {
+            assert_eq!(row.Address.si_family, AF_INET);
+            assert_eq!(
+                row.Address.Ipv4.sin_addr.S_un.S_addr.to_ne_bytes(),
+                [198, 18, 0, 1]
+            );
+            assert_eq!(row.InterfaceLuid.Value, 0x1234_5678);
+        }
+        assert_eq!(row.OnLinkPrefixLength, 30);
+        assert_eq!(row.DadState, IpDadStatePreferred);
+        assert!(!row.SkipAsSource, "kaynak adres olarak kullanılabilmeli");
     }
 
     #[test]
