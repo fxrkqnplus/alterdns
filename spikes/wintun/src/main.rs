@@ -13,6 +13,7 @@
 mod config;
 mod ffi;
 mod forward;
+mod harden;
 mod measure;
 mod tunnel;
 
@@ -33,7 +34,14 @@ use xtask::lab::scenario::{PROBE_BYTES, Summary, confirm, preflight};
 use xtask::lab::sockettech::{SockTech, SplitAt};
 
 use crate::measure::{Latency, UdpProbe};
-use crate::tunnel::{Ctx, Teardown, Tunnel, is_absent, route_op, tun_op, wait_for};
+use crate::tunnel::{
+    AdapterSnapshot, Ctx, Teardown, Tunnel, adapter_snapshot, is_absent, other_wintun_adapters,
+    route_op, tun_op, wait_for,
+};
+
+/// `kill-test` alt işlemine verilen iç kullanım belirteci (`serve` doğrudan çalıştırılmasın).
+const SERVE_TOKEN_ENV: &str = "ALTERDNS_SPIKE_SERVE";
+const SERVE_TOKEN: &str = "kill-test";
 
 /// Gecikme ölçümündeki el sıkışma sayısı (Adım d).
 const MEASURE_N: usize = 50;
@@ -59,6 +67,11 @@ const SERVE_LIMIT: Duration = Duration::from_secs(45);
 const REVERT_WAIT: Duration = Duration::from_secs(75);
 
 fn main() -> ExitCode {
+    // Sonraki bütün DLL yüklemeleri yalnızca System32 ve tam yolu verilen dosyayla sınırlı.
+    if let Err(e) = ffi::restrict_dll_search() {
+        eprintln!("wintun-spike: DLL arama yolu daraltılamadı: {e}");
+        return ExitCode::FAILURE;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("run") => run(),
@@ -161,13 +174,22 @@ struct RunReport {
     engine: Option<serde_json::Value>,
     measure_error: Option<String>,
     teardown: Option<Teardown>,
+    /// Her TUN aşamasından önce doğrudan kontrol probu (ağ kopması spike hatasıyla karışmasın).
+    controls: Vec<(String, String)>,
+    other_wintun_before: String,
+    other_wintun_after: String,
+    adapter_snapshot: Option<AdapterSnapshot>,
 }
 
 fn change_summary(ctx: &Ctx, store: &[String]) -> String {
     let driver = if store.is_empty() {
         "sistemde yok; DLL kurar ve kalır (kaldırma ayrıca onayla)".to_string()
     } else {
-        format!("sistemde zaten var ({}); dokunulmaz", store.join(", "))
+        format!(
+            "sistemde zaten var ({}); spike bu pakete dokunmaz, DLL davranışı (sürüm, öteki Wintun \
+             adaptörleri) önce/sonra kaydedilir",
+            store.join(", ")
+        )
     };
     format!(
         "Wintun adaptörü {SPIKE_ADAPTER} + adres {} + yalnızca {}/32 için rota (ActiveStore). \
@@ -179,10 +201,25 @@ fn change_summary(ctx: &Ctx, store: &[String]) -> String {
 
 const REVERT_TEXT: &str = "Her değişiklik önce journal'a yazılır. Ayrı işlemdeki bekçi (kira ≤ 60 sn) çökme, Ctrl+C veya süre dolunca geri alır; koşu sonunda spike kendisi söker ve kalıntı olmadığını doğrular.";
 
+/// Wintun sürücü paketi sistemde yoksa çalışmaz: DLL paketi kurar ve bu değişiklik journal'a
+/// yazılamaz (CLAUDE.md kural 1). Bu makinede paket başka bir yazılımdan zaten var.
+fn require_driver_store() -> anyhow::Result<()> {
+    let store = measure::driver_store().context("sürücü deposu okunamadı")?;
+    if store.is_empty() {
+        bail!(
+            "Wintun sürücü paketi sistemde yok; DLL kurar ve bu journal'a yazılamaz. \
+             Ayrı onay olmadan çalıştırılmaz."
+        );
+    }
+    Ok(())
+}
+
 /// Adım b, c, d, f.
 fn run() -> anyhow::Result<()> {
     let ctx = Ctx::load()?;
+    harden::elevated_preconditions(&ctx.root, ctx.test_ip())?;
     preflight(&ctx.env, true).map_err(|e| anyhow!("{e}"))?;
+    require_driver_store()?;
     let store_before = measure::driver_store().unwrap_or_default();
     let probes = (PER_TECH + MEASURE_N) + (TUN_TECHS.len() * PER_TECH + MEASURE_N) + 1;
     let summary = Summary {
@@ -208,6 +245,9 @@ fn run() -> anyhow::Result<()> {
         hvci_services_running: hvci_services(),
         ..RunReport::default()
     };
+    rep.other_wintun_before = other_wintun_adapters();
+    // Başlangıç verisi hemen yazılır: işlem öldürülse de kaybolmasın.
+    write_json(&out_dir, "wintun-run.json", &rep)?;
     let udp_addr = SocketAddr::new(ctx.test_ip().into(), 443);
 
     // 1. Doğrudan (rota yok): tekniksiz, UDP ve en iyi teknikle gecikme.
@@ -244,12 +284,24 @@ fn run() -> anyhow::Result<()> {
         "Tünel hazır: fiziksel arayüz {}, TUN {}, MTU {}",
         t.phys_if, t.tun_if, t.mtu
     );
+    rep.adapter_snapshot = Some(adapter_snapshot());
+    write_json(&out_dir, "wintun-run.json", &rep)?;
     let engine = t.engine.clone();
     let mut peak = rep.private_bytes_before_tunnel.unwrap_or(0);
     let measured = (|| -> anyhow::Result<()> {
         t.beat()?;
         rep.control_during_tunnel = Some(probe::run_probe(&ctx.control, DnsMode::System));
         for tech in TUN_TECHS {
+            t.beat()?;
+            let c = probe::run_probe(&ctx.control, DnsMode::System);
+            rep.controls
+                .push((format!("{tech:?} öncesi"), format!("{:?}", c.outcome)));
+            if !c.outcome.is_ok() {
+                bail!(
+                    "kontrol probu başarısız ({:?}); ağ kopmuş olabilir, ölçüm durduruldu",
+                    c.outcome
+                );
+            }
             engine.set_tech(tech);
             let label = format!("TUN, motor {tech:?}");
             rep.tun
@@ -294,6 +346,7 @@ fn run() -> anyhow::Result<()> {
     println!("Söküm…");
     let td = t.down();
     rep.driver_store_after = measure::driver_store().unwrap_or_default();
+    rep.other_wintun_after = other_wintun_adapters();
     rep.defender_detections_after = defender_detections();
     rep.elapsed_ms = started.elapsed().as_millis() as u64;
     let clean = td.adapter_absent && td.route_absent && td.failed.is_empty();
@@ -342,8 +395,13 @@ fn print_run_summary(rep: &RunReport, out_dir: &Path) {
 
 /// İçsel: tüneli kurar, `READY <dizin>` yazar ve öldürülene kadar kirayı yeniler.
 fn serve() -> anyhow::Result<()> {
+    if std::env::var(SERVE_TOKEN_ENV).as_deref() != Ok(SERVE_TOKEN) {
+        bail!("`serve` içseldir; `wintun-spike kill-test` kullanın");
+    }
     let ctx = Ctx::load()?;
+    harden::elevated_preconditions(&ctx.root, ctx.test_ip())?;
     preflight(&ctx.env, true).map_err(|e| anyhow!("{e}"))?;
+    require_driver_store()?;
     let lib = ffi::Wintun::load(&ctx.dll, ffi::WINTUN_DLL_SHA256)?;
     let run = run_id("wintun-kill");
     let out_dir = results_dir(&ctx.root).join(&run);
@@ -378,7 +436,9 @@ struct KillReport {
 /// Adım e.
 fn kill_test() -> anyhow::Result<()> {
     let ctx = Ctx::load()?;
+    harden::elevated_preconditions(&ctx.root, ctx.test_ip())?;
     preflight(&ctx.env, true).map_err(|e| anyhow!("{e}"))?;
+    require_driver_store()?;
     let store = measure::driver_store().unwrap_or_default();
     let summary = Summary {
         scenario: "Görev 7 Adım e — spike işlemi öldürülünce bekçi geri alıyor mu".into(),
@@ -395,6 +455,7 @@ fn kill_test() -> anyhow::Result<()> {
     let started = Instant::now();
     let mut child = std::process::Command::new(std::env::current_exe()?)
         .arg("serve")
+        .env(SERVE_TOKEN_ENV, SERVE_TOKEN)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -425,7 +486,14 @@ fn kill_test() -> anyhow::Result<()> {
             }
             Err(_) => {
                 let _ = child.kill();
-                bail!("serve 90 sn içinde hazır olmadı; `xtask lab recover` ile durumu denetleyin");
+                let _ = child.wait();
+                // Yarım kurulum olabilir: bekçinin geri almasını bekle.
+                let route = route_op(ctx.test_ip());
+                let gone = wait_for(REVERT_WAIT, || is_absent(&tun_op()) && is_absent(&route));
+                bail!(
+                    "serve 90 sn içinde hazır olmadı (kalıntı temizlendi mi: {gone}); \
+                     `wintun-spike status` ve gerekirse `xtask lab recover` (lab/RUNBOOK.md)"
+                );
             }
         }
     };
@@ -498,6 +566,13 @@ fn kill_test() -> anyhow::Result<()> {
 /// Salt okunur durum.
 fn status() -> anyhow::Result<()> {
     let ctx = Ctx::load()?;
+    println!(
+        "Yükseltilmiş çalıştırma ön koşulları: {}",
+        match harden::elevated_preconditions(&ctx.root, ctx.test_ip()) {
+            Ok(()) => "tamam".to_string(),
+            Err(e) => format!("KARŞILANMIYOR: {e:#}"),
+        }
+    );
     println!(
         "{SPIKE_ADAPTER}: {}",
         if is_absent(&tun_op()) { "yok" } else { "VAR" }

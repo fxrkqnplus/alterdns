@@ -105,6 +105,30 @@ pub fn process_metrics() -> std::io::Result<(Duration, u64)> {
     Ok((cpu, mem.PrivateUsage as u64))
 }
 
+/// Gerçek Windows dizini (`GetSystemWindowsDirectoryW`; ortam değişkenine bakmaz).
+pub fn windows_dir() -> std::io::Result<std::path::PathBuf> {
+    use windows::Win32::System::SystemInformation::GetSystemWindowsDirectoryW;
+    let mut buf = vec![0u16; 512];
+    // SAFETY: `buf` yazılabilir yerel bir ara bellektir; dönen uzunluk ona sığar ya da 0'dır.
+    let n = unsafe { GetSystemWindowsDirectoryW(Some(&mut buf)) } as usize;
+    if n == 0 || n >= buf.len() {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(std::path::PathBuf::from(String::from_utf16_lossy(
+        buf.get(..n).unwrap_or_default(),
+    )))
+}
+
+/// Bu işlemdeki sonraki bütün DLL yüklemeleri yalnızca System32 ve tam yolu verilen dosyayla
+/// sınırlanır (uygulama dizini ve çalışma dizini aranmaz).
+pub fn restrict_dll_search() -> std::io::Result<()> {
+    use windows::Win32::System::LibraryLoader::{
+        LOAD_LIBRARY_SEARCH_SYSTEM32, SetDefaultDllDirectories,
+    };
+    // SAFETY: Bayrak sabiti geçerli; işlem genelinde arama yolunu daraltmaktan başka etkisi yok.
+    unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) }.map_err(std::io::Error::other)
+}
+
 type AdapterHandle = *mut std::ffi::c_void;
 type SessionHandle = *mut std::ffi::c_void;
 type RawProc = unsafe extern "system" fn() -> isize;
@@ -154,11 +178,16 @@ impl Wintun {
     /// yazmaya ve silmeye karşı paylaşımsız açık tutulur (doğrulama ile yükleme arasında
     /// değiştirilemesin).
     pub fn load(dll: &Path, expected_sha256: &str) -> anyhow::Result<Arc<Wintun>> {
+        use std::ffi::CStr;
         use std::io::Read;
-        use std::os::windows::ffi::OsStrExt;
         use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::Storage::FileSystem::{
+            FILE_NAME_NORMALIZED, GetFinalPathNameByHandleW,
+        };
         use windows::Win32::System::LibraryLoader::{
-            GetProcAddress, LOAD_WITH_ALTERED_SEARCH_PATH, LoadLibraryExW,
+            GetModuleFileNameW, GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
         };
         use windows::core::{PCSTR, PCWSTR};
 
@@ -177,59 +206,85 @@ impl Wintun {
         if got != expected_sha256 {
             bail!("{}: SHA-256 beklenenle aynı değil ({got})", dll.display());
         }
-        let path: Vec<u16> = dll
-            .as_os_str()
-            .encode_wide()
+        // Doğrulanan dosyanın gerçek yolu tutamaçtan alınır: yol üzerindeki bir dizin bağlantısı
+        // doğrulamadan sonra değiştirilse bile yüklenen dosya bu dosya olur.
+        let mut buf = vec![0u16; 1024];
+        // SAFETY: `guard` bu çağrı boyunca açık, geçerli bir dosya tutamacıdır; `buf` yazılabilir.
+        let n = unsafe {
+            GetFinalPathNameByHandleW(
+                HANDLE(guard.as_raw_handle()),
+                &mut buf,
+                FILE_NAME_NORMALIZED,
+            )
+        } as usize;
+        if n == 0 || n >= buf.len() {
+            return Err(std::io::Error::last_os_error()).context("DLL gerçek yolu alınamadı");
+        }
+        let final_path = String::from_utf16(buf.get(..n).unwrap_or_default())?;
+        let final_path = crate::harden::strip_verbatim(&final_path)
+            .ok_or_else(|| anyhow::anyhow!("DLL yerel bir sürücüde değil: {final_path}"))?;
+        let wide_path: Vec<u16> = final_path
+            .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
-        // SAFETY: `path` NUL ile biten, çağrı boyunca canlı bir UTF-16 dizisidir ve tam yoldur;
+        // SAFETY: `wide_path` NUL ile biten, çağrı boyunca canlı bir UTF-16 dizisidir ve tam yoldur;
         // içerik az önce sabit hash ile doğrulandı ve `guard` dosyayı değişikliğe karşı tutuyor.
-        let module =
-            unsafe { LoadLibraryExW(PCWSTR(path.as_ptr()), None, LOAD_WITH_ALTERED_SEARCH_PATH) }
-                .with_context(|| format!("{} yüklenemedi", dll.display()))?;
+        // LOAD_LIBRARY_SEARCH_SYSTEM32: DLL bağımlılıkları yalnızca System32'den çözülür.
+        let module = unsafe {
+            LoadLibraryExW(
+                PCWSTR(wide_path.as_ptr()),
+                None,
+                LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        }
+        .with_context(|| format!("{final_path} yüklenemedi"))?;
+        let mut loaded = vec![0u16; 1024];
+        // SAFETY: `module` az önce yüklenen geçerli modüldür; `loaded` yazılabilir.
+        let m = unsafe { GetModuleFileNameW(Some(module), &mut loaded) } as usize;
+        let loaded = String::from_utf16_lossy(loaded.get(..m).unwrap_or_default());
         drop(guard);
-        let sym = |name: &'static [u8]| -> anyhow::Result<RawProc> {
-            // SAFETY: `module` geçerli bir modül tutamacıdır; `name` NUL ile biten sabit bir dizidir.
-            unsafe { GetProcAddress(module, PCSTR(name.as_ptr())) }.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "wintun.dll içinde {} yok",
-                    String::from_utf8_lossy(name).trim_end_matches('\0')
-                )
-            })
+        let loaded = crate::harden::strip_verbatim(&loaded).unwrap_or(loaded);
+        if !loaded.eq_ignore_ascii_case(&final_path) {
+            bail!("yüklenen modül beklenen dosya değil: {loaded} ≠ {final_path}");
+        }
+        let sym = |name: &'static CStr| -> anyhow::Result<RawProc> {
+            // SAFETY: `module` geçerli bir modül tutamacıdır; `name` NUL ile biten sabit bir dizedir.
+            unsafe { GetProcAddress(module, PCSTR(name.as_ptr().cast())) }
+                .ok_or_else(|| anyhow::anyhow!("wintun.dll içinde {name:?} yok"))
         };
-        // SAFETY: Her işaretçi, wintun.h'taki bildirimiyle aynı çağrı kuralına (WINAPI = system)
-        // ve imzaya sahip dışa aktarılmış işleve dönüştürülüyor (Wintun 0.14.1 üstbilgisi).
+        // SAFETY: Her işaretçi, wintun.h bildirimiyle aynı çağrı kuralına (WINAPI = system) ve
+        // imzaya sahip dışa aktarılmış işleve dönüştürülüyor (Wintun 0.14.1 üstbilgisi).
         let lib = unsafe {
             Wintun {
                 create_adapter: std::mem::transmute::<RawProc, CreateAdapterFn>(sym(
-                    b"WintunCreateAdapter ",
+                    c"WintunCreateAdapter",
                 )?),
                 close_adapter: std::mem::transmute::<RawProc, CloseAdapterFn>(sym(
-                    b"WintunCloseAdapter ",
+                    c"WintunCloseAdapter",
                 )?),
                 running_driver_version: std::mem::transmute::<RawProc, DriverVersionFn>(sym(
-                    b"WintunGetRunningDriverVersion ",
+                    c"WintunGetRunningDriverVersion",
                 )?),
                 start_session: std::mem::transmute::<RawProc, StartSessionFn>(sym(
-                    b"WintunStartSession ",
+                    c"WintunStartSession",
                 )?),
                 end_session: std::mem::transmute::<RawProc, EndSessionFn>(sym(
-                    b"WintunEndSession ",
+                    c"WintunEndSession",
                 )?),
                 read_wait_event: std::mem::transmute::<RawProc, ReadWaitEventFn>(sym(
-                    b"WintunGetReadWaitEvent ",
+                    c"WintunGetReadWaitEvent",
                 )?),
                 receive_packet: std::mem::transmute::<RawProc, ReceivePacketFn>(sym(
-                    b"WintunReceivePacket ",
+                    c"WintunReceivePacket",
                 )?),
                 release_receive_packet: std::mem::transmute::<RawProc, ReleaseReceivePacketFn>(
-                    sym(b"WintunReleaseReceivePacket ")?,
+                    sym(c"WintunReleaseReceivePacket")?,
                 ),
                 allocate_send_packet: std::mem::transmute::<RawProc, AllocateSendPacketFn>(sym(
-                    b"WintunAllocateSendPacket ",
+                    c"WintunAllocateSendPacket",
                 )?),
                 send_packet: std::mem::transmute::<RawProc, SendPacketFn>(sym(
-                    b"WintunSendPacket ",
+                    c"WintunSendPacket",
                 )?),
             }
         };

@@ -156,11 +156,15 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
             let (ip, len) = prefix
                 .split_once('/')
                 .ok_or_else(|| anyhow!("önek yok: {prefix}"))?;
-            let host_len = match ip.parse::<IpAddr>() {
-                Ok(IpAddr::V4(_)) => "32",
-                Ok(IpAddr::V6(_)) => "128",
-                Err(_) => bail!("geçersiz rota hedefi: {prefix}"),
-            };
+            let parsed = ip
+                .parse::<IpAddr>()
+                .map_err(|_| anyhow!("geçersiz rota hedefi: {prefix}"))?;
+            if !routable_global(parsed) {
+                bail!(
+                    "rota hedefi genel bir adres olmalı (yerel ağ, DNS ya da ağ geçidi TUN'a çekilmez): {prefix}"
+                );
+            }
+            let host_len = if parsed.is_ipv4() { "32" } else { "128" };
             if len != host_len {
                 bail!("rota yalnızca tek IP içindir (/{host_len}): {prefix}");
             }
@@ -205,6 +209,37 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
         }
         OpKind::HopLimit { .. } => bail!("sistem hop limiti yazılmaz (ADR-010)"),
         OpKind::FileValue { .. } => bail!("FileValue betikle yazılmaz"),
+    }
+}
+
+/// Rotalanabilir genel bir adres mi? Özel, döngü, bağlantı yerel, CGNAT, test, çoklu yayın,
+/// yayın ve ayrılmış aralıklar `false`.
+pub(crate) fn routable_global(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 198 && (b == 18 || b == 19))
+                || (a == 192 && b == 0 && c == 0))
+        }
+        std::net::IpAddr::V6(v6) => {
+            let first = v6.segments()[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (first & 0xffc0) == 0xfe80
+                || (first & 0xfe00) == 0xfc00
+                || first == 0x2001 && v6.segments()[1] == 0x0db8)
+        }
     }
 }
 
@@ -378,12 +413,12 @@ mod tests {
 
     #[test]
     fn route_script_is_host_route_in_active_store_only() {
-        let add = write_script(&route("203.0.113.7/32", SPIKE_ADAPTER), "present").unwrap();
+        let add = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "present").unwrap();
         assert!(add.starts_with("New-NetRoute "), "{add}");
-        assert!(add.contains("-DestinationPrefix '203.0.113.7/32'"), "{add}");
+        assert!(add.contains("-DestinationPrefix '1.1.1.1/32'"), "{add}");
         assert!(add.contains("-InterfaceAlias 'AlterDNS-Spike'"), "{add}");
         assert!(add.contains("-PolicyStore ActiveStore"), "{add}");
-        let del = write_script(&route("203.0.113.7/32", SPIKE_ADAPTER), "absent").unwrap();
+        let del = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "absent").unwrap();
         assert!(del.starts_with("Remove-NetRoute "), "{del}");
         assert!(del.contains("-Confirm:$false") && del.contains("-PolicyStore ActiveStore"));
         // Geniş önek, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
@@ -393,6 +428,18 @@ mod tests {
             (route("203.0.113.7/32", "Wi-Fi"), "present"),
             (route("203.0.113.7/32", SPIKE_ADAPTER), "maybe"),
             (route("not-an-ip/32", SPIKE_ADAPTER), "present"),
+            // Değiştirilmiş journal ağ geçidini, DNS'i ya da yerel ağı TUN'a çekemesin.
+            (
+                route(&["192.168", ".1.1/32"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (
+                route(&["10.0", ".0.1/32"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (route("127.0.0.1/32", SPIKE_ADAPTER), "present"),
+            (route("198.18.0.2/32", SPIKE_ADAPTER), "present"),
+            (route("224.0.0.251/32", SPIKE_ADAPTER), "present"),
         ] {
             assert!(write_script(&op, v).is_err(), "{op:?} {v}");
         }

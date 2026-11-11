@@ -149,6 +149,14 @@ fn validate(e: &Entry) -> anyhow::Result<()> {
             }
         }
     }
+    let presence = |v: &str| v == "present" || v == "absent";
+    if matches!(
+        e.op,
+        OpKind::TunAdapter { .. } | OpKind::UnicastAddress { .. } | OpKind::Route { .. }
+    ) && !(presence(&e.before) && presence(&e.after))
+    {
+        bail!("kayıt {}: değerler yalnızca present/absent olabilir", e.id);
+    }
     if e.before.len() > MAX_VALUE_BYTES || e.after.len() > MAX_VALUE_BYTES {
         bail!("kayıt değeri çok uzun (kimlik {})", e.id);
     }
@@ -734,6 +742,26 @@ pub(crate) mod tests {
         let err = Journal::open(&path).err().unwrap();
         assert!(format!("{err:#}").contains("run1.jsonl:1"), "{err:#}");
         assert_eq!(Journal::find_stale(&dir).unwrap(), vec![path]);
+    }
+
+    #[test]
+    fn open_rejects_unexpected_state_values() {
+        let dir = temp_dir("values");
+        let path = dir.join("run1.jsonl");
+        let line = serde_json::json!({
+            "id": 1,
+            "op": { "kind": "Route", "prefix": "203.0.113.7/32", "if_name": SPIKE_ADAPTER },
+            "before": "present", "after": "maybe", "state": "Applied"
+        });
+        std::fs::write(&path, format!("{line}\n")).unwrap();
+        assert!(Journal::open(&path).is_err());
+        let ok = serde_json::json!({
+            "id": 1,
+            "op": { "kind": "Route", "prefix": "203.0.113.7/32", "if_name": SPIKE_ADAPTER },
+            "before": "absent", "after": "present", "state": "Applied"
+        });
+        std::fs::write(&path, format!("{ok}\n")).unwrap();
+        assert!(Journal::open(&path).is_ok());
     }
 
     #[test]

@@ -188,6 +188,27 @@ impl AsyncWrite for TunDevice {
     }
 }
 
+/// Taşıma protokolü (döngü korumasında portlar protokole göre ayrı tutulur).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Proto {
+    Tcp,
+    Udp,
+}
+
+/// Giden soketin kaydı; düşünce port kayıttan silinir.
+pub struct OutboundGuard {
+    engine: Arc<Engine>,
+    key: (Proto, u16),
+}
+
+impl Drop for OutboundGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.engine.outbound_ports.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
 /// Eşzamanlı aktarım üst sınırı (spike tek hedefe birkaç prob gönderir).
 const MAX_ACTIVE: u64 = 64;
 
@@ -195,7 +216,7 @@ const MAX_ACTIVE: u64 = 64;
 pub struct Engine {
     tech: std::sync::Mutex<SockTech>,
     pub stats: Arc<Stats>,
-    outbound_ports: std::sync::Mutex<std::collections::HashSet<u16>>,
+    outbound_ports: std::sync::Mutex<std::collections::HashSet<(Proto, u16)>>,
     halted: std::sync::atomic::AtomicBool,
     active: AtomicU64,
 }
@@ -212,18 +233,23 @@ impl Engine {
     }
 
     /// Motorun açtığı giden soketin yerel portunu kaydeder.
-    pub fn mark_outbound(&self, port: u16) {
+    /// Kayıt, dönen nesne yaşadıkça (soket açıkken) geçerlidir.
+    pub fn mark_outbound(self: &Arc<Self>, proto: Proto, port: u16) -> OutboundGuard {
         if let Ok(mut set) = self.outbound_ports.lock() {
-            set.insert(port);
+            set.insert((proto, port));
+        }
+        OutboundGuard {
+            engine: self.clone(),
+            key: (proto, port),
         }
     }
 
-    /// Bu yerel port motorun kendi giden soketine mi ait?
-    pub fn is_own(&self, port: u16) -> bool {
+    /// Bu yerel port, motorun şu an açık bir giden soketine mi ait?
+    pub fn is_own(&self, proto: Proto, port: u16) -> bool {
         // Kilit zehirlendiyse güvenli tarafta kal: döngü say.
         self.outbound_ports
             .lock()
-            .map_or(true, |set| set.contains(&port))
+            .map_or(true, |set| set.contains(&(proto, port)))
     }
 
     /// Döngü saptandıysa motor durmuştur; artık hiçbir akış aktarılmaz.
@@ -267,12 +293,12 @@ pub async fn serve(
     use ipstack::IpStackStream;
     let target = std::net::IpAddr::V4(target);
     // Akışı aktarabilir miyiz? Döngü saptanırsa motor kalıcı olarak durur.
-    let admit = |engine: &Engine, local: SocketAddr| -> bool {
+    let admit = |engine: &Engine, proto: Proto, local: SocketAddr| -> bool {
         if engine.halted() {
             Stats::add(&engine.stats.ignored);
             return false;
         }
-        if engine.is_own(local.port()) {
+        if engine.is_own(proto, local.port()) {
             Stats::add(&engine.stats.loops);
             engine.halted.store(true, Ordering::Relaxed);
             return false;
@@ -286,7 +312,7 @@ pub async fn serve(
     loop {
         match stack.accept().await {
             Ok(IpStackStream::Tcp(stream)) if stream.peer_addr().ip() == target => {
-                if !admit(&engine, stream.local_addr()) {
+                if !admit(&engine, Proto::Tcp, stream.local_addr()) {
                     continue;
                 }
                 let (peer, tech, engine) =
@@ -297,7 +323,7 @@ pub async fn serve(
                 });
             }
             Ok(IpStackStream::Udp(stream)) if stream.peer_addr().ip() == target => {
-                if !admit(&engine, stream.local_addr()) {
+                if !admit(&engine, Proto::Udp, stream.local_addr()) {
                     continue;
                 }
                 let (peer, engine) = (stream.peer_addr(), engine.clone());
@@ -333,9 +359,10 @@ where
         crate::ffi::set_unicast_if_v4(&sock, i)?;
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
-    if let Some(local) = sock.local_addr()?.as_socket() {
-        engine.mark_outbound(local.port());
-    }
+    let _guard = match sock.local_addr()?.as_socket() {
+        Some(local) => engine.mark_outbound(Proto::Udp, local.port()),
+        None => anyhow::bail!("UDP soketinin yerel adresi yok"),
+    };
     sock.connect(&SockAddr::from(peer))?;
     sock.set_nonblocking(true)?;
     let std_sock: std::net::UdpSocket = sock.into();
@@ -374,17 +401,22 @@ const MAX_FIRST_FLIGHT: usize = 16 * 1024;
 
 /// Gerçek hedefe engelleyen soketle bağlanır; arayüz verilmişse `IP_UNICAST_IF` uygulanır.
 /// Yerel port bağlanmadan önce alınır ve döngü koruması için kaydedilir.
-fn connect_out(peer: SocketAddr, phys_if: Option<u32>, engine: &Engine) -> anyhow::Result<Socket> {
+fn connect_out(
+    peer: SocketAddr,
+    phys_if: Option<u32>,
+    engine: &Arc<Engine>,
+) -> anyhow::Result<(Socket, OutboundGuard)> {
     let sock = Socket::new(Domain::for_address(peer), Type::STREAM, Some(Protocol::TCP))?;
     if let Some(i) = phys_if {
         crate::ffi::set_unicast_if_v4(&sock, i)?;
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
-    if let Some(local) = sock.local_addr()?.as_socket() {
-        engine.mark_outbound(local.port());
-    }
+    let guard = match sock.local_addr()?.as_socket() {
+        Some(local) => engine.mark_outbound(Proto::Tcp, local.port()),
+        None => anyhow::bail!("TCP soketinin yerel adresi yok"),
+    };
     sock.connect_timeout(&SockAddr::from(peer), CONNECT_TIMEOUT)?;
-    Ok(sock)
+    Ok((sock, guard))
 }
 
 /// TCP aktarımı: `inbound` (TUN tarafı) ↔ `peer` (gerçek hedef).
@@ -417,7 +449,9 @@ where
     I: AsyncRead + AsyncWrite + Unpin,
 {
     use tokio::io::AsyncReadExt;
-    let sock = tokio::task::spawn_blocking(move || connect_out(peer, phys_if, &engine)).await??;
+    // Kayıt aktarım bitene kadar tutulur (`_guard`).
+    let (sock, _guard) =
+        tokio::task::spawn_blocking(move || connect_out(peer, phys_if, &engine)).await??;
     // İlk uçuş: tam TLS kaydı, TLS olmayan veri, EOF ya da süre dolması.
     let mut buf = Vec::with_capacity(2048);
     let mut chunk = [0u8; 4096];
@@ -677,8 +711,10 @@ mod tests {
             TunDevice::new(io.clone()),
         );
         let engine = Engine::new(SockTech::None);
-        engine.mark_outbound(5555);
-        assert!(engine.is_own(5555) && !engine.is_own(6000));
+        let _guard = engine.mark_outbound(Proto::Udp, 5555);
+        assert!(engine.is_own(Proto::Udp, 5555));
+        assert!(!engine.is_own(Proto::Udp, 6000));
+        assert!(!engine.is_own(Proto::Tcp, 5555), "protokoller ayrı");
         let task = tokio::spawn(serve(stack, Ipv4Addr::LOCALHOST, None, engine.clone()));
         io.push(udp_packet_from(5555, echo_addr, b"dongu"));
         assert!(wait_until(|| engine.stats.loops.load(Ordering::Relaxed) == 1).await);
@@ -754,11 +790,15 @@ mod tests {
         let (got, out_port) = server.join().unwrap();
         assert_eq!(got, expected, "{tech:?}");
         assert!(
-            engine.is_own(out_port),
+            engine.is_own(Proto::Tcp, out_port),
             "giden port döngü koruması için kaydedilmeli"
         );
         drop(app);
         relay.await.unwrap().unwrap();
+        assert!(
+            !engine.is_own(Proto::Tcp, out_port),
+            "oturum kapanınca port kayıttan silinmeli"
+        );
         assert_eq!(engine.stats.tcp_sessions.load(Ordering::Relaxed), 1);
     }
 

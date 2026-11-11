@@ -19,7 +19,7 @@ sha2 = "0.11.1"
 socket2 = { version = "0.6.5", features = ["all"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
 toml = "1.2.1"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 xtask = { path = "../../xtask" }
 
 [dev-dependencies]

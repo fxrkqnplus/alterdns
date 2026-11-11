@@ -76,6 +76,14 @@ impl Ctx {
                 xtask_exe.display()
             );
         }
+        let exe_time = std::fs::metadata(&xtask_exe)?.modified()?;
+        let src_time = newest_mtime(&root.join("xtask"))?;
+        if binary_is_stale(exe_time, src_time) {
+            bail!(
+                "bekçi ikilisi xtask kaynaklarından eski: {} (yeniden derleyin: `cargo build -p xtask --target-dir target/xtask`)",
+                xtask_exe.display()
+            );
+        }
         Ok(Ctx {
             root,
             cfg,
@@ -89,6 +97,72 @@ impl Ctx {
 
     pub fn test_ip(&self) -> Ipv4Addr {
         self.cfg.test_ip
+    }
+}
+
+/// Dizindeki `.rs` ve `Cargo.toml` dosyalarının en yeni değişiklik zamanı (`target` hariç).
+pub fn newest_mtime(dir: &Path) -> std::io::Result<std::time::SystemTime> {
+    let mut newest = std::time::SystemTime::UNIX_EPOCH;
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if path.is_dir() {
+            if name != "target" {
+                newest = newest.max(newest_mtime(&path)?);
+            }
+        } else if name.ends_with(".rs") || name == "Cargo.toml" {
+            newest = newest.max(std::fs::metadata(&path)?.modified()?);
+        }
+    }
+    Ok(newest)
+}
+
+/// İkili, kaynakların en yenisinden eskiyse yeniden derlenmemiştir.
+pub fn binary_is_stale(exe: std::time::SystemTime, sources: std::time::SystemTime) -> bool {
+    exe < sources
+}
+
+/// Başka yazılımlara ait Wintun adaptörleri (`ad:durum`), salt okunur. Spike bunlara dokunmaz;
+/// DLL'in sürücüyü güncelleyip onları yeniden başlatıp başlatmadığını görmek için kaydedilir.
+pub fn other_wintun_adapters() -> String {
+    ps_query(&format!(
+        "(Get-NetAdapter -IncludeHidden | Where-Object {{ $_.InterfaceDescription -like 'Wintun*' -and $_.Name -ne '{SPIKE_ADAPTER}' }} | ForEach-Object {{ $_.Name + ':' + $_.Status }}) -join ','"
+    ))
+    .unwrap_or_else(|e| format!("okunamadı: {e}"))
+}
+
+/// Tünel açıkken adaptörün IP yapılandırması (NLA/DNS/IPv6 yan etkileri için).
+#[derive(Debug, Default, Serialize)]
+pub struct AdapterSnapshot {
+    pub addresses: String,
+    pub routes: String,
+    pub dns_servers: String,
+    pub interface_metric: String,
+    pub network_category: String,
+}
+
+pub fn adapter_snapshot() -> AdapterSnapshot {
+    let q = |script: String| ps_query(&script).unwrap_or_else(|e| format!("okunamadı: {e}"));
+    let a = SPIKE_ADAPTER;
+    AdapterSnapshot {
+        addresses: q(format!(
+            "(Get-NetIPAddress -InterfaceAlias '{a}' -ErrorAction SilentlyContinue | ForEach-Object {{ $_.IPAddress + '/' + $_.PrefixLength }}) -join ','"
+        )),
+        routes: q(format!(
+            "(Get-NetRoute -InterfaceAlias '{a}' -ErrorAction SilentlyContinue | ForEach-Object {{ $_.DestinationPrefix + '>' + $_.NextHop }}) -join ','"
+        )),
+        dns_servers: q(format!(
+            "(Get-DnsClientServerAddress -InterfaceAlias '{a}' -ErrorAction SilentlyContinue | ForEach-Object {{ $_.ServerAddresses }}) -join ','"
+        )),
+        interface_metric: q(format!(
+            "(Get-NetIPInterface -InterfaceAlias '{a}' -AddressFamily IPv4).InterfaceMetric"
+        )),
+        network_category: q(format!(
+            "(Get-NetConnectionProfile -InterfaceAlias '{a}' -ErrorAction SilentlyContinue).NetworkCategory"
+        )),
     }
 }
 
@@ -236,7 +310,9 @@ impl Tunnel {
         }
         // 1. Adaptör: değişikliği DLL yapar; önce journal'a `Pending` yazılır.
         let id = journal.record_external(&RealOps, tun_op(), "present")?;
-        let adapter = lib.create_adapter(SPIKE_ADAPTER, TUNNEL_TYPE, ADAPTER_GUID)?;
+        let adapter = lib
+            .create_adapter(SPIKE_ADAPTER, TUNNEL_TYPE, ADAPTER_GUID)
+            .context("gizli bir kalıntı adaptör olabilir: `pnputil /enum-devices /class Net` (lab/RUNBOOK.md)")?;
         journal.mark_applied(id)?;
         wd.renew(MAX_LEASE_SECS)?;
         if !wait_for(Duration::from_secs(20), || !is_absent(&tun_op())) {
@@ -293,8 +369,15 @@ impl Tunnel {
         })
     }
 
-    /// Bekçi kirasını yeniler; bekçi öldüyse hata verir.
+    /// Bekçi kirasını yeniler. İletim motoru durduysa (görev bitti ya da döngü saptandı) kira
+    /// yenilenmez ve hata döner: rota bir motor olmadan test IP'sini karadeliğe çekmesin.
     pub fn beat(&mut self) -> anyhow::Result<()> {
+        if self.serve_task.is_finished() {
+            bail!("iletim motoru durdu");
+        }
+        if self.engine.halted() {
+            bail!("döngü saptandı: IP_UNICAST_IF etkisiz; motor durduruldu");
+        }
         self.wd.renew(MAX_LEASE_SECS)
     }
 
@@ -311,15 +394,23 @@ impl Tunnel {
         let _ = self.wd.renew(MAX_LEASE_SECS);
         self.serve_task.abort();
         self.rt.shutdown_timeout(Duration::from_secs(3));
-        // Oturum (okuma iş parçacığı) bitince adaptörün tek sahibi biz kalırız.
-        if !wait_for(Duration::from_secs(5), || {
-            Arc::strong_count(&self.adapter) == 1
+        // Oturum (okuma iş parçacığı) bitince adaptörün tek sahibi biz kalırız. Beklerken kira
+        // yenilenir: söküm bekçinin süresini aşıp onunla yarışmasın.
+        let wd = &mut self.wd;
+        let adapter = &self.adapter;
+        if !wait_for(Duration::from_secs(15), || {
+            let _ = wd.renew(MAX_LEASE_SECS);
+            Arc::strong_count(adapter) == 1
         }) {
             t.notes
-                .push("oturum 5 sn içinde kapanmadı; adaptör yine de bırakılıyor".into());
+                .push("oturum 15 sn içinde kapanmadı; adaptör yine de bırakılıyor".into());
         }
         drop(self.adapter);
-        t.adapter_absent = wait_for(Duration::from_secs(20), || is_absent(&tun_op()));
+        let wd = &mut self.wd;
+        t.adapter_absent = wait_for(Duration::from_secs(20), || {
+            let _ = wd.renew(MAX_LEASE_SECS);
+            is_absent(&tun_op())
+        });
         let _ = self.wd.renew(MAX_LEASE_SECS);
         match self.journal.revert_all(&RealOps) {
             Ok(r) => {
@@ -335,5 +426,45 @@ impl Tunnel {
             t.notes.push(format!("bekçiye DONE iletilemedi: {e:#}"));
         }
         t
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn stale_watchdog_binary_is_detected() {
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        assert!(binary_is_stale(t0, t0 + Duration::from_secs(1)));
+        assert!(!binary_is_stale(t0 + Duration::from_secs(1), t0));
+        assert!(!binary_is_stale(t0, t0));
+    }
+
+    #[test]
+    fn newest_mtime_ignores_target_and_other_files() {
+        let d = std::env::temp_dir().join(format!("alterdns-mtime-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        std::fs::create_dir_all(d.join("target")).unwrap();
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let new = old + Duration::from_secs(500);
+        let newest = old + Duration::from_secs(9_000);
+        let set = |p: PathBuf, t: SystemTime| {
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+        };
+        set(d.join("src").join("a.rs"), old);
+        set(d.join("Cargo.toml"), new);
+        set(d.join("target").join("b.rs"), newest);
+        set(d.join("notlar.md"), newest);
+        assert_eq!(newest_mtime(&d).unwrap(), new);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
