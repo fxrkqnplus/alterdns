@@ -326,28 +326,16 @@ impl Tunnel {
             .context("adaptör adresi oluşturulamadı (CreateUnicastIpAddressEntry)")?;
         journal.mark_applied(id)?;
         wd.renew(MAX_LEASE_SECS)?;
-        let preferred = format!(
-            "(Get-NetIPAddress -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4 -ErrorAction SilentlyContinue).AddressState"
-        );
-        if !wait_for(Duration::from_secs(15), || {
-            ps_query(&preferred).is_ok_and(|s| s == "Preferred")
-        }) {
-            let state = ps_query(&preferred).unwrap_or_else(|e| format!("okunamadı: {e}"));
-            let media = ps_query(&format!(
-                "(Get-NetAdapter -Name '{SPIKE_ADAPTER}').MediaConnectionState"
-            ))
-            .unwrap_or_else(|e| format!("okunamadı: {e}"));
-            bail!(
-                "adaptör adresi kullanılabilir (Preferred) duruma geçmedi: adres durumu {state:?}, bağlantı {media:?}"
-            );
-        }
         let mtu = ps_query(&format!(
             "(Get-NetIPInterface -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4).NlMtu"
         ))
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
         .map_or(1500, |m| u16::try_from(m).unwrap_or(u16::MAX));
-        // 3. İletim: rota eklenmeden önce çalışır durumda olmalı.
+        // 3. Oturum ve iletim. Wintun adaptörü oturum açılana kadar "Disconnected" görünür ve
+        // bağlantısız arayüzde adres "Deprecated" kalır (2026-11-11 ölçümü); bu yüzden oturum
+        // adres beklemesinden önce başlar (Wintun example.c ile aynı sıra). Rota henüz yok:
+        // TUN'a yalnızca sistemin sahipsiz paketleri düşer ve motor bunları düşürür.
         let session = adapter.start_session()?;
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -361,6 +349,21 @@ impl Tunnel {
             ipstack::IpStack::new(cfg, TunDevice::new(session))
         };
         let serve_task = rt.spawn(forward::serve(stack, ip, Some(phys_if), engine.clone()));
+        // Adres kullanılabilir (Preferred) ve adaptör bağlı olmalı; beklerken kira yenilenir.
+        let preferred = format!(
+            "(Get-NetIPAddress -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4 -ErrorAction SilentlyContinue).AddressState"
+        );
+        let media = format!("(Get-NetAdapter -Name '{SPIKE_ADAPTER}').MediaConnectionState");
+        if !wait_for(Duration::from_secs(20), || {
+            let _ = wd.renew(MAX_LEASE_SECS);
+            ps_query(&preferred).is_ok_and(|s| s == "Preferred")
+        }) {
+            let state = ps_query(&preferred).unwrap_or_else(|e| format!("okunamadı: {e}"));
+            let link = ps_query(&media).unwrap_or_else(|e| format!("okunamadı: {e}"));
+            bail!(
+                "adaptör adresi kullanılabilir (Preferred) duruma geçmedi: adres durumu {state:?}, bağlantı {link:?}"
+            );
+        }
         // 4. Rota: yalnızca test IP'si (/32, ActiveStore).
         wd.renew(MAX_LEASE_SECS)?;
         journal.apply(&RealOps, route_op(ip), "present")?;
