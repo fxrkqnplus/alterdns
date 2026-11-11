@@ -85,17 +85,23 @@ crates.io API, 2026-11-09. "İndirme" son 90 gündür.
 |---|---|---|---|---|---|
 | `smoltcp` | 0BSD | 0.14.0 | 2026-08-17 | 2,76 milyon | ✅ Olgun. 0BSD OSI onaylı ve GPL ile uyumlu; `deny.toml` ve `deny-svc.toml` izin listelerine eklendi (2026-11-09) |
 | `netstack-smoltcp` | MIT OR Apache-2.0 | 0.2.5 | 2026-11-05 | 91 bin | ✅ smoltcp üstünde TUN yığını |
-| `ipstack` | Apache-2.0 | 1.0.1 | 2026-07-12 | 43 bin | ✅ tun2proxy'nin kullandığı yığın |
+| `ipstack` | Apache-2.0 | 1.0.1 | 2026-07-12 | 43 bin | ✅ **Wintun spike'ında kullanıldı (2026-11-11):** TCP ve UDP aktarımı çalıştı (`spikes/wintun/RESULTS.md`). `cargo deny` temiz |
 | `lwip` | MIT/Apache-2.0 (eski sözdizimi; lwIP C kodu BSD-3) | 0.4.0 | 2026-07-30 | 283 | ⚠️ Kullanım çok düşük; depo bağlantısı yok |
 | `netstack-lwip` | — | — | — | — | crates.io'da bulunamadı |
 | `tun2proxy` | MIT | 0.8.7 | 2026-10-31 | 7 bin | Referans uygulama (TUN → proxy; `wintun-bindings` + `ipstack`) |
-| `wintun-bindings` | MIT | 0.7.40 | 2026-08-17 | 256 bin | ✅ Etkin Wintun bağları |
+| `wintun-bindings` | MIT | 0.7.40 | 2026-08-17 | 256 bin | ✅ Etkin Wintun bağları. Spike'ta kullanılmadı: `wintun.h` (MIT seçeneği) bildirimleriyle kendi FFI'ımız |
 | `wintun` | MIT | 0.5.1 | 2025-01-29 | 142 bin | 🔶 Bakım yavaş |
 | `tun-rs` | Apache-2.0 | 2.8.18 | 2026-11-04 | 299 bin | ✅ Çok platformlu TUN |
 | `tun` | WTFPL | 0.8.14 | 2026-07-21 | 559 bin | ❌ WTFPL OSI onaylı değil |
 | `etherparse` | MIT OR Apache-2.0 | 0.21.0 | 2026-07-21 | 2,64 milyon | ✅ Paket ayrıştırma/kurma |
 
 Seçim Wintun spike'ında (Görev 7) yapılır; güvenlik geçmişi (RustSec) `cargo deny` ile denetlenir.
+
+**Spike seçimi (2026-11-11):**
+- **Kullanılan yığın:** `ipstack`. Gerekçe: tun2proxy'nin Windows'ta Wintun ile kullandığı yığın; aygıt arayüzü basit (bir okuma bir paket, bir yazma bir paket).
+- **Denenmedi:** `netstack-smoltcp`.
+- **Ürün için son seçim:** Faz 2'de, gecikme kuyruğu ölçümüyle birlikte yapılır.
+- **Wintun 0.14.1 arşivi ve DLL'i (2026-11-11):** indirme, açma ve yükleme sırasında Defender tespiti yok.
 
 ## 2. İtibar ve tehdit veri kaynakları
 

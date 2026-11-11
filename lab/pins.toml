@@ -6,6 +6,7 @@
 #   github-api  — GitHub sürüm varlığının `digest` alanı
 #   cross-check — bağımsız paket bildirimlerinde kayıtlı değer
 #   first-use   — ilk indirmede hesaplanıp sabitlendi
+#   vendor-site — üreticinin resmi indirme sayfasında yayımlanan değer
 # status: kullanılmıyor veya diskten kaldırıldıysa "deleted"; kayıt geçmiş için tutulur.
 
 [[artifact]]
@@ -30,3 +31,14 @@ digest_source = "first-use"
 local_verified = true
 status = "deleted"
 note = "Defender tespiti nedeniyle silindi (2026-11-09): içinde WinDivert bulunduğu için açılmadan kullanıcı tarafından kaldırıldı. SHA-256 ilk indirmede kaydedilmişti; MD5 tek bağımsız kaynakla eşleşmişti. WinDivert'e bağlı S2–S3 iptal (D8)."
+
+[[artifact]]
+name = "wintun"
+version = "0.14.1"
+url = "https://www.wintun.net/builds/wintun-0.14.1.zip"
+size = 750540
+sha256 = "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51"
+digest_source = "vendor-site"
+local_verified = true
+status = "in-use"
+note = "2026-11-10 indirildi (K7): boyut ve SHA-256 wintun.net'te yayımlanan değerle aynı. bin/amd64/wintun.dll Authenticode Valid, imzalayan WireGuard LLC (EV), zaman damgası DigiCert; DLL SHA-256 e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce, sürüm 0.14.1. İndirme ve açma sırasında Defender tespiti yok. Lisans: THIRD_PARTY.md §1.1 (ön derlenmiş ikili lisansı; wintun.h GPL-2.0 OR MIT)."

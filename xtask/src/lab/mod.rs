@@ -3,7 +3,7 @@
 
 //! Bağlantı araştırma düzeneği (`cargo xtask lab`; CONNECTIVITY_RESEARCH §4–§5).
 
-mod cli;
+pub mod cli;
 pub mod dns;
 pub mod journal;
 pub mod ops;
