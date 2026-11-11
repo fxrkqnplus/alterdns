@@ -23,4 +23,5 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_NetworkMa
 xtask = { path = "../../xtask" }
 
 [dev-dependencies]
+etherparse = "0.20.3"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

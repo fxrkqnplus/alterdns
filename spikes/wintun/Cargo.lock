@@ -1290,6 +1290,7 @@ name = "wintun-spike"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "etherparse",
  "ipstack",
  "rustls",
  "serde",

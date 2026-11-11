@@ -21,7 +21,7 @@ const PS_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// `%SystemRoot%\System32` altındaki bir sistem aracı. Çalışma dizinindeki aynı adlı bir
 /// dosyanın araya girmemesi için mutlak yol kullanılır.
-pub(crate) fn system32(exe: &str) -> PathBuf {
+pub fn system32(exe: &str) -> PathBuf {
     std::env::var_os("SystemRoot")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
@@ -51,7 +51,7 @@ pub(crate) fn quoted(v: &str) -> anyhow::Result<String> {
 }
 
 /// Salt okunur PowerShell sorgusu; çıktının ilk satırını döndürür. 15 sn'de bitmezse sonlandırılır.
-pub(crate) fn ps_query(script: &str) -> anyhow::Result<String> {
+pub fn ps_query(script: &str) -> anyhow::Result<String> {
     let mut child = Command::new(powershell())
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdin(Stdio::null())
