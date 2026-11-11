@@ -67,7 +67,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 ---
 
-## ADR-003 — Bağlantı motoru · Yeniden değerlendiriliyor (D8, 2026-11-09)
+## ADR-003 — Bağlantı motoru · Önerilen (Wintun spike'ı sonrası, 2026-11-11): Wintun + kullanıcı modu motor; D8 kullanıcı kararı bekliyor
 
 **Geçmiş:**
 - İlk öneri: kendi Rust motoru + resmi WinDivert 2.2.2-A.
@@ -99,6 +99,29 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 4. **SignPath ön sorusu:** Faz 6'yı beklemeden SignPath Foundation'a Wintun DLL'i ve bağlantı modülü ("hacking tool" maddesi) hakkında ön soru gönderilir; yanıt D7 ve D8'e işlenir.
 
 **Ölçüm planı (Faz 0):** Sürücüsüz soket teknikleri (S2-U) ve Wintun spike'ı (`docs/superpowers/plans/2026-11-09-faz-0.md` Görev 7–8). Karar kuralı: hotspot ağında Discord ve Roblox web/API problarını geçen, bütçeleri karşılayan, lisans ve SignPath şartlarına uyan en az müdahaleci seçenek.
+
+**Spike sonucu (2026-11-11; ayrıntı `spikes/wintun/RESULTS.md`, `CONNECTIVITY_RESEARCH.md` §7):**
+- **İletim:** Engelli bir IP'ye giden bağlantı, uygulama hiçbir şey yapmadan, motorun tekniğiyle sistem genelinde geçti.
+  - Tekniksiz: 0/3.
+  - `TlsRecordSplit`, `Oob` ve `Split`: her biri 3/3.
+  - `TlsRecordSplit` ile 50 el sıkışma: 50/50.
+- **Diğer trafik:** etkilenmedi (kontrol probu 4/4).
+- **UDP:** 443/UDP sürüm anlaşması datagramları TUN üzerinden iletildi ve yanıt alındı.
+- **`IP_UNICAST_IF`:** çalıştı; döngü saptanmadı.
+- **Gecikme:** 50 el sıkışmada toplam p50 198 → 210 ms, p95 235 → 466 ms. Kuyruğun nedeni araştırılmadı.
+- **Kaynak:** CPU ≈ %1,3 tek çekirdek; özel bellek tepe 13,3 MB (halka kapasitesi küçültülebilir).
+- **Kurtarma:** spike işlemi öldürülünce adaptör işlemle birlikte kalktı, rota 1,6 sn içinde kalktı; bekçi journal'ı kapattı.
+- **Sistem:** Defender tespiti yok; sürücü HVCI açıkken yüklendi; sürücü deposu değişmedi.
+- **Kurulum dersi:** Wintun adaptörü, oturum açılana kadar bağlantısız görünür. Adres, oturum açıldıktan sonra kullanılabilir olur.
+
+**Öneri (D8 için):**
+- **Birincil mod:** Wintun + kullanıcı modu motor (yığın: `ipstack`).
+- **Yedek:** PAC.
+- **WinDivert:** askıda kalır.
+- **Kabulden önce kalan şartlar:**
+  - SignPath ön sorusunun yanıtı (Wintun ön derlenmiş DLL lisansı).
+  - S4: gerçek istemciler, UDP teknikleri.
+- **Kabul edilen risk (spike):** Yükseltilmiş çalışmada kullanıcının yazabildiği ikililer kullanıldı. Ürün, yalnızca yöneticinin yazabildiği Program Files altına kurulur (Faz 5).
 
 ---
 
