@@ -135,11 +135,11 @@ Diğer ölçümler:
 |---|---|---|---|
 | H1 | Belirsiz (kısmi kanıt) | S2-U, S0 (E12, E13) | TTL'den bağımsız `TlsRecordSplit`, `Oob` ve `Split` (1. bayt) hop limit 65'te çalışıyor. TTL'e bağlı `Disorder` yalnızca ilk bölüt TTL ≥ 3 ile geçiyor; bu durumda sonuç `Split` (1. bayt) ile aynı. TTL ≤ 2'li bölüt DPI'a ulaşmıyor, TTL ≥ 3'lü ulaşıyor. Eski yapılandırmanın sabit TTL 5'i bu yolda DPI'a ulaşacak büyüklükte; sunucuya varmadan düşüp düşmediği ölçülmedi. Sahte paket (`Fake`) Faz 0'da uygulanmadı. "Sahte paket DPI'a ulaşmıyor" açıklaması bu ağ için desteklenmedi |
 | H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
-| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması |
+| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması. Wattpad'de de aynı: üç DNS yolunda da TLS sıfırlaması (2026-11-12) |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
 | H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor: test IP'sinin 443/UDP portu sürüm anlaşması datagramlarına doğrudan ve TUN üzerinden 3/3 yanıt verdi. Discord sesi ve Roblox oyunu S4'te ölçülecek |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
-| H7 | Ölçülmedi | — | S5-soket ile ölçülecek (sistem hop limiti değişmez) |
+| H7 | Çürüdü (akış düzeyinde, bu ağda) | S5-soket | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
 | H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
 
@@ -152,6 +152,15 @@ Diğer ölçümler:
 - **Diğer trafik:** etkilenmedi. UDP iletildi.
 - **Gecikme:** toplam p50 +12 ms, p95 +231 ms.
 - **Kurtarma:** işlem öldürülünce adaptör ve rota 1,6 sn içinde kalktı.
+
+**Wattpad ve S5-soket (2026-11-12):**
+- **Wattpad (S1):** `wattpad.com`, `www` ve `api` alan adları üç DNS yolunda da TLS sıfırlamasıyla engelli (9/9 her biri); kontrol probları geçti.
+- **Wattpad (S2-U):** Discord ve Roblox ile aynı örüntü:
+  - `TlsRecordSplit` (iki konum), `Oob` (iki konum) ve `Split@1`: 18/18.
+  - `Split@SNI`: 0/18; `Disorder@SNI`: her TTL'de 0/18.
+  - `Disorder@1`: TTL ≤ 2'de 0/18, TTL ≥ 3'te 18/18.
+- **S5-soket (H7):** Sistem hop limiti değiştirilmedi; yalnızca prob soketinin TTL'i 64 / 65 / 128 oldu. Sonuç TTL'den bağımsız: tekniksiz bağlantı her TTL'de sıfırlandı, en iyi 3 teknik her TTL'de 27/27 geçti.
+- **Korunan değerler (ADR-014):** üç koşunun başında ve sonunda değişmedi.
 
 **Faz 2 için ilk sinyal (bu ağ):**
 - Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.

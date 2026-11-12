@@ -1,0 +1,34 @@
+# AlterDNS lab — S4 gerçek istemci testi: Wintun'a yönlendirilecek hedefler (Faz 0 Görev 9).
+#
+# Kural:
+# - Paylaşımlı CDN'lerde (Cloudflare, Amazon CloudFront) önek kullanılmaz; yalnızca alan
+#   adlarından çözülen ve çalışırken DNS önbelleğinden öğrenilen tek IP'ler (/32) yönlendirilir.
+#   Önek, aynı CDN'deki başka siteleri de TUN'a çekerdi.
+# - Önek yalnızca sağlayıcının kendi AS'i için kullanılır.
+# - `sonekler`: DNS önbelleğinde bu soneklerle biten adların A kayıtları öğrenilir.
+#   Liste aday; S4'te gerçek istemcinin sorguladığı adlarla doğrulanır.
+#
+# Kaynaklar (2026-11-12):
+# - Roblox: RIPEstat announced-prefixes AS22697 (ROBLOX-PRODUCTION), 46 IPv4 önek,
+#   birleştirilince 4 blok.
+# - Discord (discord.com, gateway.discord.gg): Cloudflare AS13335, paylaşımlı. AS49544 Discord
+#   değildir (i3D.net).
+# - Wattpad (wattpad.com, www, api): Amazon CloudFront AS16509, paylaşımlı.
+
+[[hedef]]
+ad = "discord"
+alan_adlari = ["discord.com", "gateway.discord.gg", "cdn.discordapp.com"]
+sonekler = ["discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discord.media"]
+onekler = []
+
+[[hedef]]
+ad = "roblox"
+alan_adlari = ["www.roblox.com", "apis.roblox.com"]
+sonekler = ["roblox.com", "rbxcdn.com"]
+onekler = ["103.140.28.0/23", "128.116.0.0/17", "141.193.3.0/24", "205.201.62.0/24"]
+
+[[hedef]]
+ad = "wattpad"
+alan_adlari = ["wattpad.com", "www.wattpad.com", "api.wattpad.com"]
+sonekler = ["wattpad.com"]
+onekler = []

@@ -164,10 +164,8 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
                     "rota hedefi genel bir adres olmalı (yerel ağ, DNS ya da ağ geçidi TUN'a çekilmez): {prefix}"
                 );
             }
-            let host_len = if parsed.is_ipv4() { "32" } else { "128" };
-            if len != host_len {
-                bail!("rota yalnızca tek IP içindir (/{host_len}): {prefix}");
-            }
+            route_prefix_ok(parsed, len)
+                .map_err(|why| anyhow!("rota reddedildi ({why}): {prefix}"))?;
             let (p, i) = (quoted(prefix)?, quoted(if_name)?);
             Ok(if add {
                 format!(
@@ -214,6 +212,34 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
 
 /// Rotalanabilir genel bir adres mi? Özel, döngü, bağlantı yerel, CGNAT, test, çoklu yayın,
 /// yayın ve ayrılmış aralıklar `false`.
+/// Rota öneki denetimi. IPv6 yalnızca tek IP (/128). IPv4 /16…/32 olabilir (sağlayıcının
+/// kendi bloğu, ör. oyun sunucuları): ağ biçiminde olmalı, ilk ve son adresi genel olmalı.
+/// Ayrılmış blokların hepsi (özel, CGNAT, bağlantı yerel, 198.18.0.0/15, çoklu yayın…) /16'ya
+/// hizalı ya da daha geniş olduğundan, /16 veya daha dar bir önek bunları ya tamamen içerir
+/// (ilk adres yakalar) ya da hiç içermez: yerel ağ, ağ geçidi ve DNS TUN'a çekilemez.
+fn route_prefix_ok(ip: std::net::IpAddr, len: &str) -> Result<(), &'static str> {
+    let len: u8 = len.parse().map_err(|_| "önek uzunluğu sayı değil")?;
+    match ip {
+        std::net::IpAddr::V6(_) => (len == 128).then_some(()).ok_or("IPv6'da yalnızca /128"),
+        std::net::IpAddr::V4(v4) => {
+            if !(16..=32).contains(&len) {
+                return Err("IPv4 öneki /16…/32 olmalı");
+            }
+            let bits = u32::from(v4);
+            let host_mask = u32::MAX.checked_shr(u32::from(len)).unwrap_or(0);
+            if bits & host_mask != 0 {
+                return Err("önek ağ biçiminde değil");
+            }
+            let last = std::net::IpAddr::V4(std::net::Ipv4Addr::from(bits | host_mask));
+            if routable_global(ip) && routable_global(last) {
+                Ok(())
+            } else {
+                Err("önek genel olmayan adres içeriyor")
+            }
+        }
+    }
+}
+
 pub(crate) fn routable_global(ip: std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(v4) => {
@@ -412,6 +438,20 @@ mod tests {
     }
 
     #[test]
+    fn route_script_accepts_provider_prefixes() {
+        // Sağlayıcının kendi bloğu (ör. Roblox AS22697): /16…/32, ağ biçiminde.
+        for ok in [
+            "128.116.0.0/17",
+            "103.140.28.0/23",
+            "128.116.5.0/24",
+            "1.1.1.1/32",
+        ] {
+            let add = write_script(&route(ok, SPIKE_ADAPTER), "present").unwrap();
+            assert!(add.contains(&format!("-DestinationPrefix '{ok}'")), "{add}");
+        }
+    }
+
+    #[test]
     fn route_script_is_host_route_in_active_store_only() {
         let add = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "present").unwrap();
         assert!(add.starts_with("New-NetRoute "), "{add}");
@@ -421,9 +461,24 @@ mod tests {
         let del = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "absent").unwrap();
         assert!(del.starts_with("Remove-NetRoute "), "{del}");
         assert!(del.contains("-Confirm:$false") && del.contains("-PolicyStore ActiveStore"));
-        // Geniş önek, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
+        // Belge aralığı, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
         for (op, v) in [
             (route("203.0.113.0/24", SPIKE_ADAPTER), "present"),
+            // Önek /16'dan geniş olamaz, ağ biçiminde olmalı, ayrılmış blok içeremez.
+            (route("128.0.0.0/15", SPIKE_ADAPTER), "present"),
+            (route("128.116.1.0/17", SPIKE_ADAPTER), "present"),
+            (
+                route(&["192.168", ".0.0/16"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (
+                route(&["172.16", ".0.0/16"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (route("100.64.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("198.18.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("192.0.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("2606:4700::/32", SPIKE_ADAPTER), "present"),
             (route("0.0.0.0/0", SPIKE_ADAPTER), "present"),
             (route("203.0.113.7/32", "Wi-Fi"), "present"),
             (route("203.0.113.7/32", SPIKE_ADAPTER), "maybe"),

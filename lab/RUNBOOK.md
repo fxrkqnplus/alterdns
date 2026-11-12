@@ -140,6 +140,14 @@ spikes\wintun\target\release\wintun-spike.exe status
     rotayı, adresi ve kalakaldıysa adaptörü geri alır; raporu `ParentGone`dur.
   - Sonra yaklaşık 10 sn bekleyip `wintun-spike status` çalıştırın. Bir şey kaldıysa
     `xtask lab recover`, o da yetmezse bölüm 5.
+- **Korunan değerler (ADR-014):** `run` ve `kill-test` önce ve sonra kullanıcıya ait değerleri
+  okur (bölüm 1). Fark varsa komut başarısız sayılır; değerlere dokunulmaz.
+- **S4 rota planı:** `wintun-spike s4-plan` salt okunurdur; yönetici gerekmez. Kaynak:
+  `data/s4/hedefler.toml`. Gösterdikleri:
+  - sağlayıcının kendi önekleri (yalnızca Roblox AS22697);
+  - alan adlarından çözülen tek IP'ler;
+  - DNS önbelleğinden öğrenilen tek IP'ler.
+  Paylaşımlı CDN'lerde (Discord: Cloudflare, Wattpad: CloudFront) önek kullanılmaz.
 - **Sonuçlar** `lab/results/wintun-*/` altındadır (git dışı):
   - `wintun-run.json`: başlangıç verisi baştan yazılır.
   - `kill-test.json`.

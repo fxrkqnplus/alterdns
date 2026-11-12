@@ -348,7 +348,8 @@ impl Tunnel {
             cfg.mtu_unchecked(mtu);
             ipstack::IpStack::new(cfg, TunDevice::new(session))
         };
-        let serve_task = rt.spawn(forward::serve(stack, ip, Some(phys_if), engine.clone()));
+        let routes = Arc::new(forward::RouteSet::single(ip));
+        let serve_task = rt.spawn(forward::serve(stack, routes, Some(phys_if), engine.clone()));
         // Adres kullanılabilir (Preferred) ve adaptör bağlı olmalı; beklerken kira yenilenir.
         let preferred = format!(
             "(Get-NetIPAddress -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4 -ErrorAction SilentlyContinue).AddressState"

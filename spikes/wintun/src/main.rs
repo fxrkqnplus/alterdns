@@ -15,6 +15,7 @@ mod ffi;
 mod forward;
 mod harden;
 mod measure;
+mod s4;
 mod tunnel;
 
 use std::io::{BufRead, Write as _};
@@ -74,12 +75,13 @@ fn main() -> ExitCode {
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("run") => run(),
-        Some("kill-test") => kill_test(),
+        Some("run") => guarded(run),
+        Some("kill-test") => guarded(kill_test),
         Some("serve") => serve(),
         Some("status") => status(),
+        Some("s4-plan") => s4_plan(),
         _ => {
-            eprintln!("kullanım: wintun-spike run | kill-test | status");
+            eprintln!("kullanım: wintun-spike run | kill-test | status | s4-plan");
             return ExitCode::from(2);
         }
     };
@@ -90,6 +92,31 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// ADR-014: kullanıcıya ait sistem değerleri (hop limit, DNS, proxy, varsayılan rotalar…)
+/// komuttan önce ve sonra okunur. Fark varsa komut başarısız sayılır; değer geri yazılmaz
+/// (AlterDNS bunlara yazmaz, farkı başka bir program veya ağ yapmış olabilir).
+fn guarded(f: fn() -> anyhow::Result<()>) -> anyhow::Result<()> {
+    use xtask::lab::guarded;
+    let before = guarded::snapshot();
+    let result = f();
+    match (before, guarded::snapshot()) {
+        (Ok(b), Ok(a)) => {
+            let changed = guarded::diff(&b, &a);
+            if changed.is_empty() {
+                println!("Korunan değerler: değişmedi.");
+            } else {
+                eprintln!(
+                    "UYARI: korunan değerler değişti: {changed:?}. AlterDNS bunlara yazmaz; dokunulmadı."
+                );
+                result?;
+                bail!("korunan değerler değişti: {changed:?}");
+            }
+        }
+        (Err(e), _) | (_, Err(e)) => eprintln!("Uyarı: korunan değerler denetlenemedi: {e:#}"),
+    }
+    result
 }
 
 #[derive(Debug, Serialize)]
@@ -564,6 +591,68 @@ fn kill_test() -> anyhow::Result<()> {
 }
 
 /// Salt okunur durum.
+/// S4 rota planı (salt okunur): sağlayıcı önekleri, alan adlarının sistem çözücüsüyle çözümü
+/// ve DNS önbelleğinden öğrenilecek tek IP'ler. Hiçbir rota veya ayar yazılmaz; K10 onayında
+/// kullanıcıya gösterilir.
+fn s4_plan() -> anyhow::Result<()> {
+    use std::net::ToSocketAddrs as _;
+    let root = xtask::lab::cli::repo_root();
+    let targets = s4::load(&root)?;
+    let prefixes = s4::prefixes(&targets)?;
+    let suffixes: Vec<String> = targets.iter().flat_map(|t| t.sonekler.clone()).collect();
+    let mut hosts = std::collections::BTreeSet::new();
+    for name in targets.iter().flat_map(|t| &t.alan_adlari) {
+        match (name.as_str(), 443).to_socket_addrs() {
+            Ok(addrs) => {
+                for a in addrs {
+                    if let std::net::IpAddr::V4(v4) = a.ip()
+                        && config::validate_test_ip(v4).is_ok()
+                    {
+                        hosts.insert(v4);
+                    }
+                }
+            }
+            Err(e) => eprintln!("{name}: çözülemedi: {e}"),
+        }
+    }
+    let cache = ps_query(
+        "Get-DnsClientCache | Select-Object Entry, Name, Type, Data | ConvertTo-Json -Compress",
+    )
+    .unwrap_or_default();
+    let learned = s4::learn_from_dns_cache(&cache, &suffixes)?;
+    let from_cache = learned.iter().filter(|ip| !hosts.contains(*ip)).count();
+    hosts.extend(learned);
+    // Motorun kullanacağı küme; plan, motorun ileteceği adreslerle birebir aynıdır.
+    let set = forward::RouteSet::new(&prefixes)?;
+    for ip in &hosts {
+        set.add_host(*ip);
+    }
+    println!("S4 rota planı (salt okunur; hiçbir rota yazılmadı)");
+    for t in &targets {
+        println!(
+            "- {}: {} alan adı, {} sonek, {} önek",
+            t.ad,
+            t.alan_adlari.len(),
+            t.sonekler.len(),
+            t.onekler.len()
+        );
+    }
+    println!("Önek rotaları ({}):", prefixes.len());
+    for (net, len) in &prefixes {
+        println!("  {net}/{len}");
+    }
+    println!(
+        "Tek IP rotaları (/32): {} ({} tanesi DNS önbelleğinden)",
+        set.host_count(),
+        from_cache
+    );
+    match harden::live_prefix_conflict(&set)? {
+        None => println!("Canlı çakışma (DNS sunucusu, ağ geçidi): yok"),
+        Some(why) => println!("Canlı çakışma: {why} — S4 bu kümeyle başlamaz"),
+    }
+    Ok(())
+}
+
 fn status() -> anyhow::Result<()> {
     let ctx = Ctx::load()?;
     println!(

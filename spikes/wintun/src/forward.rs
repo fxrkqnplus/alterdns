@@ -282,16 +282,73 @@ impl Engine {
     }
 }
 
-/// Kabul döngüsü: yalnızca `target` adresine giden TCP/UDP akışları aktarılır; diğer her şey
-/// (adaptöre düşen çoklu yayın, yayın, başka hedefler) sayılır ve düşürülür.
+/// Motorun ilettiği hedefler: sabit IPv4 önekleri (sağlayıcının kendi bloğu) ve çalışırken
+/// öğrenilen tek IP'ler (paylaşımlı CDN'lerdeki alan adları). Rota kümesiyle aynı tutulur.
+#[derive(Debug)]
+pub struct RouteSet {
+    /// (ağ, maske)
+    prefixes: Vec<(u32, u32)>,
+    hosts: std::sync::RwLock<std::collections::HashSet<std::net::Ipv4Addr>>,
+}
+
+impl RouteSet {
+    pub fn new(prefixes: &[(std::net::Ipv4Addr, u8)]) -> anyhow::Result<Self> {
+        let mut out = Vec::with_capacity(prefixes.len());
+        for (net, len) in prefixes {
+            if *len > 32 {
+                anyhow::bail!("geçersiz önek uzunluğu: {net}/{len}");
+            }
+            let mask = u32::MAX.checked_shl(32 - u32::from(*len)).unwrap_or(0);
+            let bits = u32::from(*net);
+            if bits & !mask != 0 {
+                anyhow::bail!("önek ağ biçiminde değil: {net}/{len}");
+            }
+            out.push((bits, mask));
+        }
+        Ok(Self {
+            prefixes: out,
+            hosts: std::sync::RwLock::default(),
+        })
+    }
+
+    /// Tek test IP'si (Görev 7 `run` / `kill-test`).
+    pub fn single(ip: std::net::Ipv4Addr) -> Self {
+        let set = Self {
+            prefixes: Vec::new(),
+            hosts: std::sync::RwLock::default(),
+        };
+        set.add_host(ip);
+        set
+    }
+
+    /// Yeni tek IP ekler; zaten varsa `false`.
+    pub fn add_host(&self, ip: std::net::Ipv4Addr) -> bool {
+        self.hosts.write().is_ok_and(|mut h| h.insert(ip))
+    }
+
+    pub fn host_count(&self) -> usize {
+        self.hosts.read().map_or(0, |h| h.len())
+    }
+
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        let std::net::IpAddr::V4(v4) = ip else {
+            return false;
+        };
+        let bits = u32::from(v4);
+        self.prefixes.iter().any(|(net, mask)| bits & mask == *net)
+            || self.hosts.read().is_ok_and(|h| h.contains(&v4))
+    }
+}
+
+/// Kabul döngüsü: yalnızca rota kümesindeki adreslere giden TCP/UDP akışları aktarılır; diğer
+/// her şey (adaptöre düşen çoklu yayın, yayın, başka hedefler) sayılır ve düşürülür.
 pub async fn serve(
     mut stack: ipstack::IpStack,
-    target: std::net::Ipv4Addr,
+    routes: Arc<RouteSet>,
     phys_if: Option<u32>,
     engine: Arc<Engine>,
 ) {
     use ipstack::IpStackStream;
-    let target = std::net::IpAddr::V4(target);
     // Akışı aktarabilir miyiz? Döngü saptanırsa motor kalıcı olarak durur.
     let admit = |engine: &Engine, proto: Proto, local: SocketAddr| -> bool {
         if engine.halted() {
@@ -311,7 +368,7 @@ pub async fn serve(
     };
     loop {
         match stack.accept().await {
-            Ok(IpStackStream::Tcp(stream)) if stream.peer_addr().ip() == target => {
+            Ok(IpStackStream::Tcp(stream)) if routes.contains(stream.peer_addr().ip()) => {
                 if !admit(&engine, Proto::Tcp, stream.local_addr()) {
                     continue;
                 }
@@ -322,7 +379,7 @@ pub async fn serve(
                     engine.leave();
                 });
             }
-            Ok(IpStackStream::Udp(stream)) if stream.peer_addr().ip() == target => {
+            Ok(IpStackStream::Udp(stream)) if routes.contains(stream.peer_addr().ip()) => {
                 if !admit(&engine, Proto::Udp, stream.local_addr()) {
                     continue;
                 }
@@ -484,6 +541,50 @@ where
     let mut out = tokio::net::TcpStream::from_std(std_stream)?;
     tokio::io::copy_bidirectional(&mut inbound, &mut out).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod route_set_tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    fn v4(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    }
+
+    #[test]
+    fn prefixes_cover_exact_range() {
+        let r = RouteSet::new(&[(Ipv4Addr::new(128, 116, 0, 0), 17)]).unwrap();
+        assert!(r.contains(v4(128, 116, 0, 0)));
+        assert!(r.contains(v4(128, 116, 127, 255)));
+        assert!(!r.contains(v4(128, 116, 128, 0)));
+        assert!(!r.contains(v4(128, 115, 255, 255)));
+        assert!(!r.contains(IpAddr::V6(Ipv6Addr::LOCALHOST)));
+    }
+
+    #[test]
+    fn learned_hosts_are_added_once() {
+        let r = RouteSet::new(&[]).unwrap();
+        let ip = Ipv4Addr::new(162, 159, 128, 233);
+        assert!(!r.contains(IpAddr::V4(ip)));
+        assert!(r.add_host(ip));
+        assert!(!r.add_host(ip));
+        assert!(r.contains(IpAddr::V4(ip)));
+        assert_eq!(r.host_count(), 1);
+    }
+
+    #[test]
+    fn single_matches_only_that_ip() {
+        let r = RouteSet::single(Ipv4Addr::new(203, 0, 113, 9));
+        assert!(r.contains(v4(203, 0, 113, 9)));
+        assert!(!r.contains(v4(203, 0, 113, 10)));
+    }
+
+    #[test]
+    fn non_network_prefix_is_rejected() {
+        assert!(RouteSet::new(&[(Ipv4Addr::new(128, 116, 1, 0), 17)]).is_err());
+        assert!(RouteSet::new(&[(Ipv4Addr::new(1, 0, 0, 0), 33)]).is_err());
+    }
 }
 
 #[cfg(test)]
@@ -670,7 +771,12 @@ mod tests {
             TunDevice::new(io.clone()),
         );
         let engine = Engine::new(SockTech::None);
-        let task = tokio::spawn(serve(stack, Ipv4Addr::LOCALHOST, None, engine.clone()));
+        let task = tokio::spawn(serve(
+            stack,
+            Arc::new(RouteSet::single(Ipv4Addr::LOCALHOST)),
+            None,
+            engine.clone(),
+        ));
         io.push(udp_packet(echo_addr, b"merhaba"));
         assert!(
             wait_until(|| !io.sent().is_empty()).await,
@@ -715,7 +821,12 @@ mod tests {
         assert!(engine.is_own(Proto::Udp, 5555));
         assert!(!engine.is_own(Proto::Udp, 6000));
         assert!(!engine.is_own(Proto::Tcp, 5555), "protokoller ayrı");
-        let task = tokio::spawn(serve(stack, Ipv4Addr::LOCALHOST, None, engine.clone()));
+        let task = tokio::spawn(serve(
+            stack,
+            Arc::new(RouteSet::single(Ipv4Addr::LOCALHOST)),
+            None,
+            engine.clone(),
+        ));
         io.push(udp_packet_from(5555, echo_addr, b"dongu"));
         assert!(wait_until(|| engine.stats.loops.load(Ordering::Relaxed) == 1).await);
         assert!(engine.halted());
@@ -742,8 +853,8 @@ mod tests {
         );
         let engine = Engine::new(SockTech::None);
         // Hedef başka bir adres: yerel sokete giden datagram aktarılmamalı.
-        let target = Ipv4Addr::new(203, 0, 113, 9);
-        let task = tokio::spawn(serve(stack, target, None, engine.clone()));
+        let routes = Arc::new(RouteSet::single(Ipv4Addr::new(203, 0, 113, 9)));
+        let task = tokio::spawn(serve(stack, routes, None, engine.clone()));
         io.push(udp_packet(other_addr, b"gitmemeli"));
         assert!(wait_until(|| engine.stats.ignored.load(Ordering::Relaxed) == 1).await);
         let mut b = [0u8; 64];
