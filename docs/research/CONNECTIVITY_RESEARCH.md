@@ -189,10 +189,20 @@ Diğer ölçümler:
 - **Söküm:** Wintun oturumu 15 sn içinde kapanmadı; adaptör, işlem çıkınca kalktı. Journal'ın adaptör kaydı geri alınamadı: doğrulama, adaptörün gerçek açıklamasını ("AlterDNS Tunnel") ve karışık harfli PnP kimliğini (`SWD\Wintun\{…}`) reddediyordu. Düzeltildi (test); bekleme 30 sn'ye çıktı; kayıt `lab recover` ile kapatıldı, kalıntı yok.
 - **Korunan değerler:** "dns" farkı bizim adaptörümüzden geldi (Windows'un yer tutucu DNS adresleri; adaptör son okumada hâlâ vardı). Kullanıcının değerleri o sabahki okumayla birebir aynı. Betik artık kendi adaptörümüzü DNS bölümünde de dışarıda tutuyor.
 
-**Faz 2 için ilk sinyal (bu ağ):**
-- Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.
-- `Disorder` bir şey katmadı. Düşük TTL'li bölütler sonucu kötüleştirdi.
-- Wintun yolu (Görev 7) aynı teknikleri sistem genelinde uygulayabilir mi, ve UDP (ses/oyun) nasıl davranıyor: bunlar sonraki adım.
+**Faz 2 için başlangıç teknik sıralaması (bu ağ; S2-U, S5-soket ve S4 sonrası, 2026-11-12):**
+
+| Sıra | Teknik | Gerekçe |
+|---|---|---|
+| 1 | `Oob@SNI` | Problarda 36/36 (Discord, Roblox), 18/18 (Wattpad); TTL 64/65/128'de 27/27. S4'te bütün gerçek istemcilerde çalışan tek teknik (Discord güncelleyicisinin 175 baytlık ClientHello'su dahil) |
+| 2 | `TlsRecordSplit@SNI` | Problarda ve tarayıcı boyutlu ClientHello'da çalışıyor; küçük ClientHello'da sıfırlanıyor |
+| 3 | `Split@1` | Problarda çalışıyor; Discord güncelleyicisinde sıfırlanıyor |
+| — | `Disorder@1` (TTL ≥ 3) | Problarda çalışıyor ama sonuç `Split@1` ile aynı ve kendi soketimizin TTL'ine bağlı; varsayılan sıraya alınmaz |
+| — | `Split@SNI`, `Disorder@SNI`, TTL ≤ 2 | Başarısız |
+
+- **UDP:** Ses ve oyun trafiği tekniksiz geçti (H5 çürüdü); motor UDP'yi olduğu gibi aktarır.
+- **Uyum (ADR-014):** Sıralama bu ağa aittir. Motor her ağda kısa bir denemeyle sırayı doğrulamalı ve istemcinin ClientHello biçimine göre geri dönüş tekniği seçebilmelidir.
+- **Yönlendirme:** Uygulama başına adres listesi kırılgan (çok sayıda CDN adı; bu makinede Windows DNS önbelleği boş). Faz 2'de daha geniş yönlendirme ve SNI'ye göre teknik seçimi tasarlanacak; kullanıcının rotalarına dokunulmaz.
+- **Açık:** S6 (başka ağ) ölçülmedi; H2 bu yüzden belirsiz.
 
 ## 8. GoodbyeDPI paketleri ve güvenlik uyarıları
 
