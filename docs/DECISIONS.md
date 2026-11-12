@@ -118,6 +118,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 - **Birincil mod:** Wintun + kullanıcı modu motor (yığın: `ipstack`).
 - **Yedek:** PAC.
 - **WinDivert:** askıda kalır.
+- **S4 (2026-11-12, sağlandı):** `Oob@SNI` ile Discord masaüstü (ses dahil), Roblox Player (oyun dahil) ve Wattpad tünel üzerinden çalıştı (`CONNECTIVITY_RESEARCH.md` §7).
 - **Kesinleşme şartları** (biri olumsuz çıkarsa D8 yeniden açılır):
   - SignPath ön sorusunun yanıtı (Wintun ön derlenmiş DLL lisansı).
   - S4: gerçek istemciler, UDP teknikleri.
@@ -262,7 +263,7 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Lab dahil, geçici olarak da
 | D2 | Proje lisansı | **GPL-3.0-or-later**. Ad ve logo lisans dışı (`TRADEMARK.md`) | 2026-11-09 |
 | D3 | Kod imzalama | **Yalnız ücretsiz yollar:** SignPath Foundation başvurusu + Artifact Attestations + Ed25519 (ADR-012) | 2026-11-09 |
 | — | Uzantı dağıtımı | **Mağaza yok**; geliştirici modu + "Tarayıcıda kur" düğmesi (ADR-011) | 2026-11-09 |
-| D8 | Bağlantı motoru teknolojisi (ADR-003) | **Koşullu kabul:** Wintun TUN + kullanıcı modu motor; yedek PAC; WinDivert askıda. Kesinleşme şartları: SignPath ön sorusunun yanıtı ve S4 (gerçek istemciler, UDP teknikleri) | 2026-11-11 |
+| D8 | Bağlantı motoru teknolojisi (ADR-003) | **Koşullu kabul:** Wintun TUN + kullanıcı modu motor; yedek PAC; WinDivert askıda. S4 şartı 2026-11-12'de bu ağda sağlandı (`Oob@SNI` ile Discord masaüstü ve ses, Roblox Player ve oyun, Wattpad). Kalan şart: SignPath ön sorusunun yanıtı | 2026-11-11 |
 | D5 | Lab'da TTL 128 karşılaştırması | **Hayır; sistem hop limiti hiçbir zaman değişmez** (geçici de). H7 yalnızca kendi prob soketlerimizde `IP_TTL` 64 / 65 / 128 ile ölçülür (S5-soket). Genel ilke ADR-014 | 2026-11-12 |
 | D6 | Makinedeki eski DPI paketi | **Kapandı:** kullanıcı paketi Faz 0 başında tamamen kaldırdı (servis, görev, sürücü, program klasörü). Aynı adlı servis çakışması Faz 6 matrisinde ölçülür | 2026-11-09 |
 
