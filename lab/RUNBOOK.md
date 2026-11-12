@@ -173,3 +173,27 @@ spikes\wintun\target\release\wintun-spike.exe status
   - `kill-test.json`.
   - `watchdog-report.json`.
 - **Gizlilik:** Çıktıda test IP'si ve yerel yollar görünür; paylaşmadan önce ayıklayın.
+
+## 7. S6 — başka bir ağda tekrar (Görev 9 K12)
+
+Amaç H2: aynı ölçümler başka bir ağda (ör. ev Wi-Fi'si veya Ethernet) farklı sonuç veriyor mu.
+Önce bilgisayarı o ağa bağlayın. Hotspot ve başka VPN kapalı olmalı.
+
+```powershell
+cargo build -p xtask --target-dir target/xtask
+target\xtask\debug\xtask.exe lab preflight
+cargo xtask lab baseline
+cargo xtask lab techniques
+cargo xtask lab ttl
+```
+
+- **Tahmini veri:** S1 ≈ 1,0 MB; S2-U ≈ 14,3 MB; S5-soket ≈ 2,6 MB. Her komut başlamadan önce tahmini gösterir ve `evet` bekler.
+- **Sistem değişikliği:** Yok. Korunan değerler başta ve sonda denetlenir.
+- **S4 (isteğe bağlı, yönetici terminali):** Uygulamaları kapatıp başlatın, "Tünel hazır" yazınca deneyin.
+
+  ```powershell
+  spikes\wintun\target\release\wintun-spike.exe s4-plan
+  spikes\wintun\target\release\wintun-spike.exe hold --tech oob-sni --max 300
+  ```
+
+- Sonuçlar `lab/results/` altındadır. Yerel özet `CLAUDE.local.md`'ye, genelleştirilmiş özet `CONNECTIVITY_RESEARCH.md` §7'ye yazılır; ağ adresi yazılmaz.
