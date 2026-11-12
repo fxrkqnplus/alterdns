@@ -137,7 +137,7 @@ Diğer ölçümler:
 | H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
 | H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması. Wattpad'de de aynı: üç DNS yolunda da TLS sıfırlaması (2026-11-12) |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
-| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı, S4 (ilk koşu) | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor. S4'te tarayıcıdan Discord sesli sohbeti çalıştı; ses trafiğinin TUN'dan geçip geçmediği ölçülmedi (ses sunucusu adresleri öğrenilemedi). Masaüstü istemciler (Discord, Roblox Player) açılmadığı için uygulama sesi ve Roblox oyunu hâlâ ölçülmedi |
+| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı, S4 (ilk koşu) | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor. S4'te tarayıcıdan Discord sesli sohbeti çalıştı; ses trafiğinin TUN'dan geçip geçmediği ölçülmedi (ses sunucusu adresleri öğrenilemedi). İkinci koşuda Roblox Player açıldı ve oyun oynandı: oyun trafiği (UDP, Roblox'un kendi bloğu) motor üzerinden çalıştı, Hyperion uyarısı yok. Discord masaüstü açılmadığı için uygulama sesi ölçülmedi |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
 | H7 | Çürüdü (akış düzeyinde, bu ağda) | S5-soket | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
@@ -171,6 +171,17 @@ Diğer ölçümler:
 - **Motor:** 27 TCP, 24 UDP oturumu (16 450 giden, 112 265 gelen datagram); döngü 0; kontrol probu 16/16.
 - **Söküm ve korunan değerler:** 34 kayıt geri alındı, kalıntı yok; korunan değerler değişmedi. Öncesinde yeniden koşulan `kill-test` de temizdi (adaptör ve rota 1,7 sn içinde kalktı).
 - **Faz 2 için çıkarım:** Hedef başına adres listesi kırılgan; istemciler çok sayıda CDN adı kullanıyor. Motorun trafiği daha geniş alması ve tekniği SNI'ye göre seçmesi (ya da DNS'i motorun kendisinin çözmesi) değerlendirilmeli. Bu, kullanıcının varsayılan rotasına dokunmadan, yalnızca kendi rotalarımızla yapılmalı (ADR-014).
+
+**S4, ikinci koşu (2026-11-12; eksik CDN adları eklendi: 4 önek + 48 tek IP, 304 sn):**
+- **Roblox Player:** açıldı; uygulamadan ve web'deki "oyna" düğmesinden oyuna girildi ve oynandı. Hyperion uyarısı ya da çökme yok.
+- **Tarayıcı:** Discord (metin, ses), Roblox ve Wattpad yine çalıştı.
+- **Discord masaüstü:** "Checking for updates" ekranında kaldı.
+  - Güncelleyicinin günlüğü: tünel yokken `updates.discord.com` bildirim isteği yaklaşık 100 ms içinde hatayla bitiyor (DPI sıfırlamasıyla uyumlu). Tünel açıkken aynı istek yanıtsız kalıyor; ne hata ne başarı yazılıyor.
+  - Bu adın adresleri rota kümesinde; istek tünele giriyor. Tarayıcının aynı adreslere UDP (QUIC) ile gitmiş olabileceği, güncelleyicinin ise TCP + TLS kullandığı düşünülüyor; ölçülmedi.
+  - Sonraki adım: motorda bağlantı başına kayıt (hedef, SNI, iki yöndeki bayt, kapanış nedeni).
+- **Motor:** 100 TCP, 44 UDP oturumu; döngü 0; kontrol probu 16/16.
+- **Söküm:** Wintun oturumu 15 sn içinde kapanmadı; adaptör, işlem çıkınca kalktı. Journal'ın adaptör kaydı geri alınamadı: doğrulama, adaptörün gerçek açıklamasını ("AlterDNS Tunnel") ve karışık harfli PnP kimliğini (`SWD\Wintun\{…}`) reddediyordu. Düzeltildi (test); bekleme 30 sn'ye çıktı; kayıt `lab recover` ile kapatıldı, kalıntı yok.
+- **Korunan değerler:** "dns" farkı bizim adaptörümüzden geldi (Windows'un yer tutucu DNS adresleri; adaptör son okumada hâlâ vardı). Kullanıcının değerleri o sabahki okumayla birebir aynı. Betik artık kendi adaptörümüzü DNS bölümünde de dışarıda tutuyor.
 
 **Faz 2 için ilk sinyal (bu ağ):**
 - Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.

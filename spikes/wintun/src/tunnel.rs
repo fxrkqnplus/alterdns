@@ -559,12 +559,16 @@ impl Tunnel {
         // yenilenir: söküm bekçinin süresini aşıp onunla yarışmasın.
         let wd = &mut self.wd;
         let adapter = &self.adapter;
-        if !wait_for(Duration::from_secs(15), || {
+        // S4'te (100 TCP oturumu) 15 sn yetmedi (2026-11-12): bekleme 30 sn; zaman aşımında kalan
+        // başvuru sayısı not edilir. Adaptör kalırsa journal geri alması onu pnputil ile kaldırır.
+        if !wait_for(Duration::from_secs(30), || {
             let _ = wd.renew(MAX_LEASE_SECS);
             Arc::strong_count(adapter) == 1
         }) {
-            t.notes
-                .push("oturum 15 sn içinde kapanmadı; adaptör yine de bırakılıyor".into());
+            t.notes.push(format!(
+                "oturum 30 sn içinde kapanmadı (adaptör başvurusu {}); adaptör yine de bırakılıyor",
+                Arc::strong_count(adapter)
+            ));
         }
         drop(self.adapter);
         let wd = &mut self.wd;

@@ -103,6 +103,8 @@ Ayrıntı ve çıkarımlar `docs/research/CONNECTIVITY_RESEARCH.md` §7'de. Öze
 - DNS önbelleğinden öğrenme bu makinede çalışmadı (önbellek boş).
 - Söküm temiz; korunan değerler değişmedi.
 
+**İkinci koşu:** eksik CDN adları eklendi. Roblox Player ve oyun çalıştı (Hyperion uyarısı yok); Discord masaüstü güncelleme denetiminde kaldı. Söküm sırasında oturum 15 sn'de kapanmadı ve adaptör doğrulaması gerçek açıklamayı reddetti; ikisi düzeltildi, kalıntı yok.
+
 ## Lisans ve SignPath
 
 Değişmedi; ayrıntı `docs/research/THIRD_PARTY.md` §1.1. Ön derlenmiş DLL lisansı OSI onaylı değil. GPL-3.0 §7 ek izni ve "yalnızca `alterdns-svc` yükler" önlemi yürürlükte. SignPath ön sorusu açık.

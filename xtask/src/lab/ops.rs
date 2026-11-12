@@ -271,10 +271,15 @@ pub(crate) fn routable_global(ip: std::net::IpAddr) -> bool {
 
 /// Wintun yazılım aygıtının PnP örnek kimliği: `SWD\WINTUN\{GUID}`.
 pub(crate) fn valid_wintun_instance_id(id: &str) -> bool {
-    let Some(guid) = id
-        .strip_prefix(r"SWD\WINTUN\{")
-        .and_then(|r| r.strip_suffix('}'))
-    else {
+    // Windows kimliği karışık harfle bildirebilir (`SWD\Wintun\{…}`).
+    let prefix = r"SWD\WINTUN\{";
+    let Some(head) = id.get(..prefix.len()) else {
+        return false;
+    };
+    if !head.eq_ignore_ascii_case(prefix) {
+        return false;
+    }
+    let Some(guid) = id.get(prefix.len()..).and_then(|r| r.strip_suffix('}')) else {
         return false;
     };
     let parts: Vec<&str> = guid.split('-').collect();
@@ -284,6 +289,15 @@ pub(crate) fn valid_wintun_instance_id(id: &str) -> bool {
             .zip([8usize, 4, 4, 4, 12])
             .all(|(p, n)| p.len() == n && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
+
+/// Spike adaptörü mü? Açıklama, Wintun'un tünel türünden ürettiği "AlterDNS Tunnel" (yinelenen
+/// adlarda " #2" eki) olmalı ve PnP kimliği Wintun yazılım aygıtı olmalı.
+pub(crate) fn spike_device_ok(desc: &str, id: &str) -> bool {
+    desc.starts_with(SPIKE_ADAPTER_DESCRIPTION) && valid_wintun_instance_id(id)
+}
+
+/// Spike'ın Wintun tünel türü "AlterDNS"; Windows açıklamaya " Tunnel" ekler.
+pub const SPIKE_ADAPTER_DESCRIPTION: &str = "AlterDNS Tunnel";
 
 /// Adaptör, işlem çöktüğü için kalakaldıysa kaldırır: yalnızca adı `AlterDNS-Spike`, açıklaması
 /// Wintun ve PnP kimliği `SWD\WINTUN\{GUID}` olan aygıt, `pnputil /remove-device` ile.
@@ -298,7 +312,7 @@ fn remove_spike_adapter(name: &str) -> anyhow::Result<()> {
     let (desc, id) = info
         .split_once('|')
         .ok_or_else(|| anyhow!("adaptör bilgisi okunamadı"))?;
-    if !desc.starts_with("Wintun") || !valid_wintun_instance_id(id) {
+    if !spike_device_ok(desc, id) {
         bail!("{SPIKE_ADAPTER} bir Wintun aygıtı değil ({desc}, {id}); dokunulmadı");
     }
     let status = Command::new(system32("pnputil.exe"))
@@ -539,6 +553,10 @@ mod tests {
         assert!(valid_wintun_instance_id(
             r"SWD\WINTUN\{1F0C5B3A-8E2D-4C71-9A6B-2D4E8F1A7C30}"
         ));
+        // Windows kimliği karışık harfle bildirir (S4 ikinci koşu, 2026-11-12).
+        assert!(valid_wintun_instance_id(
+            r"SWD\Wintun\{7C2E4B61-9D3A-4F58-B0E7-5A1CD2F48E93}"
+        ));
         for bad in [
             r"PCI\VEN_8086&DEV_1234",
             r"SWD\WINTUN\{1F0C5B3A} & calc",
@@ -547,5 +565,20 @@ mod tests {
         ] {
             assert!(!valid_wintun_instance_id(bad), "{bad:?}");
         }
+    }
+
+    /// Spike adaptörünün açıklaması "AlterDNS Tunnel" (Wintun, tünel türünün sonuna " Tunnel"
+    /// ekler); yalnız bu açıklama ve Wintun kimliği kabul edilir.
+    #[test]
+    fn spike_device_check_matches_real_adapter() {
+        let id = r"SWD\Wintun\{7C2E4B61-9D3A-4F58-B0E7-5A1CD2F48E93}";
+        assert!(spike_device_ok("AlterDNS Tunnel", id));
+        assert!(spike_device_ok("AlterDNS Tunnel #2", id));
+        assert!(!spike_device_ok("WireGuard Tunnel", id));
+        assert!(!spike_device_ok("Intel(R) Wi-Fi", id));
+        assert!(!spike_device_ok(
+            "AlterDNS Tunnel",
+            r"PCI\VEN_8086&DEV_1234"
+        ));
     }
 }
