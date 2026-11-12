@@ -198,8 +198,13 @@ pub enum Proto {
 /// Giden soketin kaydı; düşünce port kayıttan silinir.
 pub struct OutboundGuard {
     engine: Arc<Engine>,
-    key: (Proto, u16),
+    key: OutboundKey,
 }
+
+/// (protokol, motorun yerel portu, bağlandığı uzak adres). Döngüde TUN'a dönen akışın kaynak
+/// portu ve hedefi bunlarla aynıdır; yalnız porta bakmak, aynı port numarasını başka bir
+/// hedef için kullanan uygulama akışlarında yanlış alarm verirdi.
+type OutboundKey = (Proto, u16, SocketAddr);
 
 impl Drop for OutboundGuard {
     fn drop(&mut self) {
@@ -217,7 +222,7 @@ const MAX_ACTIVE: u64 = 256;
 pub struct Engine {
     tech: std::sync::Mutex<SockTech>,
     pub stats: Arc<Stats>,
-    outbound_ports: std::sync::Mutex<std::collections::HashSet<(Proto, u16)>>,
+    outbound_ports: std::sync::Mutex<std::collections::HashSet<OutboundKey>>,
     halted: std::sync::atomic::AtomicBool,
     active: AtomicU64,
 }
@@ -233,24 +238,30 @@ impl Engine {
         })
     }
 
-    /// Motorun açtığı giden soketin yerel portunu kaydeder.
+    /// Motorun açtığı giden soketi (yerel port + uzak adres) kaydeder.
     /// Kayıt, dönen nesne yaşadıkça (soket açıkken) geçerlidir.
-    pub fn mark_outbound(self: &Arc<Self>, proto: Proto, port: u16) -> OutboundGuard {
+    pub fn mark_outbound(
+        self: &Arc<Self>,
+        proto: Proto,
+        port: u16,
+        remote: SocketAddr,
+    ) -> OutboundGuard {
+        let key = (proto, port, remote);
         if let Ok(mut set) = self.outbound_ports.lock() {
-            set.insert((proto, port));
+            set.insert(key);
         }
         OutboundGuard {
             engine: self.clone(),
-            key: (proto, port),
+            key,
         }
     }
 
-    /// Bu yerel port, motorun şu an açık bir giden soketine mi ait?
-    pub fn is_own(&self, proto: Proto, port: u16) -> bool {
+    /// Bu akış (kaynak port + hedef), motorun şu an açık bir giden soketi mi?
+    pub fn is_own(&self, proto: Proto, port: u16, remote: SocketAddr) -> bool {
         // Kilit zehirlendiyse güvenli tarafta kal: döngü say.
         self.outbound_ports
             .lock()
-            .map_or(true, |set| set.contains(&(proto, port)))
+            .map_or(true, |set| set.contains(&(proto, port, remote)))
     }
 
     /// Döngü saptandıysa motor durmuştur; artık hiçbir akış aktarılmaz.
@@ -351,12 +362,12 @@ pub async fn serve(
 ) {
     use ipstack::IpStackStream;
     // Akışı aktarabilir miyiz? Döngü saptanırsa motor kalıcı olarak durur.
-    let admit = |engine: &Engine, proto: Proto, local: SocketAddr| -> bool {
+    let admit = |engine: &Engine, proto: Proto, local: SocketAddr, peer: SocketAddr| -> bool {
         if engine.halted() {
             Stats::add(&engine.stats.ignored);
             return false;
         }
-        if engine.is_own(proto, local.port()) {
+        if engine.is_own(proto, local.port(), peer) {
             Stats::add(&engine.stats.loops);
             engine.halted.store(true, Ordering::Relaxed);
             return false;
@@ -370,7 +381,7 @@ pub async fn serve(
     loop {
         match stack.accept().await {
             Ok(IpStackStream::Tcp(stream)) if routes.contains(stream.peer_addr().ip()) => {
-                if !admit(&engine, Proto::Tcp, stream.local_addr()) {
+                if !admit(&engine, Proto::Tcp, stream.local_addr(), stream.peer_addr()) {
                     continue;
                 }
                 let (peer, tech, engine) =
@@ -381,7 +392,7 @@ pub async fn serve(
                 });
             }
             Ok(IpStackStream::Udp(stream)) if routes.contains(stream.peer_addr().ip()) => {
-                if !admit(&engine, Proto::Udp, stream.local_addr()) {
+                if !admit(&engine, Proto::Udp, stream.local_addr(), stream.peer_addr()) {
                     continue;
                 }
                 let (peer, engine) = (stream.peer_addr(), engine.clone());
@@ -418,7 +429,7 @@ where
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
     let _guard = match sock.local_addr()?.as_socket() {
-        Some(local) => engine.mark_outbound(Proto::Udp, local.port()),
+        Some(local) => engine.mark_outbound(Proto::Udp, local.port(), peer),
         None => anyhow::bail!("UDP soketinin yerel adresi yok"),
     };
     sock.connect(&SockAddr::from(peer))?;
@@ -470,7 +481,7 @@ fn connect_out(
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
     let guard = match sock.local_addr()?.as_socket() {
-        Some(local) => engine.mark_outbound(Proto::Tcp, local.port()),
+        Some(local) => engine.mark_outbound(Proto::Tcp, local.port(), peer),
         None => anyhow::bail!("TCP soketinin yerel adresi yok"),
     };
     sock.connect_timeout(&SockAddr::from(peer), CONNECT_TIMEOUT)?;
@@ -818,10 +829,17 @@ mod tests {
             TunDevice::new(io.clone()),
         );
         let engine = Engine::new(SockTech::None);
-        let _guard = engine.mark_outbound(Proto::Udp, 5555);
-        assert!(engine.is_own(Proto::Udp, 5555));
-        assert!(!engine.is_own(Proto::Udp, 6000));
-        assert!(!engine.is_own(Proto::Tcp, 5555), "protokoller ayrı");
+        let _guard = engine.mark_outbound(Proto::Udp, 5555, echo_addr);
+        assert!(engine.is_own(Proto::Udp, 5555, echo_addr));
+        assert!(!engine.is_own(Proto::Udp, 6000, echo_addr));
+        assert!(
+            !engine.is_own(Proto::Tcp, 5555, echo_addr),
+            "protokoller ayrı"
+        );
+        // Aynı port başka bir hedefe: uygulamanın kendi akışı olabilir, döngü sayılmaz
+        // (2026-11-12 arıza incelemesi: yalnız porta bakmak yanlış alarm verirdi).
+        let other: SocketAddr = (Ipv4Addr::new(1, 1, 1, 1), 443).into();
+        assert!(!engine.is_own(Proto::Udp, 5555, other));
         let task = tokio::spawn(serve(
             stack,
             Arc::new(RouteSet::single(Ipv4Addr::LOCALHOST)),
@@ -902,13 +920,13 @@ mod tests {
         let (got, out_port) = server.join().unwrap();
         assert_eq!(got, expected, "{tech:?}");
         assert!(
-            engine.is_own(Proto::Tcp, out_port),
+            engine.is_own(Proto::Tcp, out_port, addr),
             "giden port döngü koruması için kaydedilmeli"
         );
         drop(app);
         relay.await.unwrap().unwrap();
         assert!(
-            !engine.is_own(Proto::Tcp, out_port),
+            !engine.is_own(Proto::Tcp, out_port, addr),
             "oturum kapanınca port kayıttan silinmeli"
         );
         assert_eq!(engine.stats.tcp_sessions.load(Ordering::Relaxed), 1);

@@ -33,7 +33,25 @@ pub fn load(root: &Path) -> anyhow::Result<Vec<S4Target>> {
     let path = root.join("data").join("s4").join("hedefler.toml");
     let text = std::fs::read_to_string(&path)
         .map_err(|e| anyhow::anyhow!("{} okunamadı: {e}", path.display()))?;
-    Ok(toml::from_str::<S4File>(&text)?.hedef)
+    let targets = toml::from_str::<S4File>(&text)?.hedef;
+    validate_targets(&targets)?;
+    Ok(targets)
+}
+
+/// Sonekler en az iki etiketli, yalnızca harf, rakam ve tire içeren alan adları olmalı: `com`
+/// gibi bir sonek keyfi kayıtları öğretirdi (2026-11-12 güvenlik incelemesi).
+pub fn validate_targets(targets: &[S4Target]) -> anyhow::Result<()> {
+    for s in targets.iter().flat_map(|t| &t.sonekler) {
+        let labels: Vec<&str> = s.split('.').collect();
+        let ok = labels.len() >= 2
+            && labels
+                .iter()
+                .all(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+        if !ok {
+            anyhow::bail!("geçersiz sonek (en az iki etiketli alan adı olmalı): {s:?}");
+        }
+    }
+    Ok(())
 }
 
 /// Bütün hedeflerin önekleri. Kural `xtask` rota denetimiyle aynı: /16…/32, ağ biçiminde,
@@ -73,16 +91,17 @@ pub fn suffix_match(name: &str, suffixes: &[String]) -> bool {
     })
 }
 
+/// Olumsuz önbellek kayıtlarında alanlar `null` olabilir.
 #[derive(Deserialize)]
 struct CacheRow {
     #[serde(rename = "Entry", default)]
-    entry: String,
+    entry: Option<String>,
     #[serde(rename = "Name", default)]
-    name: String,
+    name: Option<String>,
     #[serde(rename = "Type", default)]
-    kind: u16,
+    kind: Option<u16>,
     #[serde(rename = "Data", default)]
-    data: String,
+    data: Option<String>,
 }
 
 /// `Get-DnsClientCache | Select-Object Entry, Name, Type, Data | ConvertTo-Json` çıktısından,
@@ -99,10 +118,11 @@ pub fn learn_from_dns_cache(json: &str, suffixes: &[String]) -> anyhow::Result<V
     };
     let mut out = BTreeSet::new();
     for r in rows {
-        if r.kind != 1 || !(suffix_match(&r.entry, suffixes) || suffix_match(&r.name, suffixes)) {
+        let named = |n: &Option<String>| n.as_deref().is_some_and(|n| suffix_match(n, suffixes));
+        if r.kind != Some(1) || !(named(&r.entry) || named(&r.name)) {
             continue;
         }
-        if let Ok(ip) = r.data.parse::<Ipv4Addr>()
+        if let Some(Ok(ip)) = r.data.as_deref().map(str::parse::<Ipv4Addr>)
             && validate_test_ip(ip).is_ok()
         {
             out.insert(ip);
@@ -187,6 +207,42 @@ mod tests {
                 Ipv4Addr::new(162, 159, 128, 233)
             ]
         );
+    }
+
+    /// Olumsuz önbellek kayıtlarında alanlar `null` olabilir; dizinin tamamı düşmemeli.
+    #[test]
+    fn null_fields_are_tolerated() {
+        let json = r#"[
+            {"Entry":null,"Name":null,"Type":1,"Data":null},
+            {"Entry":"wattpad.com","Name":"wattpad.com","Type":null,"Data":"13.32.12.31"},
+            {"Entry":"wattpad.com","Name":"wattpad.com","Type":1,"Data":"13.32.12.43"}
+        ]"#;
+        assert_eq!(
+            learn_from_dns_cache(json, &sfx(&["wattpad.com"])).unwrap(),
+            [Ipv4Addr::new(13, 32, 12, 43)]
+        );
+    }
+
+    /// Tek etiketli ya da biçimsiz sonek (ör. `com`) keyfi kayıt öğrenirdi.
+    #[test]
+    fn suffixes_need_two_labels() {
+        let t = |s: &str| S4Target {
+            ad: "x".into(),
+            alan_adlari: Vec::new(),
+            sonekler: vec![s.to_string()],
+            onekler: Vec::new(),
+        };
+        assert!(validate_targets(&[t("discord.media")]).is_ok());
+        for bad in [
+            "com",
+            ".com",
+            "discord..media",
+            "",
+            "dis cord.media",
+            "*.discord.media",
+        ] {
+            assert!(validate_targets(&[t(bad)]).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

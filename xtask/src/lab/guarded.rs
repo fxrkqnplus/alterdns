@@ -31,10 +31,13 @@ pub fn script_path() -> PathBuf {
         .join("korunan-degerler.ps1")
 }
 
+/// Betik ikiliye gömülür: yükseltilmiş işlem diskteki (kullanıcının yazabildiği) dosyayı değil,
+/// derlemede denetlenmiş metni çalıştırır (2026-11-12 güvenlik incelemesi).
+const SCRIPT: &str = include_str!("../../../lab/scripts/korunan-degerler.ps1");
+
 /// Korunan değerleri okur (salt okunur PowerShell betiği; AST denetimli).
 pub fn snapshot() -> anyhow::Result<Value> {
-    let script = std::fs::read_to_string(script_path())?;
-    let out = super::ops::ps_query(&script)?;
+    let out = super::ops::ps_query(SCRIPT.trim_start_matches('\u{feff}'))?;
     Ok(serde_json::from_str(&out)?)
 }
 
@@ -71,6 +74,11 @@ mod tests {
     #[test]
     fn non_object_snapshot_is_a_diff() {
         assert_eq!(diff(&json!({}), &json!(null)), ["<anlık görüntü>"]);
+    }
+
+    #[test]
+    fn embedded_script_is_the_audited_file() {
+        assert_eq!(std::fs::read_to_string(script_path()).unwrap(), SCRIPT);
     }
 
     /// Betik yalnızca okur ve ADR-014'ün ağ değerlerini kapsar.

@@ -17,6 +17,9 @@ pub const PROBE_EVERY: Duration = Duration::from_secs(20);
 pub const LEARN_EVERY: Duration = Duration::from_secs(5);
 /// Çalışırken öğrenilecek tek IP rotalarının üst sınırı.
 pub const MAX_LEARNED: usize = 128;
+/// Tek turda eklenecek en çok yeni rota: bir öğrenme dalgası Enter'ı ve kontrol probunu
+/// geciktirmesin (2026-11-12 arıza incelemesi).
+pub const LEARN_PER_TICK: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HoldArgs {

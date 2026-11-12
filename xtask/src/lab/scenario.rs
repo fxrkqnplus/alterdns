@@ -900,12 +900,40 @@ mod tests {
             ["winhttp ", "set"].concat(),
             ["set-mp", "preference"].concat(),
             ["add-mp", "preference"].concat(),
+            // 2026-11-12 güvenlik incelemesi: kayıt defteri, netsh, diğer cmdlet'ler, Win32.
+            ["set-item", "property"].concat(),
+            ["new-item", "property"].concat(),
+            ["reg ", "add"].concat(),
+            ["netsh int ipv4 ", "set"].concat(),
+            ["netsh int ipv6 ", "set"].concat(),
+            ["netsh interface ", "ip set"].concat(),
+            ["winhttp ", "reset"].concat(),
+            ["winhttp ", "import"].concat(),
+            ["set-dns", "client "].concat(),
+            ["add-dnsclient", "nrptrule"].concat(),
+            ["set-dnsclient", "nrptrule"].concat(),
+            ["remove-dnsclient", "nrptrule"].concat(),
+            ["remove-dnsclient", "dohserveraddress"].concat(),
+            ["set-net", "route"].concat(),
+            ["set-net", "adapter"].concat(),
+            ["set-net", "ipaddress"].concat(),
+            ["new-netfirewall", "rule"].concat(),
+            ["set-netfirewall", "rule"].concat(),
+            ["set-netfirewall", "setting"].concat(),
+            ["setipinterface", "entry"].concat(),
+            ["setinterfacedns", "settings"].concat(),
+            ["createipforward", "entry2"].concat(),
+            ["winhttpsetdefault", "proxyconfiguration"].concat(),
         ];
         let mut hits = Vec::new();
         for dir in ["xtask", "lab", "spikes", "apps", "crates", "scripts"] {
             walk(&root.join(dir), &mut |p| {
                 let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
-                if !["rs", "ps1", "cmd", "bat", "toml"].contains(&ext) {
+                if ![
+                    "rs", "ps1", "psm1", "cmd", "bat", "toml", "reg", "vbs", "js", "py",
+                ]
+                .contains(&ext)
+                {
                     return;
                 }
                 let rel = p.strip_prefix(&root).unwrap_or(p);
@@ -933,7 +961,12 @@ mod tests {
             let p = e.path();
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
             if p.is_dir() {
-                if !["target", "results", "bin", "node_modules", ".git"].contains(&name) {
+                // Yalnızca derleme çıktıları ve lab'ın veri dizinleri atlanır; `src/bin` gibi
+                // kaynak dizinleri taranır (2026-11-12 güvenlik incelemesi).
+                let generated = ["target", "node_modules", ".git"].contains(&name)
+                    || p.ends_with("lab/bin")
+                    || p.ends_with("lab/results");
+                if !generated {
                     walk(&p, f);
                 }
             } else {

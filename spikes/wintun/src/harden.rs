@@ -65,21 +65,59 @@ pub fn ip_conflict(
 /// S4 rota kümesi bir DNS sunucusunu ya da varsayılan ağ geçidini içeriyorsa çakışma vardır:
 /// rota o trafiği TUN'a çekerdi. (Önek kuralı özel aralıkları zaten dışarıda tutar; bu
 /// denetim genel adresli DNS ve ağ geçitleri içindir.)
-pub fn prefix_conflict(
-    set: &crate::forward::RouteSet,
-    dns: &[String],
-    gateways: &[String],
-) -> Option<String> {
+pub fn prefix_conflict(set: &crate::forward::RouteSet, live: &LiveNet) -> Option<String> {
     let inside = |list: &[String]| {
         list.iter()
             .filter_map(|a| a.trim().parse::<std::net::IpAddr>().ok())
             .find(|ip| set.contains(*ip))
     };
-    if let Some(ip) = inside(dns) {
+    if let Some(ip) = inside(&live.dns) {
         Some(format!("S4 rotaları bir DNS sunucusunu içeriyor: {ip}"))
+    } else if let Some(ip) = inside(&live.gateways) {
+        Some(format!("S4 rotaları varsayılan ağ geçidini içeriyor: {ip}"))
     } else {
-        inside(gateways).map(|ip| format!("S4 rotaları varsayılan ağ geçidini içeriyor: {ip}"))
+        inside(&live.established).map(|ip| {
+            format!(
+                "S4 rotaları başta açık olan bir bağlantının uzak adresini içeriyor (rota onu keserdi; ilgili uygulamayı kapatın): {ip}"
+            )
+        })
     }
+}
+
+/// Başlangıçta korunan canlı uç noktalar: DNS sunucuları, varsayılan ağ geçitleri ve o an açık
+/// TCP bağlantılarının uzak adresleri (ör. bu oturumu taşıyan bağlantılar). Sonradan öğrenilen
+/// tek IP'ler de bunlarla çakışamaz (2026-11-12 güvenlik ve arıza incelemesi).
+#[derive(Debug, Default)]
+pub struct LiveNet {
+    pub dns: Vec<String>,
+    pub gateways: Vec<String>,
+    pub established: Vec<String>,
+}
+
+/// Tek IP için `ip_conflict` (DNS, ağ geçidi, başta açık bağlantı).
+pub fn host_conflict(ip: Ipv4Addr, live: &LiveNet) -> Option<String> {
+    ip_conflict(ip, &live.dns, &live.gateways, &live.established)
+}
+
+/// Canlı uç noktaları okur (salt okunur PowerShell sorguları).
+pub fn live_net() -> anyhow::Result<LiveNet> {
+    use xtask::lab::ops::ps_query;
+    let list = |script: &str| -> anyhow::Result<Vec<String>> {
+        Ok(ps_query(&format!("({script}) -join ','"))?
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+            .collect())
+    };
+    Ok(LiveNet {
+        dns: list("Get-DnsClientServerAddress | ForEach-Object { $_.ServerAddresses }")?,
+        gateways: list(
+            "Get-NetRoute -DestinationPrefix '0.0.0.0/0', '::/0' -ErrorAction SilentlyContinue | ForEach-Object { $_.NextHop }",
+        )?,
+        established: list(
+            "Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | ForEach-Object { $_.RemoteAddress }",
+        )?,
+    })
 }
 
 /// Canlı ağ durumundan çakışma denetimi (salt okunur PowerShell sorguları).
@@ -104,23 +142,6 @@ pub fn live_ip_conflict(ip: Ipv4Addr) -> anyhow::Result<Option<String>> {
     Ok(ip_conflict(ip, &dns, &gw, &est))
 }
 
-/// S4 rota kümesi için canlı çakışma denetimi (salt okunur).
-pub fn live_prefix_conflict(set: &crate::forward::RouteSet) -> anyhow::Result<Option<String>> {
-    use xtask::lab::ops::ps_query;
-    let list = |script: &str| -> anyhow::Result<Vec<String>> {
-        Ok(ps_query(&format!("({script}) -join ','"))?
-            .split(',')
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string)
-            .collect())
-    };
-    let dns = list("Get-DnsClientServerAddress | ForEach-Object { $_.ServerAddresses }")?;
-    let gw = list(
-        "Get-NetRoute -DestinationPrefix '0.0.0.0/0', '::/0' -ErrorAction SilentlyContinue | ForEach-Object { $_.NextHop }",
-    )?;
-    Ok(prefix_conflict(set, &dns, &gw))
-}
-
 /// Yükseltilmiş komutların ön koşulları: `SystemRoot` gerçek dizin, lab yollarında bağlantı
 /// noktası yok, test IP'si canlı trafik taşımıyor.
 pub fn elevated_preconditions(root: &Path, test_ip: Ipv4Addr) -> anyhow::Result<()> {
@@ -141,6 +162,9 @@ pub fn elevated_preconditions(root: &Path, test_ip: Ipv4Addr) -> anyhow::Result<
         "lab/results",
         "lab/results/journal",
         "lab/local",
+        "lab/scripts",
+        "data",
+        "data/s4",
         "target",
         "target/xtask",
         "target/xtask/debug",
@@ -167,11 +191,32 @@ mod tests {
         let set = RouteSet::new(&[(Ipv4Addr::new(128, 116, 0, 0), 17)]).unwrap();
         set.add_host(Ipv4Addr::new(1, 1, 1, 1));
         let s = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<Vec<_>>();
-        assert!(prefix_conflict(&set, &s(&["128.116.4.4"]), &[]).is_some());
-        assert!(prefix_conflict(&set, &[], &s(&["1.1.1.1"])).is_some());
+        let live = |dns: &[&str], gw: &[&str], est: &[&str]| LiveNet {
+            dns: s(dns),
+            gateways: s(gw),
+            established: s(est),
+        };
+        assert!(prefix_conflict(&set, &live(&["128.116.4.4"], &[], &[])).is_some());
+        assert!(prefix_conflict(&set, &live(&[], &["1.1.1.1"], &[])).is_some());
+        // Başta açık olan bir bağlantının uzak adresi (ör. bu oturum) de korunur.
+        assert!(prefix_conflict(&set, &live(&[], &[], &["128.116.50.1"])).is_some());
         assert!(
-            prefix_conflict(&set, &s(&["8.8.8.8", "fe80::1", "x"]), &s(&["9.9.9.9"])).is_none()
+            prefix_conflict(&set, &live(&["8.8.8.8", "fe80::1", "x"], &["9.9.9.9"], &[])).is_none()
         );
+    }
+
+    #[test]
+    fn host_conflict_protects_live_endpoints() {
+        let s = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<Vec<_>>();
+        let live = LiveNet {
+            dns: s(&["9.9.9.9"]),
+            gateways: s(&["5.5.5.5"]),
+            established: s(&["7.7.7.7"]),
+        };
+        for ip in [[9, 9, 9, 9], [5, 5, 5, 5], [7, 7, 7, 7]] {
+            assert!(host_conflict(Ipv4Addr::from(ip), &live).is_some(), "{ip:?}");
+        }
+        assert!(host_conflict(Ipv4Addr::new(13, 32, 12, 31), &live).is_none());
     }
 
     #[test]

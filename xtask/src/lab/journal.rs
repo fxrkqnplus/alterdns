@@ -396,6 +396,11 @@ impl Journal {
             if current == e.before {
                 self.set_state(e.id, EntryState::Reverted)?;
                 report.reverted.push(e.id);
+            } else if own_object(&e.op) && e.before != "absent" {
+                // Kendi nesnelerimiz (adaptör, adres, rota) geri almada yalnızca kaldırılır;
+                // değiştirilmiş bir journal yükseltilmiş bekçiye rota ya da adres ekletemesin.
+                self.mark_conflict(&e)?;
+                report.conflicts.push(e.id);
             } else if current == e.after {
                 match ops.write(&e.op, &e.before) {
                     Ok(()) => {
@@ -470,6 +475,14 @@ pub fn owned(op: &OpKind) -> bool {
         OpKind::HopLimit { .. } => false,
         OpKind::FileValue { path } => lab_temp_path(path),
     }
+}
+
+/// AlterDNS'in kendi oluşturduğu sistem nesneleri (ADR-014): bunlar yalnızca eklenir ve kaldırılır.
+fn own_object(op: &OpKind) -> bool {
+    matches!(
+        op,
+        OpKind::TunAdapter { .. } | OpKind::UnicastAddress { .. } | OpKind::Route { .. }
+    )
 }
 
 #[cfg(test)]
@@ -583,6 +596,22 @@ pub(crate) mod tests {
         assert_eq!(ops.get(&adapter()), "absent");
         assert_eq!(ops.get(&route(SPIKE_ADAPTER)), "absent");
         assert!(j.entries().iter().all(|e| e.state == EntryState::Reverted));
+    }
+
+    /// Geri alma kendi nesnelerimizi yalnızca kaldırır; `present` yazmaz (2026-11-12 güvenlik
+    /// incelemesi). Değiştirilmiş bir journal, yükseltilmiş bekçiye rota ekletemesin.
+    #[test]
+    fn revert_never_re_adds_own_objects() {
+        let dir = temp_dir("noreadd");
+        let ops = FakeOps::default();
+        let mut j = Journal::create(&dir, "run1").unwrap();
+        ops.set(&route(SPIKE_ADAPTER), "present");
+        let id = j.apply(&ops, route(SPIKE_ADAPTER), "absent").unwrap();
+        let writes = ops.writes.get();
+        let report = j.revert_all(&ops).unwrap();
+        assert_eq!(report.conflicts, vec![id]);
+        assert_eq!(ops.get(&route(SPIKE_ADAPTER)), "absent");
+        assert_eq!(ops.writes.get(), writes, "geri alma yazmamalı");
     }
 
     #[test]

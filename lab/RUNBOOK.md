@@ -148,6 +148,26 @@ spikes\wintun\target\release\wintun-spike.exe status
   - alan adlarından çözülen tek IP'ler;
   - DNS önbelleğinden öğrenilen tek IP'ler.
   Paylaşımlı CDN'lerde (Discord: Cloudflare, Wattpad: CloudFront) önek kullanılmaz.
+- **S4 gerçek istemciler (`hold`, Görev 9 K10):** yönetici terminalinde, `kill-test` geçtikten sonra:
+
+  ```powershell
+  spikes\wintun\target\release\wintun-spike.exe s4-plan
+  spikes\wintun\target\release\wintun-spike.exe hold
+  ```
+
+  - Başlamadan önce Discord, Roblox ve Wattpad sekmelerini kapatın: açık bağlantılar rota
+    eklenince kopar.
+  - Seçenekler: `--tech tls-record-sni` (varsayılan) | `oob-sni` | `split-1`; `--max <sn>` (≤ 600).
+  - Tünel hazır olunca uygulamaları deneyin: Discord masaüstü (giriş, metin, sesli kanal),
+    Roblox (oyuna katılım), Wattpad (hikâye açma). Bitirince Enter.
+  - Kontrol probu 20 sn'de bir geçmezse oturum kendiliğinden biter. DNS önbelleğinden 5 sn'de
+    bir yeni tek IP'ler öğrenilir (en çok 128); Discord sesi ilk denemede bağlanmazsa birkaç
+    saniye sonra yeniden deneyin.
+  - Güvenlik: DNS sunucuları, ağ geçidi ve başlangıçta açık bağlantıların uzak adresleri (ör.
+    bu oturum) hiçbir zaman TUN'a yönlendirilmez; öğrenilen adresler de bu denetimden geçer.
+  - Motor durursa (döngü, hata) oturum hemen biter; kira beklenmez.
+  - Söküm sırasında uygulamaları kapatın; rota sayısına göre söküm bir iki dakika sürebilir.
+  - Sonda tünel sökülür ve kısa sorular sorulur (e / h / boş). Sonuç: `lab/results/wintun-hold-*/hold.json`.
 - **Sonuçlar** `lab/results/wintun-*/` altındadır (git dışı):
   - `wintun-run.json`: başlangıç verisi baştan yazılır.
   - `kill-test.json`.

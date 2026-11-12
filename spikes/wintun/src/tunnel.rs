@@ -450,14 +450,37 @@ impl Tunnel {
             );
         }
         // 4. Rotalar (ActiveStore, yalnızca bu adaptöre): Görev 7'de tek test IP'si, S4'te
-        // sağlayıcı önekleri ve tek IP'ler. Her rota önce journal'a yazılır.
+        // sağlayıcı önekleri ve tek IP'ler. Her rota önce journal'a yazılır. Bundan sonraki bir
+        // hata, adaptör kapanırken rotaların trafiği karadeliğe çekmemesi için önce eklenen
+        // rotaları kaldırır (2026-11-12 arıza incelemesi).
+        let mut applied: Vec<&OpKind> = Vec::new();
+        let rollback = |applied: &[&OpKind]| {
+            for op in applied.iter().rev() {
+                let _ = RealOps.write(op, "absent");
+            }
+        };
         for op in &plan.ops {
-            wd.renew(MAX_LEASE_SECS)?;
-            journal.apply(&RealOps, op.clone(), "present")?;
+            let step = wd
+                .renew(MAX_LEASE_SECS)
+                .and_then(|()| journal.apply(&RealOps, op.clone(), "present").map(|_| ()));
+            if let Err(e) = step {
+                rollback(&applied);
+                return Err(e);
+            }
+            applied.push(op);
         }
-        wd.renew(MAX_LEASE_SECS)?;
-        let tun_if = ffi::best_interface_v4(ip)?;
+        let tun_if = match wd
+            .renew(MAX_LEASE_SECS)
+            .and_then(|()| ffi::best_interface_v4(ip).map_err(anyhow::Error::from))
+        {
+            Ok(i) => i,
+            Err(e) => {
+                rollback(&applied);
+                return Err(e);
+            }
+        };
         if tun_if == phys_if {
+            rollback(&applied);
             bail!("rota eklendi ama {ip} hâlâ fiziksel arayüzden çıkıyor");
         }
         Ok(Parts {
@@ -484,6 +507,16 @@ impl Tunnel {
         self.wd.renew(MAX_LEASE_SECS)
     }
 
+    /// Kurulu rota sayısı (başta kurulanlar + öğrenilenler).
+    pub fn route_count(&self) -> usize {
+        self.routes.len()
+    }
+
+    /// Motor çalışıyor mu? Kirayı yenilemez (`hold` döngüsü her turda bakar).
+    pub fn engine_alive(&self) -> bool {
+        !self.serve_task.is_finished() && !self.engine.halted()
+    }
+
     /// Çalışırken öğrenilen tek IP'yi ekler (S4). Önce motor kümesine, sonra journal'lı rota:
     /// rota motordan önce gelirse o IP'nin trafiği kısa süre karadeliğe düşerdi. Zaten
     /// kümedeyse `false`.
@@ -493,7 +526,7 @@ impl Tunnel {
         }
         config::validate_test_ip(ip)?;
         self.set.add_host(ip);
-        self.wd.renew(MAX_LEASE_SECS)?;
+        // Kira burada yenilenmez: yalnızca kontrol probu geçince `beat` yeniler.
         let op = route_op(ip);
         self.journal.apply(&RealOps, op.clone(), "present")?;
         self.routes.push(op);
