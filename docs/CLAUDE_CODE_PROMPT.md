@@ -202,7 +202,7 @@ Her madde bir veya daha fazla teste bağlıdır. Test kimlikleri `docs/TESTING.m
 - Motor hatasında geri çekilmeli yeniden başlatma: 1/2/5/10/30/60 sn.
 - Periyodik kontrol: 30 dk + rastgele sapma.
 
-**TTL 65 araştırması:** `docs/research/CONNECTIVITY_RESEARCH.md` protokolüne göre Faz 0'da yapılır. Neden varsayılmaz. 65 bütün uyumluluk testlerinde bir eksendir. 128 karşılaştırması yalnızca lab'da, D5 onayı ve otomatik geri dönüşle yapılır.
+**TTL 65 araştırması:** `docs/research/CONNECTIVITY_RESEARCH.md` protokolüne göre Faz 0'da yapılır. Neden varsayılmaz. 65 bütün uyumluluk testlerinde bir eksendir. Sistem hop limiti lab'da da değiştirilmez (D5 kapandı, ADR-014); 128 ve 64'ün etkisi yalnızca kendi prob soketlerimizde `IP_TTL` ile ölçülür.
 
 **Diğer bilgisayarlarda uyumluluk:** Araştırma belgesindeki "Uyumluluk etkenleri" listesinin tamamı test matrisine girer.
 
@@ -378,7 +378,7 @@ En düşük hedef makine: 2 çekirdek x64, 4 GB RAM, SSD.
 14. Tarama yeni bir zararlıyı garanti yakalayamaz.
 15. Tepsi GUID'i exe yoluna bağlıdır; sabit başlatıcı yolu gerekir.
 16. Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (ör. GoodbyeDPI kurulu sistem) ne olur? WinDivert modu geri gelirse Faz 6 uyumluluk matrisinde, GoodbyeDPI kurulu bir VM'de ölçülecek.
-17. TTL 128 lab deneyi operatörün tethering tespitini tetikleyebilir (D5).
+17. Kendi soketimizde TTL 128/64 ile gönderilen prob paketleri, hotspot'ta operatöre paylaşım (tethering) trafiği gibi görünebilir (S5-soket; çalıştırmadan önce kullanıcı onayı).
 
 ## 12. Kullanıcı kararları
 
@@ -391,7 +391,7 @@ En düşük hedef makine: 2 çekirdek x64, 4 GB RAM, SSD.
 
 **Açık kararlar (zamanı gelince sor):**
 - **D4 — Ticari olmayan / ticari** (Faz 4 başı)
-- **D5 — Lab'da TTL 128 karşılaştırması** (Faz 0)
+- **D5 — Lab'da TTL 128 karşılaştırması** (Faz 0) — **Kapandı (2026-11-12):** sistem hop limiti hiçbir zaman değişmez; ADR-014.
 - **D8 — Bağlantı motoru teknolojisi** (Faz 0 sonu; S2-U ve Wintun spike ölçümlerinden sonra; ADR-003)
 - **D7 — SignPath reddederse veya bağlantı modülünü kapsam dışı sayarsa** (Faz 6). Seçenekler:
   - İmzasız dağıtıma devam etmek

@@ -12,6 +12,7 @@ use anyhow::{Context, anyhow, bail};
 use serde::Deserialize;
 
 use super::dns::DnsMode;
+use super::guarded;
 use super::journal::{Journal, OpKind, SPIKE_ADAPTER, SystemOps};
 use super::ops::{self, RealOps};
 use super::probe::{self, Outcome, ProbeResult, ProbeTarget, Role};
@@ -20,7 +21,6 @@ use super::scenario::{
     self, Abort, Cell, CellHooks, LabEnv, ProbeRunner, Summary, confirm, estimate_bytes, job_gate,
     preflight, run_cells,
 };
-use super::sockettech::SockTech;
 use super::watchdog::{MAX_LEASE_SECS, WatchdogHandle};
 
 pub fn repo_root() -> PathBuf {
@@ -66,7 +66,7 @@ fn local_config(root: &Path) -> anyhow::Result<LocalConfig> {
 /// `data/probes/*.toml` + varsa `lab/local/probes.local.toml`.
 pub fn load_targets(root: &Path) -> anyhow::Result<Vec<ProbeTarget>> {
     let mut all = Vec::new();
-    let mut files: Vec<PathBuf> = ["control", "discord", "roblox"]
+    let mut files: Vec<PathBuf> = ["control", "discord", "roblox", "wattpad"]
         .iter()
         .map(|n| root.join("data").join("probes").join(format!("{n}.toml")))
         .collect();
@@ -161,8 +161,8 @@ pub fn real_env(root: &Path, targets: &[ProbeTarget]) -> anyhow::Result<RealEnv>
 struct LiveRunner;
 
 impl ProbeRunner for LiveRunner {
-    fn probe(&self, t: &ProbeTarget, dns: DnsMode, tech: &SockTech) -> ProbeResult {
-        probe::run_probe_with(t, dns, tech)
+    fn probe(&self, t: &ProbeTarget, cell: &Cell) -> ProbeResult {
+        probe::run_probe_ttl(t, cell.dns, &cell.tech, cell.socket_ttl)
     }
 }
 
@@ -201,6 +201,39 @@ impl CellHooks for LiveHooks<'_> {
             Err(e) => eprintln!("Journal geri alınamadı: {e:#}"),
         }
     }
+}
+
+/// `--only <önek>` bayrağı; başka argüman kabul edilmez.
+pub fn parse_only(rest: &[String]) -> anyhow::Result<Option<String>> {
+    match rest {
+        [] => Ok(None),
+        [flag, value] if flag == "--only" && !value.starts_with("--") => Ok(Some(value.clone())),
+        _ => bail!("beklenen: [--only <hedef-öneki>] (ör. --only wattpad)"),
+    }
+}
+
+/// Yalnızca adı `only` önekiyle başlayan hedefler; kontrol probları her zaman kalır.
+pub fn filter_targets(
+    all: Vec<ProbeTarget>,
+    only: Option<&str>,
+) -> anyhow::Result<Vec<ProbeTarget>> {
+    let Some(prefix) = only else {
+        return Ok(all);
+    };
+    let kept: Vec<ProbeTarget> = all
+        .into_iter()
+        .filter(|t| t.role == Role::Control || t.name.starts_with(prefix))
+        .collect();
+    if !kept.iter().any(|t| t.role == Role::Target) {
+        bail!("'{prefix}' önekiyle eşleşen hedef yok");
+    }
+    Ok(kept)
+}
+
+/// Korunan değerleri okur; okunamazsa nedeni kaydedilir ve senaryo yine güvenle sürer
+/// (okuma sistemi değiştirmez), ama sonuçta "denetlenemedi" yazılır.
+fn guarded_snapshot() -> Result<serde_json::Value, String> {
+    guarded::snapshot().map_err(|e| format!("{e:#}"))
 }
 
 /// Senaryo akışı. Sistem değişikliği yapan senaryolar (Görev 7, 9) `changes_system = true`
@@ -245,6 +278,7 @@ fn run_scenario(
     let id = run_id(prefix);
     let out_dir = results_dir(&root).join(&id);
     std::fs::create_dir_all(&out_dir)?;
+    let guarded_before = guarded_snapshot();
     extra(&out_dir)?;
     let mut journal = Journal::create(&journal_dir(&root), &id)?;
     let mut wd = WatchdogHandle::spawn(journal.path(), &out_dir)?;
@@ -286,10 +320,33 @@ fn run_scenario(
     )?;
     let rows = report::read_rows(&out_dir)?;
     std::fs::write(out_dir.join("rapor.md"), report::summarize(&rows))?;
+    // ADR-014: kullanıcıya ait değerler koşudan önceki gibi mi?
+    let guarded_after = guarded_snapshot();
+    let changed = match (&guarded_before, &guarded_after) {
+        (Ok(b), Ok(a)) => Ok(guarded::diff(b, a)),
+        (Err(e), _) | (_, Err(e)) => Err(e.clone()),
+    };
+    std::fs::write(
+        out_dir.join("korunan-degerler.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "once": guarded_before.as_ref().ok(),
+            "sonra": guarded_after.as_ref().ok(),
+            "degisen": changed.as_ref().ok(),
+            "hata": changed.as_ref().err(),
+        }))?,
+    )?;
     println!("Sonuçlar: {}", out_dir.display());
-    match outcome.aborted {
-        Some(a) => bail!("koşu durdu: {a}"),
-        None => Ok(()),
+    match &changed {
+        Ok(d) if d.is_empty() => println!("Korunan değerler: değişmedi."),
+        Ok(d) => eprintln!(
+            "UYARI: korunan değerler koşu sırasında değişti: {d:?}. AlterDNS bunlara yazmaz; başka bir program veya ağ değiştirmiş olabilir. Dokunulmadı, ayrıntı korunan-degerler.json."
+        ),
+        Err(e) => eprintln!("Uyarı: korunan değerler denetlenemedi: {e}"),
+    }
+    match (outcome.aborted, changed) {
+        (Some(a), _) => bail!("koşu durdu: {a}"),
+        (None, Ok(d)) if !d.is_empty() => bail!("korunan değerler değişti: {d:?}"),
+        _ => Ok(()),
     }
 }
 
@@ -342,9 +399,9 @@ fn section_state(section: &serde_json::Value) -> String {
     }
 }
 
-fn baseline() -> anyhow::Result<()> {
+fn baseline(rest: &[String]) -> anyhow::Result<()> {
     let root = repo_root();
-    let targets = load_targets(&root)?;
+    let targets = filter_targets(load_targets(&root)?, parse_only(rest)?.as_deref())?;
     let env = real_env(&root, &targets)?;
     run_scenario(
         "S1 — motor kapalı temel ölçüm (DNS: sistem, DoH, 77.88.8.8:1253)",
@@ -377,9 +434,9 @@ fn path_mtu(host: &str) -> Option<u32> {
     })
 }
 
-fn techniques() -> anyhow::Result<()> {
+fn techniques(rest: &[String]) -> anyhow::Result<()> {
     let root = repo_root();
-    let all = load_targets(&root)?;
+    let all = filter_targets(load_targets(&root)?, parse_only(rest)?.as_deref())?;
     let env = real_env(&root, &all)?;
     let targets: Vec<ProbeTarget> = all.into_iter().filter(|t| t.role == Role::Target).collect();
     run_scenario(
@@ -400,6 +457,25 @@ fn techniques() -> anyhow::Result<()> {
             )?;
             Ok(())
         },
+    )
+}
+
+/// S5-soket (H7): tekniksiz ve en iyi 3 teknik, probun kendi soketinde TTL 64 / 65 / 128.
+/// Sistem hop limiti yalnızca okunur (korunan değerler denetimi başta ve sonda).
+fn socket_ttl(rest: &[String]) -> anyhow::Result<()> {
+    let root = repo_root();
+    let all = filter_targets(load_targets(&root)?, parse_only(rest)?.as_deref())?;
+    let env = real_env(&root, &all)?;
+    let targets: Vec<ProbeTarget> = all.into_iter().filter(|t| t.role == Role::Target).collect();
+    run_scenario(
+        "S5-soket — kendi soketimizde TTL 64 / 65 / 128 (H7)",
+        "s5",
+        "Sistem ayarı yok: yalnızca probun kendi soketinin taban IP_TTL'i değişir; sistem hop limiti okunur, yazılmaz. Not: telefon hotspot'unda TTL 64 ve 128 ile giden prob paketleri operatöre paylaşım (tethering) trafiği gibi görünebilir.",
+        false,
+        &scenario::s5_cells(),
+        &targets,
+        &env,
+        &mut |_| Ok(()),
     )
 }
 
@@ -529,15 +605,16 @@ fn clean_bin() -> anyhow::Result<()> {
 pub fn dispatch(cmd: Option<&str>, rest: &[String]) -> anyhow::Result<()> {
     match cmd {
         Some("inventory") => inventory(),
-        Some("baseline") => baseline(),
-        Some("techniques") => techniques(),
+        Some("baseline") => baseline(rest),
+        Some("techniques") => techniques(rest),
+        Some("ttl") => socket_ttl(rest),
         Some("recover") => recover(),
         Some("report") => report::main(rest),
         Some("clean-bin") => clean_bin(),
         Some("preflight") => preflight_cmd(),
         Some("watchdog") => super::watchdog::main(rest),
         other => bail!(
-            "bilinmeyen lab komutu: {other:?}\nkomutlar: preflight | inventory | baseline | techniques | recover | report <koşu-dizini> | clean-bin"
+            "bilinmeyen lab komutu: {other:?}\nkomutlar: preflight | inventory | baseline [--only önek] | techniques [--only önek] | ttl [--only önek] | recover | report <koşu-dizini> | clean-bin"
         ),
     }
 }
@@ -562,5 +639,53 @@ mod tests {
         assert!(targets.iter().any(|t| t.role == Role::Control));
         assert!(targets.iter().filter(|t| t.role == Role::Target).count() >= 6);
         assert_eq!(targets[0].role, Role::Control);
+        for name in ["wattpad-web", "wattpad-www", "wattpad-api"] {
+            assert!(
+                targets
+                    .iter()
+                    .any(|t| t.name == name && t.role == Role::Target),
+                "{name}"
+            );
+        }
+    }
+
+    fn t(name: &str, role: Role) -> ProbeTarget {
+        ProbeTarget {
+            name: name.into(),
+            domain: format!("{name}.example"),
+            port: 443,
+            path: "/".into(),
+            role,
+        }
+    }
+
+    #[test]
+    fn only_filter_keeps_control_and_matching_targets() {
+        let all = vec![
+            t("control-a", Role::Control),
+            t("discord-web", Role::Target),
+            t("wattpad-web", Role::Target),
+            t("wattpad-api", Role::Target),
+        ];
+        let kept: Vec<String> = filter_targets(all.clone(), Some("wattpad"))
+            .unwrap()
+            .into_iter()
+            .map(|x| x.name)
+            .collect();
+        assert_eq!(kept, ["control-a", "wattpad-web", "wattpad-api"]);
+        assert_eq!(filter_targets(all.clone(), None).unwrap().len(), 4);
+        assert!(filter_targets(all, Some("yok")).is_err());
+    }
+
+    #[test]
+    fn only_flag_parsing() {
+        let args = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        assert_eq!(parse_only(&args(&[])).unwrap(), None);
+        assert_eq!(
+            parse_only(&args(&["--only", "wattpad"])).unwrap(),
+            Some("wattpad".to_string())
+        );
+        assert!(parse_only(&args(&["--only"])).is_err());
+        assert!(parse_only(&args(&["--bilinmeyen"])).is_err());
     }
 }

@@ -21,6 +21,19 @@ target\xtask\debug\xtask.exe lab preflight
   - `lab preflight` çıktısında "Bekçi: iş nesnesi dışında" yazmalıdır.
 - S1 (`lab baseline`) ve S2-U (`lab techniques`) sistem değiştirmez. Bu yüzden `cargo xtask` altında
   da çalışırlar; yalnızca bir uyarı basılır.
+- S5-soket (`lab ttl`) da sistem değiştirmez: yalnızca probun kendi soketinin taban `IP_TTL`'i
+  64 / 65 / 128 olur. Sistem hop limiti hiçbir senaryoda yazılmaz (ADR-010, ADR-014).
+  - Telefon hotspot'unda TTL 64 ve 128 ile giden prob paketleri operatöre paylaşım trafiği gibi
+    görünebilir; onay ekranı bunu belirtir.
+- `--only <önek>` yalnızca adı o önekle başlayan hedefleri ölçer; kontrol probları her zaman
+  kalır. Örnek: `lab baseline --only wattpad`, `lab techniques --only wattpad`.
+- **Korunan değerler (ADR-014):** Her senaryo başında ve sonunda kullanıcıya ait değerlerin
+  anlık görüntüsü alınır (`lab/scripts/korunan-degerler.ps1`, salt okunur): hop limit, bağlı
+  arayüzlerin MTU'su ve otomatik metrik ayarı, varsayılan rotalar, DNS, DoH, NRPT, WinINET ve
+  WinHTTP proxy'si, güvenlik duvarı profilleri.
+  - Sonuç `lab/results/<koşu>/korunan-degerler.json` dosyasına yazılır.
+  - Fark varsa koşu başarısız sayılır. AlterDNS bu değerlere yazmaz ve düzeltmeye çalışmaz;
+    farkı başka bir program veya ağ (ör. DHCP) yapmış olabilir.
 
 ## 2. Bayat journal: `lab recover`
 

@@ -39,13 +39,13 @@ Yönetim, sistem tepsisi simgesinden açılan flyout ile yapılır. Ana pencere 
 
 ## Değişmez kurallar
 
-1. **Geliştirici makinesinin bağlantısını koparma.** Ağ ayarı, DNS, rota, sanal adaptör, paket sürücüsü veya hop limit üzerindeki her deneme şu koşullara uyar:
+1. **Geliştirici makinesinin bağlantısını koparma.** AlterDNS'in kendi nesneleriyle (kendi sanal adaptörü, kendi rotaları, paket sürücüsü) yapılan her deneme şu koşullara uyar:
    - `xtask lab` düzeneğinde, zaman sınırlı çalışır.
    - Ayrı işlemde çalışan bir geri alma bekçisiyle (≤ 60 sn) korunur.
    - Kullanıcının o oturumdaki açık onayını gerektirir.
 
    Journal'a yazılmamış sistem değişikliği yapılmaz. Ayrıntı: `CLAUDE.local.md`.
-2. **Hop limit/TTL ayarı okunur, asla yazılmaz** (ADR-010). Kaldırma sırasında da kullanıcıya ait ayarlara dokunulmaz.
+2. **Kullanıcıya ait sistem değerleri okunur, asla yazılmaz; lab dahil, geçici olarak da** (ADR-010, ADR-014). Kapsam: hop limit/TTL, DNS ve DoH, proxy, MTU, rotalar ve metrikler, güvenlik duvarı ve benzerleri. Program ve testler makinedeki mevcut değeri okuyup ona uyum sağlar; farklı değerlerin etkisi kendi soketimizde (ör. `IP_TTL`) veya başka makine/VM/ağda ölçülür. Kaldırma sırasında da kullanıcıya ait ayarlara dokunulmaz.
 3. **Zararlı yazılımı ana makinede çalıştırma.** Gerçek örnekler yalnızca ağı ve paylaşılan klasörü kapalı izole bir VM'de kullanılır. EICAR testleri `--features eicar-tests` ile VM'de çalışır. EICAR dizesi depoya düz metin olarak yazılmaz.
 4. **Antivirüsü ve Smart App Control'ü kapatma**, istisna ekleme ve kullanıcıya bunları önerme. (SAC kapatılırsa Windows sıfırlanmadan geri açılamaz.)
 5. **Makinedeki başka DPI araçlarına onaysız dokunma.** Okuyabilirsin; durdurmak için onay iste ve iş bitince eski durumuna getir.

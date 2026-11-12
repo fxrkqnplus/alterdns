@@ -1,0 +1,17 @@
+# AlterDNS lab — Wattpad web/API probları (TCP + TLS + HTTP durum satırı).
+# Barındırma (RIPEstat, 2026-11-12): Amazon CloudFront, paylaşımlı adresler; rota yalnızca /32.
+
+[[probe]]
+name = "wattpad-web"
+domain = "wattpad.com"
+role = "target"
+
+[[probe]]
+name = "wattpad-www"
+domain = "www.wattpad.com"
+role = "target"
+
+[[probe]]
+name = "wattpad-api"
+domain = "api.wattpad.com"
+role = "target"

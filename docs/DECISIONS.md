@@ -170,7 +170,11 @@ Varsayılan: AppContainer (yetenek yok) + Low IL + Job Object + handle aktarım�
 
 ## ADR-010 — Hop limit politikası · Kabul
 
-AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kullanıcının o oturumdaki açık onayıyla, bekçili ve ≤ 10 dk süren karşılaştırma yapılabilir (D5). Kaldırma sırasında kullanıcıya ait bu değere dokunulmaz.
+AlterDNS hop limit değerini **okur, asla yazmaz**. Lab dahil, geçici olarak da yazılmaz (D5, 2026-11-12). Kaldırma sırasında kullanıcıya ait bu değere dokunulmaz.
+
+- **Uyum:** Motor, sistemin mevcut değerini (IPv4 ve IPv6; ör. 64, 65, 128) okur ve tekniği buna göre seçer. TTL'e bağlı teknikler gerekirse yalnızca AlterDNS'in kendi soketinde (`IP_TTL`) değer kullanır.
+- **Ölçüm:** Farklı hop limitlerin etkisi kendi prob soketlerimizde `IP_TTL` ile (S5-soket) veya uyumluluk matrisindeki başka makinelerde ölçülür.
+- Genel ilke: ADR-014.
 
 ---
 
@@ -228,6 +232,26 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 
 ---
 
+## ADR-014 — Makineye özgü değerler: oku, uyum sağla, değiştirme · Kabul (2026-11-12, kullanıcı kararı)
+
+**Bağlam:** AlterDNS'in hedefi olabildiğince çok Windows sisteminde sorunsuz çalışmak. Kullanıcıların sistem değerleri birbirinden farklıdır ve bunlar kullanıcıya ya da başka yazılımlara aittir. Örneğin geliştiricinin IPv4 hop limiti bilinçli olarak 65'tir; başka bir makinede 64, 128 veya başka bir geçerli değer olabilir. Bu değerleri değiştirmek, kısa süreliğine bile olsa, kullanıcının bağlantısını, başka programları veya güvenlik ayarlarını bozabilir.
+
+**Kapsam (başlangıç listesi):**
+- **Ağ yığını:** hop limit (IPv4/IPv6, arayüz düzeyi), MTU ve Path MTU, IPv6 varlığı, arayüz metrikleri, varsayılan rotalar ve başka yazılımların rotaları (ör. `198.18.0.0/15` kullanan VPN'ler).
+- **Ad çözümü ve proxy:** DNS sunucuları, Windows DoH tablosu, NRPT kuralları, WinINET ve WinHTTP proxy'si, PAC adresi.
+- **Başka yazılımların bileşenleri:** VPN/TUN adaptörleri ve sürücüleri (Wintun, WireGuard, TAP, WinDivert), başka DPI araçları, WSL/Hyper-V sanal anahtarları.
+- **Güvenlik ve ortam:** güvenlik duvarı profilleri, ağ profili (Public/Private), ölçülü bağlantı, Defender/üçüncü taraf AV, Smart App Control, HVCI, Windows sürümü ve yapısı, kullanıcının yetki düzeyi, captive portal.
+
+**Karar:**
+1. **Yalnız okuma:** Ürün ve bütün testler (lab dahil) bu değerleri yalnızca okur; geçici olarak da değiştirmez. AlterDNS yalnızca kendi oluşturduğu nesneleri (kendi adaptörü, kendi rotaları, kendi soket seçenekleri) journal'la ekler ve kaldırır.
+2. **Uyum:** Motor ve testler mevcut değeri okuyup ona uyar. Örnekler: teknik seçimi hop limite, bölme boyutu MTU'ya göre yapılır; adaptör adresi mevcut adres ve rotalarla çakışmayacak şekilde seçilir; başka bir yazılımın Wintun sürücü paketi kullanılır ama kaldırılmaz.
+3. **Denetim:** Her lab senaryosu başında ve sonunda korunan değerlerin anlık görüntüsü alınır. Fark varsa senaryo başarısız sayılır ve kullanıcıya bildirilir. Otomatik düzeltme yapılmaz, çünkü değer başkasınındır ve değişikliği başka bir program yapmış olabilir.
+4. **Farklı değerlerin etkisi:** Sistem ayarı değiştirilerek değil; kendi soketimizde (ör. `IP_TTL`) ya da uyumluluk matrisindeki başka makine, VM veya ağda ölçülür.
+
+**Sonuç:** D5 kapandı (sistem hop limiti lab'da da değişmez). ADR-010 bu ilkenin hop limit için özel hâlidir. Uyumluluk matrisi (TESTING.md §6) bu değerleri eksen olarak taşır.
+
+---
+
 ## Kullanıcı kararları
 
 ### Verilenler
@@ -239,6 +263,7 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 | D3 | Kod imzalama | **Yalnız ücretsiz yollar:** SignPath Foundation başvurusu + Artifact Attestations + Ed25519 (ADR-012) | 2026-11-09 |
 | — | Uzantı dağıtımı | **Mağaza yok**; geliştirici modu + "Tarayıcıda kur" düğmesi (ADR-011) | 2026-11-09 |
 | D8 | Bağlantı motoru teknolojisi (ADR-003) | **Koşullu kabul:** Wintun TUN + kullanıcı modu motor; yedek PAC; WinDivert askıda. Kesinleşme şartları: SignPath ön sorusunun yanıtı ve S4 (gerçek istemciler, UDP teknikleri) | 2026-11-11 |
+| D5 | Lab'da TTL 128 karşılaştırması | **Hayır; sistem hop limiti hiçbir zaman değişmez** (geçici de). H7 yalnızca kendi prob soketlerimizde `IP_TTL` 64 / 65 / 128 ile ölçülür (S5-soket). Genel ilke ADR-014 | 2026-11-12 |
 | D6 | Makinedeki eski DPI paketi | **Kapandı:** kullanıcı paketi Faz 0 başında tamamen kaldırdı (servis, görev, sürücü, program klasörü). Aynı adlı servis çakışması Faz 6 matrisinde ölçülür | 2026-11-09 |
 
 ### Açık kararlar
@@ -246,5 +271,4 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Yalnızca lab modunda, kulla
 | # | Karar | Seçenekler | Ne zaman | Etkisi |
 |---|---|---|---|---|
 | D4 | Ticari mi, ticari olmayan mı | (a) Ücretsiz / ticari olmayan. (b) Ticari | Faz 4 başı | Safe Browsing ↔ Web Risk, abuse.ch aboneliği, VirusTotal koşulları. SignPath ticari ikili lisansı zaten yasaklıyor |
-| D5 | Lab'da TTL 128 karşılaştırması | (a) Evet, kısa ve bekçili. (b) Hayır | Faz 0 | H7 testi; operatörün tethering tespiti riski |
 | D7 | SignPath reddederse veya bağlantı modülünü kapsam dışı sayarsa | (a) İmzasız dağıtıma devam. (b) Bağlantı modülünü ayrı, imzasız bir proje olarak dağıtmak, çekirdeği imzalı tutmak. (c) Başka ücretsiz bir program çıkarsa değerlendirmek | Faz 6 | Kurulabilirlik (SmartScreen, SAC), mimari bölünme |

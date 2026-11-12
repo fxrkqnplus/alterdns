@@ -44,7 +44,7 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 | H4 | Hatalı checksum'lı sahte paketler iPhone NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | ~~`-7` tek başına~~ (iptal, D8). Hatalı checksum'lı paket kendi soketimizle gönderilemez; sürücüsüz yöntemle test edilemez | Faz 0'da "belirsiz" (gerekçe: test yöntemi yok) |
 | H5 | "Çalışmıyor" gözlemi web değil, UDP trafiğiyle ilgili (Discord sesi, Roblox oyun). GoodbyeDPI bunları kapsamıyor | E11 | Discord masaüstü sesli kanal, Roblox oyuna katılım; web probları geçerken | Web geçiyor, ses/oyun başarısız → destek |
 | H6 | Yerel durum: DPI servisi durmuş veya çökmüş, zamanlanmış görev tetiklenmemiş, başka bir WinDivert istemcisi var, Defender müdahalesi | E4 (yerel) | Paket kaldırıldığı için canlı durum gözlenemez. Tarihsel kanıt: olay günlüğü (Service Control Manager 7031/7034, WinDivert), Defender koruma geçmişi, paketten kalan bağlantı logları (`CLAUDE.local.md`) | Hata kaydı varsa destek; kanıt yetersizse belirsiz |
-| H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab, D5 onayıyla**: kısa süreli 128 ↔ 65 karşılaştırması; aynı matris. Bekçi ≤ 60 sn içinde 65'e döner | 128'de çalışan kip 65'te başarısızsa (veya tersi) → destek |
+| H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab (S5-soket):** Sistem hop limiti değişmez (D5, ADR-014). Yalnızca prob soketlerine `IP_TTL` 64 / 65 / 128 verilir; tekniksiz + S2-U'nun en iyi 3 tekniği | Bir teknik 65'te geçip 128'de (veya 64'te) başarısızsa ya da tersi → destek |
 | H8 | GoodbyeDPI'ın otomatik TTL mantığı, gelen paket TTL'inden mesafe tahmin eder (128/64 − TTL). Giden TTL'in (65) bu hesaba doğrudan etkisi olmamalı | E8 | S2-U: sabit `IP_TTL` taraması (N = 1…8) ile `Disorder`; `Fake` Faz 0'da uygulanmadı ("test edilmedi"). GoodbyeDPI'ın gelen TTL'den otomatik hesabı ölçülmez (iptal, D8) | Giden TTL'den bağımsızlık beklenir; kısmi test, gerekçesiyle |
 | H9 | MTU veya parçalama: hücresel yolda etkin MTU daha düşük; ters parçalama ve `--max-payload` etkileşimi | — | S2-U: bölme konumu taraması (sabit ofset, SNI ortası) ve `TlsRecordSplit`; Path MTU ölçümü | Varyantlar arasında anlamlı fark → destek |
 
@@ -80,7 +80,7 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 4. **S2-U — Sürücüsüz soket teknikleri** (hop limit 65; sistem değişikliği yok): `None`, `Split`, `TlsRecordSplit`, `Disorder { IP_TTL 1…8 }`, `Oob` (`Fake` Faz 0'da yok) × bölme konumu {sabit ofset, SNI ortası} × DNS {sistem, DoH} × 3 tekrar. `IP_TTL` yalnızca probun kendi soketindedir. Path MTU ölçümü (H1, H8, H9).
 5. **Wintun spike'ı** (onaylı, yönetici terminali): tek bir test IP'si için TUN rotası, kullanıcı modunda TCP sonlandırma + teknikli yeniden kurma, UDP iletimi; CPU, bellek ve gecikme ölçümü (H5'in UDP kısmı).
 6. **S4 — Gerçek istemciler (el ile, yönergeli; Wintun spike'ından sonra):** Discord masaüstü (giriş, metin, sesli kanal), Roblox (oyuna katılım). S2-U'nun en iyi 2 tekniğiyle, Wintun yolundan (H5).
-7. **S5 — D5 onaylanırsa:** S2-U'nun en iyi 3 tekniği, hop limit 128 ile ≤ 10 dk içinde tekrarlanır. Bekçi 65'e döner (H7).
+7. **S5-soket (H7):** Sistem hop limiti değişmez (D5 kapandı, ADR-014). Tekniksiz bağlantı ve S2-U'nun en iyi 3 tekniği, prob soketinde `IP_TTL` 64 / 65 / 128 ile 3'er kez denenir. Operatör 64 ve 128 paketlerini paylaşım trafiği gibi görebilir; çalıştırmadan önce kullanıcı onayı alınır.
 8. **S6 — Başka ağ varsa:** S1 ve S2-U tekrarlanır (H2).
 9. **Rapor:** Hipotez tablosu (destek / çürüdü / belirsiz + kanıt), Faz 2 için başlangıç strateji kataloğu ve sıralama önerisi.
 
@@ -139,7 +139,7 @@ Diğer ölçümler:
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
 | H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor: test IP'sinin 443/UDP portu sürüm anlaşması datagramlarına doğrudan ve TUN üzerinden 3/3 yanıt verdi. Discord sesi ve Roblox oyunu S4'te ölçülecek |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
-| H7 | Ölçülmedi | — | Yalnızca S5 (D5 onayı) ölçebilir |
+| H7 | Ölçülmedi | — | S5-soket ile ölçülecek (sistem hop limiti değişmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
 | H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
 

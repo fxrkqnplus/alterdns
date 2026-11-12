@@ -5,6 +5,7 @@
 
 pub mod cli;
 pub mod dns;
+pub mod guarded;
 pub mod journal;
 pub mod ops;
 pub mod probe;
