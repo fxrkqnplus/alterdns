@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="t d">
+  <title id="t">AlterDNS işlem modeli</title>
+  <desc id="d">Kullanıcı oturumundaki tepsi ajanı, ana pencere ve tarayıcı köprüsü, korumalı bir named pipe üzerinden LocalSystem servisine bağlanır. Dosyalar ayrı bir sandbox işçisinde incelenir; kurulum ve güncelleme ayrı bir yönetici işlemiyle yapılır.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111B30"/>
+    </linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#7C8DB0"/>
+    </marker>
+    <style>
+      .zone { fill: none; stroke: #2A3756; stroke-width: 1.4; stroke-dasharray: 6 6; }
+      .zl { font: 600 11.5px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #7F92B6; letter-spacing: 0.7px; }
+      .box { fill: #121C31; stroke: #23304D; stroke-width: 1.5; }
+      .svc { fill: #13213A; stroke: #60A5FA; stroke-width: 1.8; }
+      .sand { fill: #1A1630; stroke: #A78BFA; stroke-width: 1.6; }
+      .adm { fill: #2A1F12; stroke: #FBBF24; stroke-width: 1.6; }
+      .h { font: 600 15px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #EEF3FB; }
+      .m { font: 600 12px Consolas, 'Cascadia Mono', Menlo, monospace; fill: #93C5FD; }
+      .s { font: 400 12.5px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #A9B8D3; }
+      .chip { fill: #0E1A30; stroke: #2B4A7A; stroke-width: 1.2; }
+      .ct { font: 600 12.5px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #CFE0FA; }
+      .ln { stroke: #7C8DB0; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .pipe { font: 500 12px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #93C5FD; }
+    </style>
+  </defs>
+  <rect width="960" height="560" rx="22" fill="url(#bg)"/>
+
+  <!-- Kullanıcı oturumu -->
+  <rect class="zone" x="24" y="24" width="912" height="196" rx="16"/>
+  <text class="zl" x="44" y="50">KULLANICI OTURUMU · ORTA BÜTÜNLÜK</text>
+
+  <g transform="translate(44 66)">
+    <rect class="box" width="260" height="132" rx="12"/>
+    <text class="m" x="16" y="28">alterdns-tray</text>
+    <text class="h" x="16" y="54">Tepsi ajanı</text>
+    <text class="s" x="16" y="78">Tepsi simgesi ve flyout, bildirimler,</text>
+    <text class="s" x="16" y="96">indirme izleyici, tarama aracısı</text>
+    <text class="s" x="16" y="114">Oturum boyunca, hafif</text>
+  </g>
+  <g transform="translate(330 66)">
+    <rect class="box" width="260" height="132" rx="12"/>
+    <text class="m" x="16" y="28">alterdns-ui</text>
+    <text class="h" x="16" y="54">Ana pencere</text>
+    <text class="s" x="16" y="78">Ayrıntılı ayarlar ve raporlar</text>
+    <text class="s" x="16" y="96">İstek üzerine açılır,</text>
+    <text class="s" x="16" y="114">pencere kapanınca çıkar</text>
+  </g>
+  <g transform="translate(616 66)">
+    <rect class="box" width="300" height="132" rx="12"/>
+    <text class="m" x="16" y="28">alterdns-nmh</text>
+    <text class="h" x="16" y="54">Tarayıcı köprüsü</text>
+    <text class="s" x="16" y="78">MV3 uzantısı ↔ native messaging</text>
+    <text class="s" x="16" y="96">Her mesaj şema doğrulamasından</text>
+    <text class="s" x="16" y="114">geçer</text>
+  </g>
+
+  <!-- IPC -->
+  <path class="ln" d="M174 202v70"/>
+  <path class="ln" d="M460 202v70"/>
+  <path class="ln" d="M766 202v39h-38"/>
+  <rect x="236" y="226" width="488" height="30" rx="15" fill="#0E1A30" stroke="#2B4A7A"/>
+  <text class="pipe" x="480" y="246" text-anchor="middle">Named pipe · DACL · çağıran işlem doğrulaması</text>
+
+  <!-- Servis -->
+  <g transform="translate(24 280)">
+    <rect class="svc" width="600" height="176" rx="16"/>
+    <text class="m" x="20" y="30">alterdns-svc</text>
+    <text class="h" x="20" y="56">Windows servisi · LocalSystem · sürekli</text>
+    <g transform="translate(20 76)">
+      <rect class="chip" width="176" height="80" rx="10"/>
+      <text class="ct" x="14" y="28">Bağlantı motoru</text>
+      <text class="s" x="14" y="50">Wintun + kullanıcı</text>
+      <text class="s" x="14" y="68">modu motor</text>
+    </g>
+    <g transform="translate(212 76)">
+      <rect class="chip" width="176" height="80" rx="10"/>
+      <text class="ct" x="14" y="28">Journal ve bekçi</text>
+      <text class="s" x="14" y="50">Önce kaydet, uygula,</text>
+      <text class="s" x="14" y="68">gerekirse geri al</text>
+    </g>
+    <g transform="translate(404 76)">
+      <rect class="chip" width="176" height="80" rx="10"/>
+      <text class="ct" x="14" y="28">Tehdit beslemeleri</text>
+      <text class="s" x="14" y="50">İndir, doğrula,</text>
+      <text class="s" x="14" y="68">yerel veritabanı</text>
+    </g>
+  </g>
+
+  <!-- Sandbox -->
+  <g transform="translate(648 280)">
+    <rect class="sand" width="288" height="96" rx="14"/>
+    <text class="m" x="18" y="28" fill="#C4B5FD">alterdns-scan</text>
+    <text class="h" x="18" y="52">Sandbox işçisi</text>
+    <text class="s" x="18" y="76">AppContainer · Low IL · tarama başına</text>
+  </g>
+
+  <!-- Yönetici -->
+  <g transform="translate(648 392)">
+    <rect class="adm" width="288" height="64" rx="14"/>
+    <text class="m" x="18" y="26" fill="#FCD34D">alterdns-setup · maint</text>
+    <text class="s" x="18" y="48">Yönetici · kurulum, güncelleme, kaldırma</text>
+  </g>
+
+  <!-- Alt bilgi -->
+  <g transform="translate(24 476)">
+    <rect width="912" height="60" rx="14" fill="#0E1729" stroke="#1C2742"/>
+    <text class="s" x="20" y="27">Güvenilmeyen içerik hiçbir zaman ayrıcalıklı bir işlemde ayrıştırılmaz. Boştayken yalnızca servis ve tepsi ajanı çalışır;</text>
+    <text class="s" x="20" y="45">güncellemeler GitHub Releases'tan, imzalı manifest ve hash doğrulamasıyla alınır.</text>
+  </g>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="330" viewBox="0 0 960 330" role="img" aria-labelledby="t d">
+  <title id="t">Bağlantı motoru akışı</title>
+  <desc id="d">Uygulama trafiği AlterDNS'in kendi rotalarıyla Wintun adaptörüne gelir, kullanıcı modu motor TLS ClientHello'ya tekniği uygular ve trafiği fiziksel arayüzden gönderir.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111B30"/>
+    </linearGradient>
+    <marker id="ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#5EEAD4"/>
+    </marker>
+    <style>
+      .node { fill: #121C31; stroke: #23304D; stroke-width: 1.5; }
+      .hot { fill: #0F2A2A; stroke: #2DD4BF; stroke-width: 1.8; }
+      .h { font: 600 16px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #EEF3FB; }
+      .s { font: 400 12.5px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #A9B8D3; }
+      .tag { font: 600 11px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #5EEAD4; letter-spacing: 0.6px; }
+      .note { font: 400 13.5px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #C9D5EA; }
+      .line { stroke: #5EEAD4; stroke-width: 2; fill: none; marker-end: url(#ok); }
+    </style>
+  </defs>
+  <rect width="960" height="330" rx="22" fill="url(#bg)"/>
+  <text class="tag" x="32" y="40">BAĞLANTI MOTORU · ADAY TASARIM (D8)</text>
+
+  <g transform="translate(32 64)">
+    <rect class="node" width="160" height="104" rx="14"/>
+    <text class="h" x="16" y="34">Uygulama</text>
+    <text class="s" x="16" y="58">Tarayıcı, oyun,</text>
+    <text class="s" x="16" y="76">masaüstü istemcisi</text>
+  </g>
+  <path class="line" d="M196 116h30"/>
+
+  <g transform="translate(230 64)">
+    <rect class="node" width="160" height="104" rx="14"/>
+    <text class="h" x="16" y="34">Kendi rotalar</text>
+    <text class="s" x="16" y="58">Yalnızca hedef</text>
+    <text class="s" x="16" y="76">servislerin trafiği</text>
+  </g>
+  <path class="line" d="M394 116h30"/>
+
+  <g transform="translate(428 64)">
+    <rect class="node" width="160" height="104" rx="14"/>
+    <text class="h" x="16" y="34">Wintun</text>
+    <text class="s" x="16" y="58">Kendi sanal</text>
+    <text class="s" x="16" y="76">TUN adaptörü</text>
+  </g>
+  <path class="line" d="M592 116h30"/>
+
+  <g transform="translate(626 56)">
+    <rect class="hot" width="160" height="120" rx="14"/>
+    <text class="h" x="16" y="34">Kullanıcı modu</text>
+    <text class="h" x="16" y="54">motor</text>
+    <text class="s" x="16" y="80">ClientHello'ya teknik</text>
+    <text class="s" x="16" y="98">UDP olduğu gibi</text>
+  </g>
+  <path class="line" d="M790 116h30"/>
+
+  <g transform="translate(824 64)">
+    <rect class="node" width="104" height="104" rx="14"/>
+    <text class="h" x="16" y="34">İnternet</text>
+    <text class="s" x="16" y="58">Fiziksel</text>
+    <text class="s" x="16" y="76">arayüzden</text>
+  </g>
+
+  <g transform="translate(32 206)">
+    <rect width="896" height="96" rx="14" fill="#0E1729" stroke="#1C2742"/>
+    <circle cx="24" cy="32" r="4" fill="#2DD4BF"/>
+    <text class="note" x="38" y="37">Her değişiklik önce journal'a yazılır; ayrı işlemdeki bekçi, çökme veya bağlantı kaybında 60 sn içinde geri alır.</text>
+    <circle cx="24" cy="64" r="4" fill="#2DD4BF"/>
+    <text class="note" x="38" y="69">Kullanıcıya ait ayarlar (hop limit, DNS, proxy, MTU, varsayılan rota) okunur, asla değiştirilmez.</text>
+  </g>
+</svg>
