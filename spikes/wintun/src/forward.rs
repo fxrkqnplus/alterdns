@@ -209,8 +209,9 @@ impl Drop for OutboundGuard {
     }
 }
 
-/// Eşzamanlı aktarım üst sınırı (spike tek hedefe birkaç prob gönderir).
-const MAX_ACTIVE: u64 = 64;
+/// Eşzamanlı aktarım üst sınırı. S4'te gerçek istemciler (tarayıcı, Discord) çok sayıda
+/// bağlantı açar; sınır kaynak tüketimini yine de sınırlar.
+const MAX_ACTIVE: u64 = 256;
 
 /// İletim motorunun paylaşılan durumu: geçerli teknik, sayaçlar ve döngü koruması.
 pub struct Engine {

@@ -180,9 +180,68 @@ fn addr_op() -> OpKind {
 }
 
 pub fn route_op(ip: Ipv4Addr) -> OpKind {
+    prefix_op(ip, 32)
+}
+
+pub fn prefix_op(net: Ipv4Addr, len: u8) -> OpKind {
     OpKind::Route {
-        prefix: format!("{ip}/32"),
+        prefix: format!("{net}/{len}"),
         if_name: SPIKE_ADAPTER.into(),
+    }
+}
+
+/// Başta kurulacak rotaların üst sınırı (öğrenilenler hariç).
+pub const MAX_ROUTES: usize = 256;
+
+/// Tünelin rotaları ve motorun ileteceği adres kümesi (ikisi aynı içeriği taşır).
+pub struct RoutePlan {
+    pub set: Arc<forward::RouteSet>,
+    pub ops: Vec<OpKind>,
+    /// Kümenin içinden bir adres: fiziksel arayüzü belirlemek ve rotanın etkisini doğrulamak için.
+    pub probe_ip: Ipv4Addr,
+}
+
+impl RoutePlan {
+    /// Görev 7: tek test IP'si.
+    pub fn single(ip: Ipv4Addr) -> Self {
+        Self {
+            set: Arc::new(forward::RouteSet::single(ip)),
+            ops: vec![route_op(ip)],
+            probe_ip: ip,
+        }
+    }
+
+    /// S4: sağlayıcı önekleri + alan adlarından çözülen tek IP'ler.
+    pub fn s4(
+        prefixes: &[(Ipv4Addr, u8)],
+        hosts: &std::collections::BTreeSet<Ipv4Addr>,
+    ) -> anyhow::Result<Self> {
+        if prefixes.len() + hosts.len() > MAX_ROUTES {
+            bail!(
+                "çok fazla rota: {} (en çok {MAX_ROUTES})",
+                prefixes.len() + hosts.len()
+            );
+        }
+        let probe_ip = hosts
+            .iter()
+            .next()
+            .copied()
+            .or_else(|| prefixes.first().map(|(net, _)| *net))
+            .ok_or_else(|| anyhow::anyhow!("S4 rota planı boş"))?;
+        let set = forward::RouteSet::new(prefixes)?;
+        for ip in hosts {
+            set.add_host(*ip);
+        }
+        let ops = prefixes
+            .iter()
+            .map(|(net, len)| prefix_op(*net, *len))
+            .chain(hosts.iter().map(|ip| route_op(*ip)))
+            .collect();
+        Ok(Self {
+            set: Arc::new(set),
+            ops,
+            probe_ip,
+        })
     }
 }
 
@@ -211,9 +270,10 @@ pub struct Tunnel {
     pub tun_if: u32,
     pub mtu: u16,
     pub driver_version: Option<(u16, u16)>,
+    pub set: Arc<forward::RouteSet>,
     wd: WatchdogHandle,
     journal: Journal,
-    route: OpKind,
+    routes: Vec<OpKind>,
     serve_task: tokio::task::JoinHandle<()>,
     rt: tokio::runtime::Runtime,
     adapter: Arc<Adapter>,
@@ -251,9 +311,28 @@ impl Tunnel {
         run: &str,
         tech: SockTech,
     ) -> anyhow::Result<Tunnel> {
-        let ip = ctx.test_ip();
+        Self::up_with(
+            ctx,
+            lib,
+            out_dir,
+            run,
+            tech,
+            RoutePlan::single(ctx.test_ip()),
+        )
+    }
+
+    /// `up`; rotalar ve motor kümesi `plan`dan gelir (S4).
+    pub fn up_with(
+        ctx: &Ctx,
+        lib: &Arc<Wintun>,
+        out_dir: &Path,
+        run: &str,
+        tech: SockTech,
+        plan: RoutePlan,
+    ) -> anyhow::Result<Tunnel> {
         // Fiziksel arayüz, rota eklenmeden önce belirlenir (sonra en iyi arayüz TUN olur).
-        let phys_if = ffi::best_interface_v4(ip).context("fiziksel arayüz bulunamadı")?;
+        let phys_if =
+            ffi::best_interface_v4(plan.probe_ip).context("fiziksel arayüz bulunamadı")?;
         let mut journal = Journal::create(&journal_dir(&ctx.root), run)?;
         let mut wd = WatchdogHandle::spawn_with(&ctx.xtask_exe, journal.path(), out_dir)?;
         if let Err(why) = job_gate(wd.outside_job(), true) {
@@ -261,16 +340,17 @@ impl Tunnel {
             bail!("{why}");
         }
         wd.renew(MAX_LEASE_SECS)?;
-        match Self::build(ctx, lib, &mut journal, &mut wd, phys_if, tech) {
+        match Self::build(lib, &mut journal, &mut wd, phys_if, tech, &plan) {
             Ok(p) => Ok(Tunnel {
                 engine: p.engine,
                 phys_if: p.phys_if,
                 tun_if: p.tun_if,
                 mtu: p.mtu,
                 driver_version: p.driver_version,
+                set: plan.set,
                 wd,
                 journal,
-                route: route_op(ip),
+                routes: plan.ops,
                 serve_task: p.serve_task,
                 rt: p.rt,
                 adapter: p.adapter,
@@ -297,14 +377,14 @@ impl Tunnel {
     }
 
     fn build(
-        ctx: &Ctx,
         lib: &Arc<Wintun>,
         journal: &mut Journal,
         wd: &mut WatchdogHandle,
         phys_if: u32,
         tech: SockTech,
+        plan: &RoutePlan,
     ) -> anyhow::Result<Parts> {
-        let ip = ctx.test_ip();
+        let ip = plan.probe_ip;
         if !is_absent(&tun_op()) {
             bail!("{SPIKE_ADAPTER} zaten var; önce `xtask lab recover` çalıştırın");
         }
@@ -348,8 +428,12 @@ impl Tunnel {
             cfg.mtu_unchecked(mtu);
             ipstack::IpStack::new(cfg, TunDevice::new(session))
         };
-        let routes = Arc::new(forward::RouteSet::single(ip));
-        let serve_task = rt.spawn(forward::serve(stack, routes, Some(phys_if), engine.clone()));
+        let serve_task = rt.spawn(forward::serve(
+            stack,
+            plan.set.clone(),
+            Some(phys_if),
+            engine.clone(),
+        ));
         // Adres kullanılabilir (Preferred) ve adaptör bağlı olmalı; beklerken kira yenilenir.
         let preferred = format!(
             "(Get-NetIPAddress -InterfaceAlias '{SPIKE_ADAPTER}' -AddressFamily IPv4 -ErrorAction SilentlyContinue).AddressState"
@@ -365,13 +449,16 @@ impl Tunnel {
                 "adaptör adresi kullanılabilir (Preferred) duruma geçmedi: adres durumu {state:?}, bağlantı {link:?}"
             );
         }
-        // 4. Rota: yalnızca test IP'si (/32, ActiveStore).
-        wd.renew(MAX_LEASE_SECS)?;
-        journal.apply(&RealOps, route_op(ip), "present")?;
+        // 4. Rotalar (ActiveStore, yalnızca bu adaptöre): Görev 7'de tek test IP'si, S4'te
+        // sağlayıcı önekleri ve tek IP'ler. Her rota önce journal'a yazılır.
+        for op in &plan.ops {
+            wd.renew(MAX_LEASE_SECS)?;
+            journal.apply(&RealOps, op.clone(), "present")?;
+        }
         wd.renew(MAX_LEASE_SECS)?;
         let tun_if = ffi::best_interface_v4(ip)?;
         if tun_if == phys_if {
-            bail!("rota eklendi ama test IP'si hâlâ fiziksel arayüzden çıkıyor");
+            bail!("rota eklendi ama {ip} hâlâ fiziksel arayüzden çıkıyor");
         }
         Ok(Parts {
             engine,
@@ -397,12 +484,37 @@ impl Tunnel {
         self.wd.renew(MAX_LEASE_SECS)
     }
 
+    /// Çalışırken öğrenilen tek IP'yi ekler (S4). Önce motor kümesine, sonra journal'lı rota:
+    /// rota motordan önce gelirse o IP'nin trafiği kısa süre karadeliğe düşerdi. Zaten
+    /// kümedeyse `false`.
+    pub fn add_host(&mut self, ip: Ipv4Addr) -> anyhow::Result<bool> {
+        if self.set.contains(std::net::IpAddr::V4(ip)) {
+            return Ok(false);
+        }
+        config::validate_test_ip(ip)?;
+        self.set.add_host(ip);
+        self.wd.renew(MAX_LEASE_SECS)?;
+        let op = route_op(ip);
+        self.journal.apply(&RealOps, op.clone(), "present")?;
+        self.routes.push(op);
+        Ok(true)
+    }
+
     /// Söküm: rota ve adres betikle kaldırılır, iletim durur, adaptör DLL ile kapatılır,
     /// journal kapatılır ve kalıntı olmadığı doğrulanır.
     pub fn down(mut self) -> Teardown {
         let mut t = Teardown::default();
         let _ = self.wd.renew(MAX_LEASE_SECS);
-        for op in [self.route.clone(), addr_op()] {
+        // Önce rotalar (ters sırada), sonra adres; her birinde kira yenilenir.
+        let ops: Vec<OpKind> = self
+            .routes
+            .iter()
+            .rev()
+            .cloned()
+            .chain([addr_op()])
+            .collect();
+        for op in ops {
+            let _ = self.wd.renew(MAX_LEASE_SECS);
             if let Err(e) = RealOps.write(&op, "absent") {
                 t.notes.push(format!("{op:?} kaldırılamadı: {e:#}"));
             }
@@ -437,7 +549,7 @@ impl Tunnel {
             Err(e) => t.notes.push(format!("journal geri alınamadı: {e:#}")),
         }
         t.adapter_absent = is_absent(&tun_op());
-        t.route_absent = is_absent(&self.route);
+        t.route_absent = self.routes.iter().all(is_absent);
         if let Err(e) = self.wd.done() {
             t.notes.push(format!("bekçiye DONE iletilemedi: {e:#}"));
         }
@@ -449,6 +561,51 @@ impl Tunnel {
 mod tests {
     use super::*;
     use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn s4_route_plan_has_prefix_and_host_ops() {
+        let hosts: std::collections::BTreeSet<Ipv4Addr> =
+            [Ipv4Addr::new(1, 1, 1, 1)].into_iter().collect();
+        let plan = RoutePlan::s4(&[(Ipv4Addr::new(128, 116, 0, 0), 17)], &hosts).unwrap();
+        let prefixes: Vec<String> = plan
+            .ops
+            .iter()
+            .map(|op| match op {
+                OpKind::Route { prefix, if_name } => {
+                    assert_eq!(if_name, SPIKE_ADAPTER);
+                    prefix.clone()
+                }
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(prefixes, ["128.116.0.0/17", "1.1.1.1/32"]);
+        assert!(
+            plan.set
+                .contains(std::net::IpAddr::V4(Ipv4Addr::new(128, 116, 9, 9)))
+        );
+        assert!(
+            plan.set
+                .contains(std::net::IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))
+        );
+        assert!(plan.set.contains(std::net::IpAddr::V4(plan.probe_ip)));
+    }
+
+    #[test]
+    fn s4_route_plan_rejects_empty_and_oversized() {
+        assert!(RoutePlan::s4(&[], &std::collections::BTreeSet::new()).is_err());
+        let many: std::collections::BTreeSet<Ipv4Addr> = (0..=MAX_ROUTES as u32)
+            .map(|i| Ipv4Addr::from(0x0101_0000 + i))
+            .collect();
+        assert!(RoutePlan::s4(&[], &many).is_err());
+    }
+
+    #[test]
+    fn single_route_plan_matches_run() {
+        let ip = Ipv4Addr::new(1, 1, 1, 1);
+        let plan = RoutePlan::single(ip);
+        assert_eq!(plan.ops, [route_op(ip)]);
+        assert_eq!(plan.probe_ip, ip);
+    }
 
     #[test]
     fn stale_watchdog_binary_is_detected() {
