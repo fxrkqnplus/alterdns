@@ -218,6 +218,99 @@ impl Drop for OutboundGuard {
 /// bağlantı açar; sınır kaynak tüketimini yine de sınırlar.
 const MAX_ACTIVE: u64 = 256;
 
+/// Kaydedilecek en çok bağlantı (bellek sınırı).
+const MAX_FLOWS: usize = 4000;
+
+/// Bağlantı başına canlı kayıt (S4 tanısı). Açılışta eklenir; söküme kadar kapanmayan akış
+/// "açık" görünür (ör. yanıtsız kalan bir istek).
+#[derive(Debug)]
+pub struct Flow {
+    dst: SocketAddr,
+    started: std::time::Instant,
+    sni: std::sync::Mutex<Option<String>>,
+    first_bytes: AtomicU64,
+    tls: std::sync::atomic::AtomicBool,
+    up: AtomicU64,
+    down: AtomicU64,
+    end: std::sync::Mutex<Option<String>>,
+    ms: AtomicU64,
+}
+
+/// `hold.json` için bağlantı kaydının anlık görüntüsü.
+#[derive(Debug, Clone, Serialize)]
+pub struct FlowRecord {
+    pub dst: String,
+    pub sni: Option<String>,
+    pub first_bytes: u64,
+    pub tls: bool,
+    pub up: u64,
+    pub down: u64,
+    pub ms: u64,
+    pub end: Option<String>,
+}
+
+impl Flow {
+    fn finish(&self, end: String) {
+        if let Ok(mut e) = self.end.lock() {
+            *e = Some(end);
+        }
+        self.ms.store(
+            u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+    }
+}
+
+/// Giden akışı sarar ve iki yöndeki baytı akış kaydına sayar.
+struct Counted<S> {
+    inner: S,
+    flow: Arc<Flow>,
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for Counted<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        let n = buf.filled().len().saturating_sub(before);
+        self.flow
+            .down
+            .fetch_add(u64::try_from(n).unwrap_or(u64::MAX), Ordering::Relaxed);
+        r
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for Counted<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let r = std::pin::Pin::new(&mut self.inner).poll_write(cx, buf);
+        if let std::task::Poll::Ready(Ok(n)) = &r {
+            self.flow
+                .up
+                .fetch_add(u64::try_from(*n).unwrap_or(u64::MAX), Ordering::Relaxed);
+        }
+        r
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
 /// İletim motorunun paylaşılan durumu: geçerli teknik, sayaçlar ve döngü koruması.
 pub struct Engine {
     tech: std::sync::Mutex<SockTech>,
@@ -225,6 +318,7 @@ pub struct Engine {
     outbound_ports: std::sync::Mutex<std::collections::HashSet<OutboundKey>>,
     halted: std::sync::atomic::AtomicBool,
     active: AtomicU64,
+    flows: std::sync::Mutex<Vec<Arc<Flow>>>,
 }
 
 impl Engine {
@@ -235,6 +329,7 @@ impl Engine {
             outbound_ports: std::sync::Mutex::new(std::collections::HashSet::new()),
             halted: std::sync::atomic::AtomicBool::new(false),
             active: AtomicU64::new(0),
+            flows: std::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -262,6 +357,54 @@ impl Engine {
         self.outbound_ports
             .lock()
             .map_or(true, |set| set.contains(&(proto, port, remote)))
+    }
+
+    /// Yeni TCP akışı kaydı açar (sınır dolduysa kayıt tutulmaz ama akış yine aktarılır).
+    fn open_flow(&self, dst: SocketAddr) -> Arc<Flow> {
+        let flow = Arc::new(Flow {
+            dst,
+            started: std::time::Instant::now(),
+            sni: std::sync::Mutex::new(None),
+            first_bytes: AtomicU64::new(0),
+            tls: std::sync::atomic::AtomicBool::new(false),
+            up: AtomicU64::new(0),
+            down: AtomicU64::new(0),
+            end: std::sync::Mutex::new(None),
+            ms: AtomicU64::new(0),
+        });
+        if let Ok(mut v) = self.flows.lock()
+            && v.len() < MAX_FLOWS
+        {
+            v.push(flow.clone());
+        }
+        flow
+    }
+
+    /// Bağlantı kayıtlarının anlık görüntüsü; kapanmamış akışın sonucu `None`.
+    pub fn flows(&self) -> Vec<FlowRecord> {
+        let Ok(v) = self.flows.lock() else {
+            return Vec::new();
+        };
+        v.iter()
+            .map(|f| {
+                let end = f.end.lock().ok().and_then(|e| e.clone());
+                let ms = if end.is_some() {
+                    f.ms.load(Ordering::Relaxed)
+                } else {
+                    u64::try_from(f.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+                };
+                FlowRecord {
+                    dst: f.dst.to_string(),
+                    sni: f.sni.lock().ok().and_then(|s| s.clone()),
+                    first_bytes: f.first_bytes.load(Ordering::Relaxed),
+                    tls: f.tls.load(Ordering::Relaxed),
+                    up: f.up.load(Ordering::Relaxed),
+                    down: f.down.load(Ordering::Relaxed),
+                    ms,
+                    end,
+                }
+            })
+            .collect()
     }
 
     /// Döngü saptandıysa motor durmuştur; artık hiçbir akış aktarılmaz.
@@ -500,9 +643,14 @@ where
     I: AsyncRead + AsyncWrite + Unpin,
 {
     Stats::add(&engine.stats.tcp_sessions);
-    let result = relay_inner(inbound, peer, phys_if, tech, engine.clone()).await;
-    if result.is_err() {
-        Stats::add(&engine.stats.tcp_errors);
+    let flow = engine.open_flow(peer);
+    let result = relay_inner(inbound, peer, phys_if, tech, engine.clone(), flow.clone()).await;
+    match &result {
+        Ok(()) => flow.finish("kapandı".into()),
+        Err(e) => {
+            Stats::add(&engine.stats.tcp_errors);
+            flow.finish(format!("hata: {e:#}"));
+        }
     }
     result
 }
@@ -513,6 +661,7 @@ async fn relay_inner<I>(
     phys_if: Option<u32>,
     tech: SockTech,
     engine: Arc<Engine>,
+    flow: Arc<Flow>,
 ) -> anyhow::Result<()>
 where
     I: AsyncRead + AsyncWrite + Unpin,
@@ -536,11 +685,19 @@ where
             Ok(Err(e)) => return Err(e.into()),
         }
     };
-    let use_tech = if matches!(state, FirstFlight::Complete(_)) {
-        tech
-    } else {
-        SockTech::None
-    };
+    let is_tls = matches!(state, FirstFlight::Complete(_));
+    let use_tech = if is_tls { tech } else { SockTech::None };
+    let first_len = u64::try_from(buf.len()).unwrap_or(u64::MAX);
+    flow.first_bytes.store(first_len, Ordering::Relaxed);
+    flow.up.fetch_add(first_len, Ordering::Relaxed);
+    flow.tls.store(is_tls, Ordering::Relaxed);
+    if let Some(name) = xtask::lab::sockettech::find_sni(&buf)
+        .and_then(|r| buf.get(r))
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        && let Ok(mut s) = flow.sni.lock()
+    {
+        *s = Some(name);
+    }
     let sock = tokio::task::spawn_blocking(move || -> anyhow::Result<Socket> {
         if !buf.is_empty() {
             xtask::lab::sockettech::send_first_flight(&sock, &buf, &use_tech)?;
@@ -550,7 +707,10 @@ where
     })
     .await??;
     let std_stream: std::net::TcpStream = sock.into();
-    let mut out = tokio::net::TcpStream::from_std(std_stream)?;
+    let mut out = Counted {
+        inner: tokio::net::TcpStream::from_std(std_stream)?,
+        flow,
+    };
     tokio::io::copy_bidirectional(&mut inbound, &mut out).await?;
     Ok(())
 }
@@ -930,6 +1090,20 @@ mod tests {
             "oturum kapanınca port kayıttan silinmeli"
         );
         assert_eq!(engine.stats.tcp_sessions.load(Ordering::Relaxed), 1);
+        // Bağlantı kaydı (S4 tanısı): hedef, ilk uçuş, iki yönde bayt, sonuç.
+        let flows = engine.flows();
+        assert_eq!(flows.len(), 1);
+        let f = &flows[0];
+        assert_eq!(f.dst, addr.to_string());
+        // İlk okuma sonraki baytları da getirebilir: ilk uçuş en az ClientHello kadardır.
+        assert!((first.len() as u64..=first.len() as u64 + 4).contains(&f.first_bytes));
+        assert_eq!(f.up, first.len() as u64 + 4, "ilk uçuş + \"sonr\"");
+        assert_eq!(f.down, 5, "\"yanit\"");
+        assert_eq!(f.end.as_deref(), Some("kapandı"));
+        if matches!(first_flight(&first), FirstFlight::Complete(_)) {
+            assert!(f.tls);
+            assert!(f.sni.is_some(), "TLS ilk uçuşunda SNI okunmalı");
+        }
     }
 
     /// OOB baytı geri döngüde alıcı akışına karışabildiği için burada sınanmaz; gerçek

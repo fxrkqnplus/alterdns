@@ -92,9 +92,49 @@ pub fn parse_answer(line: &str) -> Option<bool> {
     }
 }
 
+/// Yanıt almayan TCP akışları (gelen bayt 0), SNI'ye göre sayılır; çoktan aza sıralı.
+/// SNI yoksa hedef adresi kullanılır.
+pub fn silent_by_sni(flows: &[crate::forward::FlowRecord]) -> Vec<(String, usize)> {
+    let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for f in flows.iter().filter(|f| f.down == 0) {
+        *m.entry(f.sni.clone().unwrap_or_else(|| f.dst.clone()))
+            .or_default() += 1;
+    }
+    let mut v: Vec<(String, usize)> = m.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn silent_flows_are_grouped_by_sni() {
+        let f = |sni: Option<&str>, dst: &str, down: u64| crate::forward::FlowRecord {
+            dst: dst.into(),
+            sni: sni.map(Into::into),
+            first_bytes: 0,
+            tls: sni.is_some(),
+            up: 10,
+            down,
+            ms: 0,
+            end: None,
+        };
+        let flows = [
+            f(Some("updates.discord.com"), "1.1.1.1:443", 0),
+            f(Some("updates.discord.com"), "1.1.1.2:443", 0),
+            f(Some("discord.com"), "1.1.1.1:443", 900),
+            f(None, "2.2.2.2:80", 0),
+        ];
+        assert_eq!(
+            silent_by_sni(&flows),
+            [
+                ("updates.discord.com".to_string(), 2),
+                ("2.2.2.2:80".to_string(), 1)
+            ]
+        );
+    }
     use std::time::Duration;
     use xtask::lab::sockettech::{SockTech, SplitAt};
 

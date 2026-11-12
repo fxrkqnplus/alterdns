@@ -713,6 +713,8 @@ struct HoldReport {
     teardown: Option<Teardown>,
     answers: Vec<(String, Option<bool>)>,
     notes: Vec<String>,
+    /// Bağlantı başına kayıt (hedef, SNI, iki yönde bayt, süre, sonuç; kapanmamışsa `None`).
+    flows: Vec<forward::FlowRecord>,
 }
 
 const HOLD_QUESTIONS: [&str; 6] = [
@@ -911,7 +913,15 @@ fn hold() -> anyhow::Result<()> {
     rep.stop = stop;
     rep.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     rep.engine = serde_json::to_value(&*t.engine.stats).ok();
+    rep.flows = t.engine.flows();
     let _ = write_json(&out_dir, "hold.json", &rep);
+    let silent = hold::silent_by_sni(&rep.flows);
+    if !silent.is_empty() {
+        println!("Yanıt almayan TCP bağlantıları (SNI'ye göre, ilk 10):");
+        for (name, n) in silent.iter().take(10) {
+            println!("  {name}: {n}");
+        }
+    }
     println!(
         "Durdu: {}. Discord, Roblox ve Wattpad sekmelerini şimdi kapatın; tünel kaldırılıyor ({} rota)…",
         rep.stop,
