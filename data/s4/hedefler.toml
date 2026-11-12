@@ -17,13 +17,22 @@
 
 [[hedef]]
 ad = "discord"
-alan_adlari = ["discord.com", "gateway.discord.gg", "cdn.discordapp.com"]
+alan_adlari = [
+    "discord.com", "gateway.discord.gg", "cdn.discordapp.com", "discordapp.com", "discord.gg",
+    # S4 ilk koşudan sonra (2026-11-12): masaüstü istemcinin güncelleme, medya ve ses bölgesi adları.
+    "updates.discord.com", "dl.discordapp.net", "media.discordapp.net", "latency.discord.media",
+]
 sonekler = ["discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discord.media"]
 onekler = []
 
 [[hedef]]
 ad = "roblox"
-alan_adlari = ["www.roblox.com", "apis.roblox.com"]
+alan_adlari = [
+    "www.roblox.com", "apis.roblox.com", "auth.roblox.com", "gamejoin.roblox.com",
+    # S4 ilk koşudan sonra (2026-11-12): Roblox Player'ın sürüm denetimi ve kurulum CDN adları.
+    "clientsettings.roblox.com", "clientsettingscdn.roblox.com", "setup.rbxcdn.com",
+    "setup-aws.rbxcdn.com",
+]
 sonekler = ["roblox.com", "rbxcdn.com"]
 onekler = ["103.140.28.0/23", "128.116.0.0/17", "141.193.3.0/24", "205.201.62.0/24"]
 

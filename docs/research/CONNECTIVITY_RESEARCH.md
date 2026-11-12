@@ -137,7 +137,7 @@ Diğer ölçümler:
 | H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
 | H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması. Wattpad'de de aynı: üç DNS yolunda da TLS sıfırlaması (2026-11-12) |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
-| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor: test IP'sinin 443/UDP portu sürüm anlaşması datagramlarına doğrudan ve TUN üzerinden 3/3 yanıt verdi. Discord sesi ve Roblox oyunu S4'te ölçülecek |
+| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı, S4 (ilk koşu) | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor. S4'te tarayıcıdan Discord sesli sohbeti çalıştı; ses trafiğinin TUN'dan geçip geçmediği ölçülmedi (ses sunucusu adresleri öğrenilemedi). Masaüstü istemciler (Discord, Roblox Player) açılmadığı için uygulama sesi ve Roblox oyunu hâlâ ölçülmedi |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
 | H7 | Çürüdü (akış düzeyinde, bu ağda) | S5-soket | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
@@ -161,6 +161,16 @@ Diğer ölçümler:
   - `Disorder@1`: TTL ≤ 2'de 0/18, TTL ≥ 3'te 18/18.
 - **S5-soket (H7):** Sistem hop limiti değiştirilmedi; yalnızca prob soketinin TTL'i 64 / 65 / 128 oldu. Sonuç TTL'den bağımsız: tekniksiz bağlantı her TTL'de sıfırlandı, en iyi 3 teknik her TTL'de 27/27 geçti.
 - **Korunan değerler (ADR-014):** üç koşunun başında ve sonunda değişmedi.
+
+**S4, ilk koşu (2026-11-12; Wintun + kullanıcı modu motor, `TlsRecordSplit@SNI`, 310 sn):**
+- **Yönlendirme:** Roblox'un kendi 4 bloğu ve alan adlarından çözülen 28 tek IP (Discord, Roblox, Wattpad).
+- **Tarayıcı (normal ve gizli sekme):** Discord, Roblox ve Wattpad web tünel kurulur kurulmaz açıldı. Discord web'de bir kullanıcıyla sesli sohbet sorunsuz kuruldu.
+- **Masaüstü istemciler:** Discord masaüstü ve Roblox Player hiç açılmadı (web'deki "oyna" düğmesi de Player'ı başlatamadı).
+  - Muhtemel neden (ölçülmedi): istemcilerin açılışta kullandığı adlar rota kümesinin dışında kaldı; bu adreslere giden trafik TUN'a girmeden doğrudan çıktı. Koşudan sonra çözülen adreslerde `dl.discordapp.net`, `media.discordapp.net`, `latency.discord.media`, `clientsettingscdn.roblox.com`, `setup.rbxcdn.com` ve `setup-aws.rbxcdn.com` kümede değildi; `updates.discord.com`, `clientsettings.roblox.com`, `gamejoin.roblox.com` kümedeydi.
+  - Çalışırken öğrenme hiç adres eklemedi: bu makinede Windows DNS önbelleği boş (`Get-DnsClientCache` ve `ipconfig /displaydns` 0 kayıt, yeni bir sorgudan sonra da). Kayıt defterinde TTL geçersiz kılması yok; neden bilinmiyor. Ayrıca Chromium tabanlı istemciler kendi çözücülerini kullanabilir. DNS önbelleğine dayanan öğrenme bu yüzden güvenilir değil.
+- **Motor:** 27 TCP, 24 UDP oturumu (16 450 giden, 112 265 gelen datagram); döngü 0; kontrol probu 16/16.
+- **Söküm ve korunan değerler:** 34 kayıt geri alındı, kalıntı yok; korunan değerler değişmedi. Öncesinde yeniden koşulan `kill-test` de temizdi (adaptör ve rota 1,7 sn içinde kalktı).
+- **Faz 2 için çıkarım:** Hedef başına adres listesi kırılgan; istemciler çok sayıda CDN adı kullanıyor. Motorun trafiği daha geniş alması ve tekniği SNI'ye göre seçmesi (ya da DNS'i motorun kendisinin çözmesi) değerlendirilmeli. Bu, kullanıcının varsayılan rotasına dokunmadan, yalnızca kendi rotalarımızla yapılmalı (ADR-014).
 
 **Faz 2 için ilk sinyal (bu ağ):**
 - Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.
