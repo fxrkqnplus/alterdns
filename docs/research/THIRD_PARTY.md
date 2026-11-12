@@ -142,4 +142,4 @@ Seçim Wintun spike'ında (Görev 7) yapılır; güvenlik geçmişi (RustSec) `c
 
 ## 4. Geliştirici makinesindeki paketler
 
-Geliştirici makinesindeki eski DPI paketi 2026-11-09'da kaldırıldı; resmi arşivle karşılaştırma yapılmadı. Tarihsel hash kaydı kişisel olduğu için `CLAUDE.local.md` dosyasındadır (git dışı).
+Geliştirici makinesindeki eski DPI paketi 2026-11-09'da kaldırıldı; resmi arşivle karşılaştırma yapılmadı. Tarihsel hash kaydı kişisel olduğu için git dışı yerel not dosyasındadır (git dışı).

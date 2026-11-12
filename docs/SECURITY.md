@@ -46,17 +46,17 @@
 
 - **Güncelleme imza anahtarı (Ed25519):** Çevrim dışı üretilir ve depo dışında saklanır. Seçenekler: (a) yerel imzalama adımı (en güvenli; elle); (b) korumalı `release` ortamında gizli değişken (gerekli onaylayıcı). Karar Faz 5'te verilir. Anahtar devri için manifestte `next_key` alanı vardır. Kayıp durumu için kurtarma prosedürü yazılır.
 - **SignPath:** Proje belirteci yalnız `release` ortamında tutulur. Her imzalama isteği SignPath arayüzünde elle onaylanır. GitHub ve SignPath hesaplarında MFA açıktır.
-- **Kod imzalama:** Sertifika SignPath Foundation'dadır (D3; ADR-012); projede özel anahtar bulunmaz. Yine de `.pfx` / `.key` dosyaları `.gitignore` ve `.claude/settings.json` deny kuralıyla engellenir.
+- **Kod imzalama:** Sertifika SignPath Foundation'dadır (D3; ADR-012); projede özel anahtar bulunmaz. Yine de `.pfx` / `.key` dosyaları `.gitignore` ile depo dışında tutulur.
 - **API anahtarları** (abuse.ch, Safe Browsing): Dağıtılan ikiliye gömülebilecek anahtarlar yalnızca istemci için tasarlanmış, kısıtlanabilen anahtarlardır (koşullara bakılır). Kullanıcıya ait anahtarlar (VirusTotal) DPAPI ile saklanır.
 
 ## 5. Güvenlik incelemesi süreci
 
-- IPC, journal, güncelleyici, native host, sandbox aracısı ve karantina kodundaki her değişiklik birleştirilmeden önce `backend-design:security-reviewer` ajanıyla incelenir. `security-guidance` eklentisi düzenleme sırasında açık kalır.
+- IPC, journal, güncelleyici, native host, sandbox aracısı ve karantina kodundaki her değişiklik birleştirilmeden önce ayrı bir güvenlik incelemesinden geçer.
 - Faz sonlarında bütün kod tabanı incelenir. Bulgular aşağıdaki tabloya yazılır.
 
 ## 5a. Public depo ve kişisel veri (ADR-013)
 
-- Geliştirici makinesine özgü ortam bilgileri `CLAUDE.local.md` dosyasındadır. Lab sonuçları `lab/results/` altında kalır. İkisi de git dışıdır.
+- Geliştirici makinesine özgü ortam bilgileri git dışı yerel not dosyasındadır. Lab sonuçları `lab/results/` altında kalır. İkisi de git dışıdır.
 - `xtask check` commit öncesi token, anahtar, EICAR dizesi, özel ağ adresi (`10.`, `172.16–31.`, `192.168.`) ve kullanıcı yolu (`C:\Users\<ad>`) kalıplarını tarar. İzin verilen örnek adresler beyaz listede tutulur.
 - Issue ve PR şablonları, tanılama paketlerinin public ortama eklenmemesi konusunda uyarır.
 

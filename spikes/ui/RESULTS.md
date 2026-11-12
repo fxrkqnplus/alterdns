@@ -1,6 +1,6 @@
 # UI spike'ı — sonuçlar (T-SPK-001 → ADR-002)
 
-Tarih: 2026-11-09 · Ortam: geliştirici makinesi, Windows 11 26H2 x64, tek monitör · Plan: `docs/superpowers/plans/2026-11-09-faz-0.md` Görev 6
+Tarih: 2026-11-09 · Ortam: geliştirici makinesi, Windows 11 26H2 x64, tek monitör · Faz 0 Görev 6
 
 ## Prototipler
 
@@ -51,7 +51,7 @@ Bellek: `PrivateUsage` (bütçe ölçütü, TESTING.md §5) / `WorkingSet`, MB. 
 | `slint-gl-hide` | 8,85 | **113,6** / 129,6 | **125,4** / 140,1 | **125,4** / 140,1 | 126,4 | 34 / 41 | 11,3 / 13,1 |
 | `slint-gl-drop` | 8,85 | 2,24 / 12,1 | **70,7** / 71,7 | **57,4** / 70,1 | 82,4 | 107 / 107 | 5,0 / 8,7 |
 
-Bütçe (CLAUDE_CODE_PROMPT §10): tepsi ajanı flyout kapalıyken ≤ 8 MB, flyout açık ≤ 45 MB, açılış p95 ≤ 150 ms (sıcak) ve ≤ 400 ms (soğuk). **Kalın** değerler bütçeyi aşar.
+Bütçe (`docs/TESTING.md` T-PERF-003): tepsi ajanı flyout kapalıyken ≤ 8 MB, flyout açık ≤ 45 MB, açılış p95 ≤ 150 ms (sıcak) ve ≤ 400 ms (soğuk). **Kalın** değerler bütçeyi aşar.
 
 \* `drop` kipinde yeni bir Slint penceresinin ilk `WM_PAINT`'inde içeriğin çizildiği doğrulanmadı. Bu süreler alt sınır olabilir. `hide` kipi ürün için esas alınır.
 

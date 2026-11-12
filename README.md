@@ -6,7 +6,7 @@ Windows için modüler güvenlik ve bağlantı uygulaması. Üç modülden oluş
 - **Tarayıcı koruması:** Uygulamayla gelen tarayıcı uzantısıyla çalışır. Riskli olarak işaretlenmiş adreslere girilmeden önce AlterDNS engelleme sayfasını gösterir. Uzantı, uygulamadaki "Tarayıcıda kur" yönergesiyle tarayıcının geliştirici modundan yüklenir.
 - **Bağlantı yönetimi:** VPN veya proxy kullanmadan, kullanıcının kendi bağlantısındaki DPI kaynaklı erişim kısıtlamalarını aşmak için yerel paket işleme yapar.
 
-**Durum:** Geliştirme başlangıcı. Belgeler `docs/` altındadır. Geliştirme yönergeleri `CLAUDE.md` ve `docs/CLAUDE_CODE_PROMPT.md` dosyalarındadır.
+**Durum:** Geliştirme başlangıcı. Belgeler `docs/` altındadır. Geliştirme kuralları `CONTRIBUTING.md` dosyasındadır.
 
 ## İndirme ve doğrulama
 

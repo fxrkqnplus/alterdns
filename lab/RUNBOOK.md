@@ -1,6 +1,6 @@
 # Lab işletim kılavuzu (`xtask lab`)
 
-Bağlantı araştırma düzeneğinin arıza durumları ve elle kurtarma adımları. Kurallar: CLAUDE.md
+Bağlantı araştırma düzeneğinin arıza durumları ve elle kurtarma adımları. Kurallar: CONTRIBUTING.md
 "Değişmez kurallar" 1, 2 ve 5. Sistem hop limiti **hiçbir adımda yazılmaz** (ADR-010).
 
 ## 1. Nasıl çalıştırılır
@@ -196,4 +196,4 @@ cargo xtask lab ttl
   spikes\wintun\target\release\wintun-spike.exe hold --tech oob-sni --max 300
   ```
 
-- Sonuçlar `lab/results/` altındadır. Yerel özet `CLAUDE.local.md`'ye, genelleştirilmiş özet `CONNECTIVITY_RESEARCH.md` §7'ye yazılır; ağ adresi yazılmaz.
+- Sonuçlar `lab/results/` altındadır. Yerel özet yerel not dosyasına (git dışı), genelleştirilmiş özet `CONNECTIVITY_RESEARCH.md` §7'ye yazılır; ağ adresi yazılmaz.

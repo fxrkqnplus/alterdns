@@ -10,7 +10,7 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 
 ## 2. Kanıtlar
 
-**E1–E7, E13–E15 (yerel kanıtlar):** Geliştirici makinesinden salt okunur toplanan ağ, hop limit, DNS, o tarihte kurulu olan DPI paketi, log ve güvenlik ayarı bulguları; S0 envanteri ve yanıtları (2026-11-10). Kişisel olduğu için public depoda değil, git dışı `CLAUDE.local.md` dosyasındadır. Eski DPI paketi 2026-11-09'da kaldırıldı; E4 ve E7 o tarihten önceki durumu anlatır.
+**E1–E7, E13–E15 (yerel kanıtlar):** Geliştirici makinesinden salt okunur toplanan ağ, hop limit, DNS, o tarihte kurulu olan DPI paketi, log ve güvenlik ayarı bulguları; S0 envanteri ve yanıtları (2026-11-10). Kişisel olduğu için public depoda değil, git dışı git dışı yerel not dosyasındadır. Eski DPI paketi 2026-11-09'da kaldırıldı; E4 ve E7 o tarihten önceki durumu anlatır.
 
 **Genel özet:** Telefon hotspot'u üzerinden ve hop limit 65 iken:
 - **Doğrudan erişim:** Discord ve Roblox HTTPS bağlantıları sıfırlanıyor (RST).
@@ -23,7 +23,7 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 
 | # | Kanıt | Kaynak |
 |---|---|---|
-| E1–E7, E13–E15 | Yerel kanıtlar (yukarıda özetlendi) | `CLAUDE.local.md` |
+| E1–E7, E13–E15 | Yerel kanıtlar (yukarıda özetlendi) | Yerel not dosyası (git dışı) |
 | E8 | GoodbyeDPI kip tanımları: `-5` = `--auto-ttl` (TTL'e bağlı sahte paket); `-6` = `--wrong-seq`; `-7` = `--wrong-chksum`; `-8` = seq + chksum; `-9` = `-8` + `-q` (QUIC engeli, varsayılan). `--wrong-chksum` için "VM'de veya bazı yönlendiricilerde çalışmayabilir" notu var. `--set-ttl`/`--auto-ttl` için "TEHLİKELİ" uyarısı var | GoodbyeDPI README |
 | E9 | GoodbyeDPI yazarının `--wrong-seq` commit notu: yöntem "TTL değerlerinin değiştirilmesini yasaklayan ağlarda (tethering engeli/ücretli özelliği olan mobil ağlar)" işe yarayabilir | Commit `bbb6af89` (2021-12-25) |
 | E10 | Hop limit 65 yöntemi hotspot gizleme amacıyla yaygın: dizüstünün 65 TTL'i telefondan geçince 64 olur ve telefonun kendi trafiğine benzer. Operatörler TTL ile tethering tespiti yapıyor | Çeşitli kaynaklar (doğrulanacak ayrıntı: Türk operatörleri) |
@@ -32,18 +32,18 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 
 **Ön gözlem (hipotez değil, kayıt):** Yerel kanıtlar, hop limit 65 iken **TTL'e bağlı olmayan** bir tekniğin (`-6`) web/API düzeyinde çalıştığını gösteriyor. "GoodbyeDPI çalışmıyor" gözlemi muhtemelen belirli bir kipe, DNS yöntemine veya trafik türüne (ses, oyun) özgüdür. Hangisi olduğu ölçülmeden bilinemez.
 
-**Public depo notu:** §7'ye yalnızca genelleştirilmiş sonuçlar yazılır. Ağ adresi, log satırı ve paket yolu `CLAUDE.local.md` ve `lab/results/` (git dışı) içinde kalır.
+**Public depo notu:** §7'ye yalnızca genelleştirilmiş sonuçlar yazılır. Ağ adresi, log satırı ve paket yolu yerel not dosyası ve `lab/results/` (git dışı) içinde kalır.
 
 ## 3. Hipotezler
 
 | # | Hipotez | Destekleyen | Test | Destek ölçütü / çürütme ölçütü |
 |---|---|---|---|---|
 | H1 | Başarısız olan yapılandırma TTL'e bağlı bir sahte paket kipiydi (`-5`/`--auto-ttl`/`--set-ttl`). Mobil yolda bu kipteki sahte paketler düşürülüyor, normalleştiriliyor veya DPI'a ulaşmıyor | E8, E9 | ~~GoodbyeDPI kipleri~~ (iptal, D8). **S2-U:** hop limit 65 iken TTL'e bağlı `Disorder` (kendi soketimizde `IP_TTL`; `Fake` Faz 0'da uygulanmadı) ile TTL'den bağımsız `Split`/`TlsRecordSplit`/`Oob`; her biri 3 tekrar | TTL'e bağlı teknikler başarısız, bağımsızlar başarılı → destek. TTL'e bağlılar başarılı → çürür |
-| H2 | Karıştırıcı değişken: TTL değişikliğiyle aynı dönemde ağ da değişti (ev ağı → iPhone hotspot); fark operatör DPI'ından kaynaklanıyor | Kullanım bağlamı | Başka bir ağ (ev Wi-Fi/Ethernet) varsa aynı matris. Yoksa kullanıcıdan TTL değişikliği öncesi hangi ağı kullandığı sorulur | Ev ağında 65 ve 128 arasında fark yoksa ama hotspot'ta varsa → ağ kaynaklı |
+| H2 | Karıştırıcı değişken: TTL değişikliğiyle aynı dönemde ağ da değişti (ev ağı → telefon hotspot'u); fark operatör DPI'ından kaynaklanıyor | Kullanım bağlamı | Başka bir ağ (ev Wi-Fi/Ethernet) varsa aynı matris. Yoksa kullanıcıdan TTL değişikliği öncesi hangi ağı kullandığı sorulur | Ev ağında 65 ve 128 arasında fark yoksa ama hotspot'ta varsa → ağ kaynaklı |
 | H3 | DNS yolu: hazır betikler DNS'i şifresiz biçimde standart dışı porta (Yandex `77.88.8.8:1253`) yönlendiriyor. Hotspot/operatör yolunda bu UDP trafiği engelleniyor veya DNS telefonda önbellekleniyor ya da değiştiriliyor | E3, E5 (DoH ile çalışıyor) | Hedef alan adları için sistem DNS, DoH ve `77.88.8.8:1253` yanıt karşılaştırması; motor kapalı | DoH dışındakiler başarısız veya farklı yanıt → destek |
-| H4 | Hatalı checksum'lı sahte paketler iPhone NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | ~~`-7` tek başına~~ (iptal, D8). Hatalı checksum'lı paket kendi soketimizle gönderilemez; sürücüsüz yöntemle test edilemez | Faz 0'da "belirsiz" (gerekçe: test yöntemi yok) |
+| H4 | Hatalı checksum'lı sahte paketler telefonun NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | ~~`-7` tek başına~~ (iptal, D8). Hatalı checksum'lı paket kendi soketimizle gönderilemez; sürücüsüz yöntemle test edilemez | Faz 0'da "belirsiz" (gerekçe: test yöntemi yok) |
 | H5 | "Çalışmıyor" gözlemi web değil, UDP trafiğiyle ilgili (Discord sesi, Roblox oyun). GoodbyeDPI bunları kapsamıyor | E11 | Discord masaüstü sesli kanal, Roblox oyuna katılım; web probları geçerken | Web geçiyor, ses/oyun başarısız → destek |
-| H6 | Yerel durum: DPI servisi durmuş veya çökmüş, zamanlanmış görev tetiklenmemiş, başka bir WinDivert istemcisi var, Defender müdahalesi | E4 (yerel) | Paket kaldırıldığı için canlı durum gözlenemez. Tarihsel kanıt: olay günlüğü (Service Control Manager 7031/7034, WinDivert), Defender koruma geçmişi, paketten kalan bağlantı logları (`CLAUDE.local.md`) | Hata kaydı varsa destek; kanıt yetersizse belirsiz |
+| H6 | Yerel durum: DPI servisi durmuş veya çökmüş, zamanlanmış görev tetiklenmemiş, başka bir WinDivert istemcisi var, Defender müdahalesi | E4 (yerel) | Paket kaldırıldığı için canlı durum gözlenemez. Tarihsel kanıt: olay günlüğü (Service Control Manager 7031/7034, WinDivert), Defender koruma geçmişi, paketten kalan bağlantı logları (yerel not dosyası, git dışı) | Hata kaydı varsa destek; kanıt yetersizse belirsiz |
 | H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab (S5-soket):** Sistem hop limiti değişmez (D5, ADR-014). Yalnızca prob soketlerine `IP_TTL` 64 / 65 / 128 verilir; tekniksiz + S2-U'nun en iyi 3 tekniği | Bir teknik 65'te geçip 128'de (veya 64'te) başarısızsa ya da tersi → destek |
 | H8 | GoodbyeDPI'ın otomatik TTL mantığı, gelen paket TTL'inden mesafe tahmin eder (128/64 − TTL). Giden TTL'in (65) bu hesaba doğrudan etkisi olmamalı | E8 | S2-U: sabit `IP_TTL` taraması (N = 1…8) ile `Disorder`; `Fake` Faz 0'da uygulanmadı ("test edilmedi"). GoodbyeDPI'ın gelen TTL'den otomatik hesabı ölçülmez (iptal, D8) | Giden TTL'den bağımsızlık beklenir; kısmi test, gerekçesiyle |
 | H9 | MTU veya parçalama: hücresel yolda etkin MTU daha düşük; ters parçalama ve `--max-payload` etkileşimi | — | S2-U: bölme konumu taraması (sabit ofset, SNI ortası) ve `TlsRecordSplit`; Path MTU ölçümü | Varyantlar arasında anlamlı fark → destek |

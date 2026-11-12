@@ -17,9 +17,9 @@ secrets/
 .env.*
 *.minisign.key
 
-# Yerel Claude Code ayarları ve geliştirici makinesine özgü bilgiler (public depoya girmez)
-.claude/settings.local.json
-CLAUDE.local.md
+# Geliştirici makinesine özgü yerel notlar ve ayarlar (public depoya girmez)
+*.local.md
+*.local.json
 docs/local/
 
 # Lab ve ölçüm çıktıları (kişisel ağ verisi içerebilir)
@@ -27,8 +27,6 @@ lab/results/
 lab/bin/
 lab/local/
 
-# Plan yürütme çalışma alanı (superpowers ledger)
-.superpowers/
 perf/results/raw/
 *.etl
 *.pcapng

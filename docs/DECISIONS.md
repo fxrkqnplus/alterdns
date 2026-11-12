@@ -27,7 +27,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 3. **egui / iced:** Saf Rust ve MIT. egui anlık kip (immediate mode); iced'in pencere/tepsi entegrasyonu ve bellek davranışı ölçülmeli.
 4. **Tauri 2 (WebView2):** Hızlı geliştirme; WebView2 işlemleri nedeniyle RAM bütçesini aşması beklenir. **Varsayılan değil**; spike ölçümü bunun yanlış olduğunu gösterirse yeniden değerlendirilir.
 
-**Spike ölçütleri** (`CLAUDE_CODE_PROMPT.md` §14):
+**Spike ölçütleri**:
 - Tepsi ajanı boşta RAM (UI yüklü / yüklü değil)
 - Flyout açılış süresi (p95 sıcak, soğuk)
 - Kapandıktan sonra bellek iadesi
@@ -71,7 +71,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 **Geçmiş:**
 - İlk öneri: kendi Rust motoru + resmi WinDivert 2.2.2-A.
-- 2026-11-09: Microsoft Defender, resmi sürüm sayfasından indirilen `WinDivert-2.2.2-A.zip` arşivini `Misleading:Win32/Malgent!AMTB` tespitiyle engelledi ve kaldırdı. Varsayılan Defender'lı kullanıcı sistemlerinde kurulumun engellenmesi riski doğdu. AV kapatılmadı, istisna eklenmedi (CLAUDE.md kural 4). Kullanıcı D8'i açtı; karar Faz 0 ölçümlerinden sonra kesinleşecek.
+- 2026-11-09: Microsoft Defender, resmi sürüm sayfasından indirilen `WinDivert-2.2.2-A.zip` arşivini `Misleading:Win32/Malgent!AMTB` tespitiyle engelledi ve kaldırdı. Varsayılan Defender'lı kullanıcı sistemlerinde kurulumun engellenmesi riski doğdu. AV kapatılmadı, istisna eklenmedi (CONTRIBUTING.md kural 4). Kullanıcı D8'i açtı; karar Faz 0 ölçümlerinden sonra kesinleşecek.
 
 **Seçenekler (D8):**
 1. **Aday — Wintun TUN adaptörü + kullanıcı modunda kendi motorumuz (Rust):**
@@ -98,7 +98,7 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 3. **Yedek — kurulumda indirme:** DLL'i pakete koymayıp bileşen yöneticisiyle wintun.net'ten sabit hash'le indirmek. **Yalnızca SignPath DLL'in pakette bulunmasına itiraz ederse** uygulanır.
 4. **SignPath ön sorusu:** Faz 6'yı beklemeden SignPath Foundation'a Wintun DLL'i ve bağlantı modülü ("hacking tool" maddesi) hakkında ön soru gönderilir; yanıt D7 ve D8'e işlenir.
 
-**Ölçüm planı (Faz 0):** Sürücüsüz soket teknikleri (S2-U) ve Wintun spike'ı (`docs/superpowers/plans/2026-11-09-faz-0.md` Görev 7–8). Karar kuralı: hotspot ağında Discord ve Roblox web/API problarını geçen, bütçeleri karşılayan, lisans ve SignPath şartlarına uyan en az müdahaleci seçenek.
+**Ölçüm planı (Faz 0):** Sürücüsüz soket teknikleri (S2-U) ve Wintun spike'ı (Faz 0 planı, Görev 7–8). Karar kuralı: hotspot ağında Discord ve Roblox web/API problarını geçen, bütçeleri karşılayan, lisans ve SignPath şartlarına uyan en az müdahaleci seçenek.
 
 **Spike sonucu (2026-11-11; ayrıntı `spikes/wintun/RESULTS.md`, `CONNECTIVITY_RESEARCH.md` §7):**
 - **İletim:** Engelli bir IP'ye giden bağlantı, uygulama hiçbir şey yapmadan, motorun tekniğiyle sistem genelinde geçti.
@@ -226,7 +226,7 @@ AlterDNS hop limit değerini **okur, asla yazmaz**. Lab dahil, geçici olarak da
 
 ## ADR-013 — Public depoda kişisel veri · Kabul (2026-11-09)
 
-- Geliştirici makinesine özgü ortam bilgisi, ağ adresleri, log alıntıları, kişisel paket ayrıntıları ve hash kayıtları `CLAUDE.local.md` dosyasında tutulur (git dışı).
+- Geliştirici makinesine özgü ortam bilgisi, ağ adresleri, log alıntıları, kişisel paket ayrıntıları ve hash kayıtları git dışı yerel not dosyasında tutulur (git dışı).
 - Lab sonuçları `lab/results/` altında kalır (git dışı).
 - Public belgeler yalnız genelleştirilmiş bulguları içerir.
 - `xtask check` gizli bilgi ve kişisel veri kalıplarını tarar (token, anahtar, özel ağ adresi, kullanıcı yolu).

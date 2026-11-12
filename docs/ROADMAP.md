@@ -1,6 +1,6 @@
 # AlterDNS — Yol Haritası
 
-Her faz şu dört parçadan oluşur: **çıktılar**, **bağımlılıklar**, **testler** ve **çıkış ölçütleri**. Çıkış ölçütü sağlanmadan sonraki faza geçilmez. Her fazın başında `superpowers:writing-plans` ile ayrıntılı uygulama planı yazılır (`docs/superpowers/plans/`). Bu belge o planların neyi kapsaması gerektiğini tanımlar.
+Her faz şu dört parçadan oluşur: **çıktılar**, **bağımlılıklar**, **testler** ve **çıkış ölçütleri**. Çıkış ölçütü sağlanmadan sonraki faza geçilmez. Her fazın başında ayrıntılı bir uygulama planı yazılır. Bu belge o planların neyi kapsaması gerektiğini tanımlar.
 
 Test kimlikleri (T-…) `TESTING.md` belgesindedir.
 
@@ -12,7 +12,7 @@ Test kimlikleri (T-…) `TESTING.md` belgesindedir.
 1. **Araç zinciri doğrulaması.** Geçici bir projede `cargo build` başarılı olmalı. Windows SDK eksikse kullanıcıya kurulum adımı bildirilir. `cargo-deny`, `cargo-about`, `cargo-cyclonedx` ve (isteğe bağlı) `cargo-nextest` kurulur.
 2. **Depo iskeleti (public depo).**
    - `git init` yapılır. `LICENSE` (GPL-3.0) ve `TRADEMARK.md` doğrulanır.
-   - `.gitignore`'un `CLAUDE.local.md` ve `lab/results/` dosyalarını dışarıda bıraktığı kontrol edilir.
+   - `.gitignore`'un yerel not dosyalarını ve `lab/results/` dizinini dışarıda bıraktığı kontrol edilir.
    - `rust-toolchain.toml`, boş workspace ve CI taslağı eklenir (`.github/workflows/ci.yml`: windows-latest, `cargo xtask check`, action'lar SHA ile sabit, en az yetki).
    - Logolar `assets/brand/` altına kopyalanır.
    - İlk push'tan önce `git ls-files` ile kişisel veri denetimi yapılır.
@@ -44,7 +44,7 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
 
 **Çıkış ölçütleri**
 - [ ] `cargo build` çalışıyor; CI taslağı yeşil.
-- [ ] Depoda kişisel veri yok (`CLAUDE.local.md` ve lab sonuçları git dışı); güvenlik ayarları açık.
+- [ ] Depoda kişisel veri yok (yerel notlar ve lab sonuçları git dışı); güvenlik ayarları açık.
 - [ ] ADR-002 ölçümle kesinleşti. ADR-003 / D8 için ölçümler (S2-U, Wintun spike'ı) tamamlandı ve karar kullanıcıya sunuldu.
 - [ ] TTL 65 hipotezleri için ölçüm tablosu var. Her hipotezin durumu destekleniyor, çürütüldü veya belirsiz olarak işaretlendi; belirsizlerin gerekçesi yazıldı.
 - [ ] Ağ ayarları başlangıç durumunda; Wintun spike'ının adaptörü ve test rotası kaldırıldı. Hop limit değişmedi.
@@ -122,7 +122,7 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
 - [ ] Ağ değişimi (Wi-Fi kapat/aç, farklı ağ, uyku) sonrası ≤ 15 sn içinde yeniden uyum sağlanıyor.
 - [ ] Başarısız deneme sonrası journal ve sistem durumu başlangıçla aynı. Hop limit 65.
 - [ ] Performans bütçeleri karşılanıyor: iş hacmi kaybı, gecikme, boşta CPU.
-- [ ] `incident-thinker` ve `security-reviewer` bulguları kapandı.
+- [ ] Arıza analizi ve güvenlik incelemesi bulguları kapandı.
 
 ---
 
@@ -247,7 +247,7 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
 **Çıktılar**
 1. Uyumluluk matrisi (`TESTING.md` §6): Hyper-V VM'leri (Win10 22H2, Win11 23H2/24H2/25H2/26H2; HVCI açık/kapalı; Smart App Control açık/kapalı; Defender veya üçüncü taraf AV) ve en az bir başka fiziksel bilgisayar. Aynı adlı `WinDivert` servisi çakışması (T-CMP-001) GoodbyeDPI kurulu bir VM'de ölçülür.
 2. Ağ matrisi: ev Wi-Fi/Ethernet, iPhone hotspot, Android hotspot (varsa), USB tethering, IPv6-only/NAT64 (simülasyon), captive portal (simülasyon).
-3. Güvenlik incelemesi: bütün crate'ler `security-reviewer` ile incelenir. Sonuç `SECURITY.md` → "Açık bulgular".
+3. Güvenlik incelemesi: bütün crate'ler güvenlik incelemesinden geçer. Sonuç `SECURITY.md` → "Açık bulgular".
 4. Uzun süreli fuzz turları, performans regresyon tabanı, 72 saatlik kararlılık testi (bellek sızıntısı ≤ %5 artış).
 5. Erişilebilirlik ve UX metin denetimi.
 6. **SignPath Foundation başvurusu (ADR-012).**

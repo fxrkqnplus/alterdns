@@ -36,7 +36,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-/// `.rs` ve `.ts` dosyalarının ilk iki satırı (CLAUDE.md "Kod kuralları").
+/// `.rs` ve `.ts` dosyalarının ilk iki satırı (CONTRIBUTING.md "Kod kuralları").
 const HEADER_LINES: [&str; 2] = [
     "// AlterDNS — Copyright (C) 2026 Furkan Okan",
     "// SPDX-License-Identifier: GPL-3.0-or-later",

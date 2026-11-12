@@ -3,7 +3,7 @@
 
 //! Journal'lı kurulum ve söküm: adaptör → adres → iletim → tek IP rotası. Her sistem değişikliği
 //! önce journal'a yazılır; ayrı işlemdeki bekçi (kira ≤ 60 sn) ebeveyn ölürse veya kira dolarsa
-//! geri alır (CLAUDE.md kural 1).
+//! geri alır (CONTRIBUTING.md kural 1).
 
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
