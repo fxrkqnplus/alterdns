@@ -1,5 +1,5 @@
 # AlterDNS — lisans ve tedarik zinciri politikası
-# Kaynak: docs/research/THIRD_PARTY.md §0 ve CLAUDE.md "Değişmez kurallar" 8.
+# Kaynak: docs/research/THIRD_PARTY.md §0 ve CONTRIBUTING.md "Değişmez kurallar" 8.
 # Yeni bir lisans eklemek THIRD_PARTY.md ve gerekiyorsa ADR güncellemesi ister.
 
 [graph]

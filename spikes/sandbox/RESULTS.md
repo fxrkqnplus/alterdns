@@ -1,6 +1,6 @@
 # Sandbox spike'ı — sonuçlar (T-SPK-003)
 
-Tarih: 2026-11-09 · Ortam: geliştirici makinesi, Windows 11 26H2 x64, debug derleme · Plan: `docs/superpowers/plans/2026-11-09-faz-0.md` Görev 5
+Tarih: 2026-11-09 · Ortam: geliştirici makinesi, Windows 11 26H2 x64, debug derleme · Faz 0 Görev 5
 
 ## Yapılandırma
 

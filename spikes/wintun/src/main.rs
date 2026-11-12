@@ -235,7 +235,7 @@ fn change_summary(ctx: &Ctx, store: &[String]) -> String {
 const REVERT_TEXT: &str = "Her değişiklik önce journal'a yazılır. Ayrı işlemdeki bekçi (kira ≤ 60 sn) çökme, Ctrl+C veya süre dolunca geri alır; koşu sonunda spike kendisi söker ve kalıntı olmadığını doğrular.";
 
 /// Wintun sürücü paketi sistemde yoksa çalışmaz: DLL paketi kurar ve bu değişiklik journal'a
-/// yazılamaz (CLAUDE.md kural 1). Bu makinede paket başka bir yazılımdan zaten var.
+/// yazılamaz (CONTRIBUTING.md kural 1). Bu makinede paket başka bir yazılımdan zaten var.
 fn require_driver_store() -> anyhow::Result<()> {
     let store = measure::driver_store().context("sürücü deposu okunamadı")?;
     if store.is_empty() {

@@ -878,7 +878,7 @@ mod tests {
     }
 
     /// Kaynakta kullanıcıya ait sistem değerlerini yazan hiçbir komut yoktur; istisna da yoktur
-    /// (CLAUDE.md kural 2, ADR-010, ADR-014; D5 kapandı). Yalnızca kendi nesnelerimiz (adaptör,
+    /// (CONTRIBUTING.md kural 2, ADR-010, ADR-014; D5 kapandı). Yalnızca kendi nesnelerimiz (adaptör,
     /// rota, adres) `ops.rs` üzerinden eklenip kaldırılır.
     #[test]
     fn no_user_owned_system_value_writes_in_source() {

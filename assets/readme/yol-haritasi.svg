@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="236" viewBox="0 0 960 236" role="img" aria-labelledby="t d">
+  <title id="t">AlterDNS yol haritası</title>
+  <desc id="d">Sekiz faz: Faz 0 araştırma ve spike'lar (son adımlar), Faz 1 çekirdek altyapı, Faz 2 bağlantı yönetimi, Faz 3 dosya güvenliği, Faz 4 tarayıcı koruması, Faz 5 kurulum ve güncelleme, Faz 6 sağlamlaştırma, Faz 7 imzalı v1.0.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111B30"/>
+    </linearGradient>
+    <linearGradient id="done" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#60A5FA"/>
+    </linearGradient>
+    <style>
+      .n { font: 700 13px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; }
+      .l { font: 600 13px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #EEF3FB; }
+      .s { font: 400 12px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #8FA1C1; }
+      .tag { font: 600 11px 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; fill: #8FA1C1; letter-spacing: 0.6px; }
+    </style>
+  </defs>
+  <rect width="960" height="236" rx="22" fill="url(#bg)"/>
+  <text class="tag" x="32" y="38">YOL HARİTASI</text>
+  <circle cx="760" cy="34" r="6" fill="#2DD4BF"/><text class="s" x="772" y="38">sürüyor</text>
+  <circle cx="846" cy="34" r="6" fill="none" stroke="#3A4A6B" stroke-width="2"/><text class="s" x="858" y="38">planlandı</text>
+
+  <path d="M90 92H870" stroke="#2A3756" stroke-width="3" stroke-linecap="round"/>
+  <path d="M90 92H150" stroke="url(#done)" stroke-width="3" stroke-linecap="round"/>
+
+  <g text-anchor="middle">
+    <circle cx="90" cy="92" r="17" fill="#0F2A2A" stroke="#2DD4BF" stroke-width="2.5"/><text class="n" x="90" y="97" fill="#5EEAD4">0</text>
+    <text class="l" x="90" y="140">Araştırma</text><text class="s" x="90" y="158">ve spike'lar</text><text class="s" x="90" y="176" fill="#5EEAD4">son adımlar</text>
+
+    <circle cx="201" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="201" y="97" fill="#A9B8D3">1</text>
+    <text class="l" x="201" y="140">Çekirdek</text><text class="s" x="201" y="158">altyapı</text>
+
+    <circle cx="313" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="313" y="97" fill="#A9B8D3">2</text>
+    <text class="l" x="313" y="140">Bağlantı</text><text class="s" x="313" y="158">yönetimi</text>
+
+    <circle cx="424" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="424" y="97" fill="#A9B8D3">3</text>
+    <text class="l" x="424" y="140">Dosya</text><text class="s" x="424" y="158">güvenliği</text>
+
+    <circle cx="536" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="536" y="97" fill="#A9B8D3">4</text>
+    <text class="l" x="536" y="140">Tarayıcı</text><text class="s" x="536" y="158">koruması</text>
+
+    <circle cx="647" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="647" y="97" fill="#A9B8D3">5</text>
+    <text class="l" x="647" y="140">Kurulum ve</text><text class="s" x="647" y="158">güncelleme</text><text class="s" x="647" y="176">ilk ön sürüm</text>
+
+    <circle cx="759" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="759" y="97" fill="#A9B8D3">6</text>
+    <text class="l" x="759" y="140">Sağlamlaştırma</text><text class="s" x="759" y="158">uyumluluk matrisi</text>
+
+    <circle cx="870" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="870" y="97" fill="#A9B8D3">7</text>
+    <text class="l" x="870" y="140">İmzalı v1.0</text><text class="s" x="870" y="158">SignPath</text>
+  </g>
+  <text class="s" x="32" y="214">Her fazın çıkış ölçütleri sağlanmadan sonraki faza geçilmez. Ayrıntı: docs/ROADMAP.md</text>
+</svg>

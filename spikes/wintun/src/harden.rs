@@ -222,8 +222,8 @@ mod tests {
     #[test]
     fn strip_verbatim_only_accepts_drive_paths() {
         assert_eq!(
-            strip_verbatim(r"\\?\C:\Sistem\x\wintun.dll").as_deref(),
-            Some(r"C:\Sistem\x\wintun.dll")
+            strip_verbatim(r"\\?\D:\ornek\x\wintun.dll").as_deref(),
+            Some(r"D:\ornek\x\wintun.dll")
         );
         assert_eq!(
             strip_verbatim(r"C:\x\y.dll").as_deref(),

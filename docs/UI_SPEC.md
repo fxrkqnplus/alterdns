@@ -5,8 +5,8 @@ Referans deneyim: Cloudflare WARP'ın tepsi menüsü. Hedef: modern, sade, hızl
 ## 1. Marka varlıkları
 
 - **Kaynak dosyalar:**
-  - `alterdns.png`: 1007×1026, opak siyah zemin, beyaz "AD" monogramı, eş merkezli halkalar.
-  - `alterdns.ico`: 16–256 px, opak; 16 px'te monogram okunmuyor.
+  - `assets/brand/alterdns.png`: 1007×1026, opak siyah zemin, beyaz "AD" monogramı, eş merkezli halkalar.
+  - `assets/brand/alterdns.ico`: 16–256 px, opak; 16 px'te monogram okunmuyor.
 - **Üretilecekler** (`assets/brand/`; özgün dosyalar değiştirilmez):
   - Kare ana görsel (1024×1024; dolgu ile, kırpmadan).
   - Saydam zeminli monogram (açık ve koyu tema varyantı).

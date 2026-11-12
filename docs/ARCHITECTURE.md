@@ -31,7 +31,7 @@ alterdns/
 ├─ LICENSE                    # GPL-3.0 (kanonik metin)
 ├─ TRADEMARK.md               # ad ve logo kullanım notu
 ├─ PRIVACY.md                 # gizlilik politikası (Faz 4)
-├─ CLAUDE.md / CLAUDE.local.md  # proje belleği / git dışı yerel ortam
+├─ CONTRIBUTING.md               # geliştirme kuralları
 ├─ .github/workflows/         # ci.yml, release.yml (SHA sabit action'lar)
 ├─ Cargo.toml                 # workspace; ortak lint ve profil ayarları
 ├─ rust-toolchain.toml        # stable, sabitlenmiş sürüm

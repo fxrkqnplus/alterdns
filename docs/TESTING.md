@@ -6,7 +6,7 @@
 - Sistemi değiştiren testler yalnızca VM'de veya `xtask lab` / `dev-install` düzeneğinde çalışır. Bu testler journal ve bekçi ile korunur.
 - **Makineye özgü değerler (ADR-014):** Testler kullanıcıya ya da başka yazılıma ait değerleri (hop limit, DNS/DoH, proxy, MTU, rotalar, güvenlik duvarı…) değiştirmez; yalnızca AlterDNS'in kendi nesnelerini ekleyip kaldırır. Her lab senaryosu başta ve sonda bu değerlerin anlık görüntüsünü alır; fark testi başarısız yapar. Farklı değerlerin etkisi kendi soketimizde (ör. `IP_TTL`) veya uyumluluk matrisinde ölçülür.
 - Testler deterministiktir. Ağa bağlı testler (`#[ignore]` + `--features net-tests`) ayrı koşulur ve sonuçları zaman damgalı kaydedilir.
-- "Bitti" demeden önce şunlar çalıştırılır ve çıktıları rapora eklenir: `superpowers:verification-before-completion`, `cargo xtask check`, `cargo xtask perf`.
+- "Bitti" demeden önce şunlar çalıştırılır ve çıktıları rapora eklenir: `cargo xtask check`, `cargo xtask perf`.
 
 ## 2. Katmanlar ve araçlar
 
@@ -20,7 +20,7 @@
 | Ağ lab | `xtask lab` senaryoları | Kullanıcı makinesi (onaylı) + VM |
 | Uzantı | `vitest` (birim), Playwright (E2E; Chromium/Chrome for Testing ile paketlenmemiş uzantı) + kurulum sihirbazı için el ile test listesi | Her commit (E2E: PR) |
 | Performans | `xtask perf` | Faz sonu + PR'da regresyon karşılaştırması |
-| Güvenlik | Özel testler (§7) + `security-reviewer` incelemesi | Faz sonu |
+| Güvenlik | Özel testler (§7) + güvenlik incelemesi | Faz sonu |
 | Erişilebilirlik | Klavye gezinmesi, ekran okuyucu adları, kontrast, azaltılmış hareket | Faz 1 ve 6 |
 
 ## 3. Test kimlikleri (başlangıç listesi; planlarda genişletilir)
@@ -200,7 +200,7 @@ Hiçbir yazılımın hatasız olduğu kanıtlanamaz. AlterDNS için yayın kapı
 1. Bütün otomatik testler yeşil. El ile test listesi işaretli ve kanıtlı.
 2. `clippy -D warnings`, `cargo deny check`, `cargo fmt --check` temiz. Test dışı kodda `unwrap`/`expect`/`panic` yok.
 3. Fuzz hedefleri faz sonu uzun turda çökme olmadan tamamlandı.
-4. `security-reviewer` incelemesinde yüksek veya kritik açık bulgu yok.
+4. Güvenlik incelemesinde yüksek veya kritik açık bulgu yok.
 5. Performans bütçeleri karşılandı; karşılanmayanlar gerekçeli ve kullanıcı onaylı.
 6. Uyumluluk matrisinde her hücre "geçti" veya "bilinen sınırlama + hata kodu + kullanıcı yönergesi" olarak kayıtlı.
 7. Bilinen açık hata sayısı 0. Ertelenen iyileştirmeler ayrı listede.

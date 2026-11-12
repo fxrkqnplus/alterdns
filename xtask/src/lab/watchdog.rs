@@ -1,7 +1,7 @@
 // AlterDNS — Copyright (C) 2026 Furkan Okan
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Ayrı işlemde çalışan geri alma bekçisi (CLAUDE.md kural 1; ARCHITECTURE §6).
+//! Ayrı işlemde çalışan geri alma bekçisi (CONTRIBUTING.md kural 1; ARCHITECTURE §6).
 //!
 //! Protokol (bekçinin stdin'i, satır başına bir komut):
 //! - `RENEW <sn>`: kirayı yeniler (en çok 60 sn).
@@ -27,7 +27,7 @@ use serde::Serialize;
 use super::journal::SystemOps;
 use super::ops;
 
-/// Kiranın üst sınırı (CLAUDE.md: bekçi ≤ 60 sn).
+/// Kiranın üst sınırı (CONTRIBUTING.md: bekçi ≤ 60 sn).
 pub const MAX_LEASE_SECS: u64 = 60;
 /// `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`: konsol Ctrl+C'si bekçiye ulaşmaz.
 pub const WATCHDOG_CREATION_FLAGS: u32 = 0x0000_0008 | 0x0000_0200;
