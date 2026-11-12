@@ -198,8 +198,13 @@ pub enum Proto {
 /// Giden soketin kaydı; düşünce port kayıttan silinir.
 pub struct OutboundGuard {
     engine: Arc<Engine>,
-    key: (Proto, u16),
+    key: OutboundKey,
 }
+
+/// (protokol, motorun yerel portu, bağlandığı uzak adres). Döngüde TUN'a dönen akışın kaynak
+/// portu ve hedefi bunlarla aynıdır; yalnız porta bakmak, aynı port numarasını başka bir
+/// hedef için kullanan uygulama akışlarında yanlış alarm verirdi.
+type OutboundKey = (Proto, u16, SocketAddr);
 
 impl Drop for OutboundGuard {
     fn drop(&mut self) {
@@ -209,16 +214,111 @@ impl Drop for OutboundGuard {
     }
 }
 
-/// Eşzamanlı aktarım üst sınırı (spike tek hedefe birkaç prob gönderir).
-const MAX_ACTIVE: u64 = 64;
+/// Eşzamanlı aktarım üst sınırı. S4'te gerçek istemciler (tarayıcı, Discord) çok sayıda
+/// bağlantı açar; sınır kaynak tüketimini yine de sınırlar.
+const MAX_ACTIVE: u64 = 256;
+
+/// Kaydedilecek en çok bağlantı (bellek sınırı).
+const MAX_FLOWS: usize = 4000;
+
+/// Bağlantı başına canlı kayıt (S4 tanısı). Açılışta eklenir; söküme kadar kapanmayan akış
+/// "açık" görünür (ör. yanıtsız kalan bir istek).
+#[derive(Debug)]
+pub struct Flow {
+    dst: SocketAddr,
+    started: std::time::Instant,
+    sni: std::sync::Mutex<Option<String>>,
+    first_bytes: AtomicU64,
+    tls: std::sync::atomic::AtomicBool,
+    up: AtomicU64,
+    down: AtomicU64,
+    end: std::sync::Mutex<Option<String>>,
+    ms: AtomicU64,
+}
+
+/// `hold.json` için bağlantı kaydının anlık görüntüsü.
+#[derive(Debug, Clone, Serialize)]
+pub struct FlowRecord {
+    pub dst: String,
+    pub sni: Option<String>,
+    pub first_bytes: u64,
+    pub tls: bool,
+    pub up: u64,
+    pub down: u64,
+    pub ms: u64,
+    pub end: Option<String>,
+}
+
+impl Flow {
+    fn finish(&self, end: String) {
+        if let Ok(mut e) = self.end.lock() {
+            *e = Some(end);
+        }
+        self.ms.store(
+            u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+    }
+}
+
+/// Giden akışı sarar ve iki yöndeki baytı akış kaydına sayar.
+struct Counted<S> {
+    inner: S,
+    flow: Arc<Flow>,
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for Counted<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        let n = buf.filled().len().saturating_sub(before);
+        self.flow
+            .down
+            .fetch_add(u64::try_from(n).unwrap_or(u64::MAX), Ordering::Relaxed);
+        r
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for Counted<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let r = std::pin::Pin::new(&mut self.inner).poll_write(cx, buf);
+        if let std::task::Poll::Ready(Ok(n)) = &r {
+            self.flow
+                .up
+                .fetch_add(u64::try_from(*n).unwrap_or(u64::MAX), Ordering::Relaxed);
+        }
+        r
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
 
 /// İletim motorunun paylaşılan durumu: geçerli teknik, sayaçlar ve döngü koruması.
 pub struct Engine {
     tech: std::sync::Mutex<SockTech>,
     pub stats: Arc<Stats>,
-    outbound_ports: std::sync::Mutex<std::collections::HashSet<(Proto, u16)>>,
+    outbound_ports: std::sync::Mutex<std::collections::HashSet<OutboundKey>>,
     halted: std::sync::atomic::AtomicBool,
     active: AtomicU64,
+    flows: std::sync::Mutex<Vec<Arc<Flow>>>,
 }
 
 impl Engine {
@@ -229,27 +329,82 @@ impl Engine {
             outbound_ports: std::sync::Mutex::new(std::collections::HashSet::new()),
             halted: std::sync::atomic::AtomicBool::new(false),
             active: AtomicU64::new(0),
+            flows: std::sync::Mutex::new(Vec::new()),
         })
     }
 
-    /// Motorun açtığı giden soketin yerel portunu kaydeder.
+    /// Motorun açtığı giden soketi (yerel port + uzak adres) kaydeder.
     /// Kayıt, dönen nesne yaşadıkça (soket açıkken) geçerlidir.
-    pub fn mark_outbound(self: &Arc<Self>, proto: Proto, port: u16) -> OutboundGuard {
+    pub fn mark_outbound(
+        self: &Arc<Self>,
+        proto: Proto,
+        port: u16,
+        remote: SocketAddr,
+    ) -> OutboundGuard {
+        let key = (proto, port, remote);
         if let Ok(mut set) = self.outbound_ports.lock() {
-            set.insert((proto, port));
+            set.insert(key);
         }
         OutboundGuard {
             engine: self.clone(),
-            key: (proto, port),
+            key,
         }
     }
 
-    /// Bu yerel port, motorun şu an açık bir giden soketine mi ait?
-    pub fn is_own(&self, proto: Proto, port: u16) -> bool {
+    /// Bu akış (kaynak port + hedef), motorun şu an açık bir giden soketi mi?
+    pub fn is_own(&self, proto: Proto, port: u16, remote: SocketAddr) -> bool {
         // Kilit zehirlendiyse güvenli tarafta kal: döngü say.
         self.outbound_ports
             .lock()
-            .map_or(true, |set| set.contains(&(proto, port)))
+            .map_or(true, |set| set.contains(&(proto, port, remote)))
+    }
+
+    /// Yeni TCP akışı kaydı açar (sınır dolduysa kayıt tutulmaz ama akış yine aktarılır).
+    fn open_flow(&self, dst: SocketAddr) -> Arc<Flow> {
+        let flow = Arc::new(Flow {
+            dst,
+            started: std::time::Instant::now(),
+            sni: std::sync::Mutex::new(None),
+            first_bytes: AtomicU64::new(0),
+            tls: std::sync::atomic::AtomicBool::new(false),
+            up: AtomicU64::new(0),
+            down: AtomicU64::new(0),
+            end: std::sync::Mutex::new(None),
+            ms: AtomicU64::new(0),
+        });
+        if let Ok(mut v) = self.flows.lock()
+            && v.len() < MAX_FLOWS
+        {
+            v.push(flow.clone());
+        }
+        flow
+    }
+
+    /// Bağlantı kayıtlarının anlık görüntüsü; kapanmamış akışın sonucu `None`.
+    pub fn flows(&self) -> Vec<FlowRecord> {
+        let Ok(v) = self.flows.lock() else {
+            return Vec::new();
+        };
+        v.iter()
+            .map(|f| {
+                let end = f.end.lock().ok().and_then(|e| e.clone());
+                let ms = if end.is_some() {
+                    f.ms.load(Ordering::Relaxed)
+                } else {
+                    u64::try_from(f.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+                };
+                FlowRecord {
+                    dst: f.dst.to_string(),
+                    sni: f.sni.lock().ok().and_then(|s| s.clone()),
+                    first_bytes: f.first_bytes.load(Ordering::Relaxed),
+                    tls: f.tls.load(Ordering::Relaxed),
+                    up: f.up.load(Ordering::Relaxed),
+                    down: f.down.load(Ordering::Relaxed),
+                    ms,
+                    end,
+                }
+            })
+            .collect()
     }
 
     /// Döngü saptandıysa motor durmuştur; artık hiçbir akış aktarılmaz.
@@ -282,23 +437,80 @@ impl Engine {
     }
 }
 
-/// Kabul döngüsü: yalnızca `target` adresine giden TCP/UDP akışları aktarılır; diğer her şey
-/// (adaptöre düşen çoklu yayın, yayın, başka hedefler) sayılır ve düşürülür.
+/// Motorun ilettiği hedefler: sabit IPv4 önekleri (sağlayıcının kendi bloğu) ve çalışırken
+/// öğrenilen tek IP'ler (paylaşımlı CDN'lerdeki alan adları). Rota kümesiyle aynı tutulur.
+#[derive(Debug)]
+pub struct RouteSet {
+    /// (ağ, maske)
+    prefixes: Vec<(u32, u32)>,
+    hosts: std::sync::RwLock<std::collections::HashSet<std::net::Ipv4Addr>>,
+}
+
+impl RouteSet {
+    pub fn new(prefixes: &[(std::net::Ipv4Addr, u8)]) -> anyhow::Result<Self> {
+        let mut out = Vec::with_capacity(prefixes.len());
+        for (net, len) in prefixes {
+            if *len > 32 {
+                anyhow::bail!("geçersiz önek uzunluğu: {net}/{len}");
+            }
+            let mask = u32::MAX.checked_shl(32 - u32::from(*len)).unwrap_or(0);
+            let bits = u32::from(*net);
+            if bits & !mask != 0 {
+                anyhow::bail!("önek ağ biçiminde değil: {net}/{len}");
+            }
+            out.push((bits, mask));
+        }
+        Ok(Self {
+            prefixes: out,
+            hosts: std::sync::RwLock::default(),
+        })
+    }
+
+    /// Tek test IP'si (Görev 7 `run` / `kill-test`).
+    pub fn single(ip: std::net::Ipv4Addr) -> Self {
+        let set = Self {
+            prefixes: Vec::new(),
+            hosts: std::sync::RwLock::default(),
+        };
+        set.add_host(ip);
+        set
+    }
+
+    /// Yeni tek IP ekler; zaten varsa `false`.
+    pub fn add_host(&self, ip: std::net::Ipv4Addr) -> bool {
+        self.hosts.write().is_ok_and(|mut h| h.insert(ip))
+    }
+
+    pub fn host_count(&self) -> usize {
+        self.hosts.read().map_or(0, |h| h.len())
+    }
+
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        let std::net::IpAddr::V4(v4) = ip else {
+            return false;
+        };
+        let bits = u32::from(v4);
+        self.prefixes.iter().any(|(net, mask)| bits & mask == *net)
+            || self.hosts.read().is_ok_and(|h| h.contains(&v4))
+    }
+}
+
+/// Kabul döngüsü: yalnızca rota kümesindeki adreslere giden TCP/UDP akışları aktarılır; diğer
+/// her şey (adaptöre düşen çoklu yayın, yayın, başka hedefler) sayılır ve düşürülür.
 pub async fn serve(
     mut stack: ipstack::IpStack,
-    target: std::net::Ipv4Addr,
+    routes: Arc<RouteSet>,
     phys_if: Option<u32>,
     engine: Arc<Engine>,
 ) {
     use ipstack::IpStackStream;
-    let target = std::net::IpAddr::V4(target);
     // Akışı aktarabilir miyiz? Döngü saptanırsa motor kalıcı olarak durur.
-    let admit = |engine: &Engine, proto: Proto, local: SocketAddr| -> bool {
+    let admit = |engine: &Engine, proto: Proto, local: SocketAddr, peer: SocketAddr| -> bool {
         if engine.halted() {
             Stats::add(&engine.stats.ignored);
             return false;
         }
-        if engine.is_own(proto, local.port()) {
+        if engine.is_own(proto, local.port(), peer) {
             Stats::add(&engine.stats.loops);
             engine.halted.store(true, Ordering::Relaxed);
             return false;
@@ -311,8 +523,8 @@ pub async fn serve(
     };
     loop {
         match stack.accept().await {
-            Ok(IpStackStream::Tcp(stream)) if stream.peer_addr().ip() == target => {
-                if !admit(&engine, Proto::Tcp, stream.local_addr()) {
+            Ok(IpStackStream::Tcp(stream)) if routes.contains(stream.peer_addr().ip()) => {
+                if !admit(&engine, Proto::Tcp, stream.local_addr(), stream.peer_addr()) {
                     continue;
                 }
                 let (peer, tech, engine) =
@@ -322,8 +534,8 @@ pub async fn serve(
                     engine.leave();
                 });
             }
-            Ok(IpStackStream::Udp(stream)) if stream.peer_addr().ip() == target => {
-                if !admit(&engine, Proto::Udp, stream.local_addr()) {
+            Ok(IpStackStream::Udp(stream)) if routes.contains(stream.peer_addr().ip()) => {
+                if !admit(&engine, Proto::Udp, stream.local_addr(), stream.peer_addr()) {
                     continue;
                 }
                 let (peer, engine) = (stream.peer_addr(), engine.clone());
@@ -360,7 +572,7 @@ where
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
     let _guard = match sock.local_addr()?.as_socket() {
-        Some(local) => engine.mark_outbound(Proto::Udp, local.port()),
+        Some(local) => engine.mark_outbound(Proto::Udp, local.port(), peer),
         None => anyhow::bail!("UDP soketinin yerel adresi yok"),
     };
     sock.connect(&SockAddr::from(peer))?;
@@ -412,7 +624,7 @@ fn connect_out(
     }
     sock.bind(&SockAddr::from(SocketAddr::from(([0, 0, 0, 0], 0))))?;
     let guard = match sock.local_addr()?.as_socket() {
-        Some(local) => engine.mark_outbound(Proto::Tcp, local.port()),
+        Some(local) => engine.mark_outbound(Proto::Tcp, local.port(), peer),
         None => anyhow::bail!("TCP soketinin yerel adresi yok"),
     };
     sock.connect_timeout(&SockAddr::from(peer), CONNECT_TIMEOUT)?;
@@ -431,9 +643,14 @@ where
     I: AsyncRead + AsyncWrite + Unpin,
 {
     Stats::add(&engine.stats.tcp_sessions);
-    let result = relay_inner(inbound, peer, phys_if, tech, engine.clone()).await;
-    if result.is_err() {
-        Stats::add(&engine.stats.tcp_errors);
+    let flow = engine.open_flow(peer);
+    let result = relay_inner(inbound, peer, phys_if, tech, engine.clone(), flow.clone()).await;
+    match &result {
+        Ok(()) => flow.finish("kapandı".into()),
+        Err(e) => {
+            Stats::add(&engine.stats.tcp_errors);
+            flow.finish(format!("hata: {e:#}"));
+        }
     }
     result
 }
@@ -444,6 +661,7 @@ async fn relay_inner<I>(
     phys_if: Option<u32>,
     tech: SockTech,
     engine: Arc<Engine>,
+    flow: Arc<Flow>,
 ) -> anyhow::Result<()>
 where
     I: AsyncRead + AsyncWrite + Unpin,
@@ -467,11 +685,19 @@ where
             Ok(Err(e)) => return Err(e.into()),
         }
     };
-    let use_tech = if matches!(state, FirstFlight::Complete(_)) {
-        tech
-    } else {
-        SockTech::None
-    };
+    let is_tls = matches!(state, FirstFlight::Complete(_));
+    let use_tech = if is_tls { tech } else { SockTech::None };
+    let first_len = u64::try_from(buf.len()).unwrap_or(u64::MAX);
+    flow.first_bytes.store(first_len, Ordering::Relaxed);
+    flow.up.fetch_add(first_len, Ordering::Relaxed);
+    flow.tls.store(is_tls, Ordering::Relaxed);
+    if let Some(name) = xtask::lab::sockettech::find_sni(&buf)
+        .and_then(|r| buf.get(r))
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        && let Ok(mut s) = flow.sni.lock()
+    {
+        *s = Some(name);
+    }
     let sock = tokio::task::spawn_blocking(move || -> anyhow::Result<Socket> {
         if !buf.is_empty() {
             xtask::lab::sockettech::send_first_flight(&sock, &buf, &use_tech)?;
@@ -481,9 +707,56 @@ where
     })
     .await??;
     let std_stream: std::net::TcpStream = sock.into();
-    let mut out = tokio::net::TcpStream::from_std(std_stream)?;
+    let mut out = Counted {
+        inner: tokio::net::TcpStream::from_std(std_stream)?,
+        flow,
+    };
     tokio::io::copy_bidirectional(&mut inbound, &mut out).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod route_set_tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    fn v4(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    }
+
+    #[test]
+    fn prefixes_cover_exact_range() {
+        let r = RouteSet::new(&[(Ipv4Addr::new(128, 116, 0, 0), 17)]).unwrap();
+        assert!(r.contains(v4(128, 116, 0, 0)));
+        assert!(r.contains(v4(128, 116, 127, 255)));
+        assert!(!r.contains(v4(128, 116, 128, 0)));
+        assert!(!r.contains(v4(128, 115, 255, 255)));
+        assert!(!r.contains(IpAddr::V6(Ipv6Addr::LOCALHOST)));
+    }
+
+    #[test]
+    fn learned_hosts_are_added_once() {
+        let r = RouteSet::new(&[]).unwrap();
+        let ip = Ipv4Addr::new(162, 159, 128, 233);
+        assert!(!r.contains(IpAddr::V4(ip)));
+        assert!(r.add_host(ip));
+        assert!(!r.add_host(ip));
+        assert!(r.contains(IpAddr::V4(ip)));
+        assert_eq!(r.host_count(), 1);
+    }
+
+    #[test]
+    fn single_matches_only_that_ip() {
+        let r = RouteSet::single(Ipv4Addr::new(203, 0, 113, 9));
+        assert!(r.contains(v4(203, 0, 113, 9)));
+        assert!(!r.contains(v4(203, 0, 113, 10)));
+    }
+
+    #[test]
+    fn non_network_prefix_is_rejected() {
+        assert!(RouteSet::new(&[(Ipv4Addr::new(128, 116, 1, 0), 17)]).is_err());
+        assert!(RouteSet::new(&[(Ipv4Addr::new(1, 0, 0, 0), 33)]).is_err());
+    }
 }
 
 #[cfg(test)]
@@ -670,7 +943,12 @@ mod tests {
             TunDevice::new(io.clone()),
         );
         let engine = Engine::new(SockTech::None);
-        let task = tokio::spawn(serve(stack, Ipv4Addr::LOCALHOST, None, engine.clone()));
+        let task = tokio::spawn(serve(
+            stack,
+            Arc::new(RouteSet::single(Ipv4Addr::LOCALHOST)),
+            None,
+            engine.clone(),
+        ));
         io.push(udp_packet(echo_addr, b"merhaba"));
         assert!(
             wait_until(|| !io.sent().is_empty()).await,
@@ -711,11 +989,23 @@ mod tests {
             TunDevice::new(io.clone()),
         );
         let engine = Engine::new(SockTech::None);
-        let _guard = engine.mark_outbound(Proto::Udp, 5555);
-        assert!(engine.is_own(Proto::Udp, 5555));
-        assert!(!engine.is_own(Proto::Udp, 6000));
-        assert!(!engine.is_own(Proto::Tcp, 5555), "protokoller ayrı");
-        let task = tokio::spawn(serve(stack, Ipv4Addr::LOCALHOST, None, engine.clone()));
+        let _guard = engine.mark_outbound(Proto::Udp, 5555, echo_addr);
+        assert!(engine.is_own(Proto::Udp, 5555, echo_addr));
+        assert!(!engine.is_own(Proto::Udp, 6000, echo_addr));
+        assert!(
+            !engine.is_own(Proto::Tcp, 5555, echo_addr),
+            "protokoller ayrı"
+        );
+        // Aynı port başka bir hedefe: uygulamanın kendi akışı olabilir, döngü sayılmaz
+        // (2026-11-12 arıza incelemesi: yalnız porta bakmak yanlış alarm verirdi).
+        let other: SocketAddr = (Ipv4Addr::new(1, 1, 1, 1), 443).into();
+        assert!(!engine.is_own(Proto::Udp, 5555, other));
+        let task = tokio::spawn(serve(
+            stack,
+            Arc::new(RouteSet::single(Ipv4Addr::LOCALHOST)),
+            None,
+            engine.clone(),
+        ));
         io.push(udp_packet_from(5555, echo_addr, b"dongu"));
         assert!(wait_until(|| engine.stats.loops.load(Ordering::Relaxed) == 1).await);
         assert!(engine.halted());
@@ -742,8 +1032,8 @@ mod tests {
         );
         let engine = Engine::new(SockTech::None);
         // Hedef başka bir adres: yerel sokete giden datagram aktarılmamalı.
-        let target = Ipv4Addr::new(203, 0, 113, 9);
-        let task = tokio::spawn(serve(stack, target, None, engine.clone()));
+        let routes = Arc::new(RouteSet::single(Ipv4Addr::new(203, 0, 113, 9)));
+        let task = tokio::spawn(serve(stack, routes, None, engine.clone()));
         io.push(udp_packet(other_addr, b"gitmemeli"));
         assert!(wait_until(|| engine.stats.ignored.load(Ordering::Relaxed) == 1).await);
         let mut b = [0u8; 64];
@@ -790,16 +1080,30 @@ mod tests {
         let (got, out_port) = server.join().unwrap();
         assert_eq!(got, expected, "{tech:?}");
         assert!(
-            engine.is_own(Proto::Tcp, out_port),
+            engine.is_own(Proto::Tcp, out_port, addr),
             "giden port döngü koruması için kaydedilmeli"
         );
         drop(app);
         relay.await.unwrap().unwrap();
         assert!(
-            !engine.is_own(Proto::Tcp, out_port),
+            !engine.is_own(Proto::Tcp, out_port, addr),
             "oturum kapanınca port kayıttan silinmeli"
         );
         assert_eq!(engine.stats.tcp_sessions.load(Ordering::Relaxed), 1);
+        // Bağlantı kaydı (S4 tanısı): hedef, ilk uçuş, iki yönde bayt, sonuç.
+        let flows = engine.flows();
+        assert_eq!(flows.len(), 1);
+        let f = &flows[0];
+        assert_eq!(f.dst, addr.to_string());
+        // İlk okuma sonraki baytları da getirebilir: ilk uçuş en az ClientHello kadardır.
+        assert!((first.len() as u64..=first.len() as u64 + 4).contains(&f.first_bytes));
+        assert_eq!(f.up, first.len() as u64 + 4, "ilk uçuş + \"sonr\"");
+        assert_eq!(f.down, 5, "\"yanit\"");
+        assert_eq!(f.end.as_deref(), Some("kapandı"));
+        if matches!(first_flight(&first), FirstFlight::Complete(_)) {
+            assert!(f.tls);
+            assert!(f.sni.is_some(), "TLS ilk uçuşunda SNI okunmalı");
+        }
     }
 
     /// OOB baytı geri döngüde alıcı akışına karışabildiği için burada sınanmaz; gerçek

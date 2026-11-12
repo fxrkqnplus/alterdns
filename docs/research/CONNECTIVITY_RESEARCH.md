@@ -44,7 +44,7 @@ Hop limit 65 kullanılan bir sistemde (telefon hotspot'u üzerinden bağlanırke
 | H4 | Hatalı checksum'lı sahte paketler iPhone NAT'ında (pf) düşüyor ve DPI'a hiç ulaşmıyor | E8 (`--wrong-chksum` notu) | ~~`-7` tek başına~~ (iptal, D8). Hatalı checksum'lı paket kendi soketimizle gönderilemez; sürücüsüz yöntemle test edilemez | Faz 0'da "belirsiz" (gerekçe: test yöntemi yok) |
 | H5 | "Çalışmıyor" gözlemi web değil, UDP trafiğiyle ilgili (Discord sesi, Roblox oyun). GoodbyeDPI bunları kapsamıyor | E11 | Discord masaüstü sesli kanal, Roblox oyuna katılım; web probları geçerken | Web geçiyor, ses/oyun başarısız → destek |
 | H6 | Yerel durum: DPI servisi durmuş veya çökmüş, zamanlanmış görev tetiklenmemiş, başka bir WinDivert istemcisi var, Defender müdahalesi | E4 (yerel) | Paket kaldırıldığı için canlı durum gözlenemez. Tarihsel kanıt: olay günlüğü (Service Control Manager 7031/7034, WinDivert), Defender koruma geçmişi, paketten kalan bağlantı logları (`CLAUDE.local.md`) | Hata kaydı varsa destek; kanıt yetersizse belirsiz |
-| H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab, D5 onayıyla**: kısa süreli 128 ↔ 65 karşılaştırması; aynı matris. Bekçi ≤ 60 sn içinde 65'e döner | 128'de çalışan kip 65'te başarısızsa (veya tersi) → destek |
+| H7 | Operatör tethering olarak tanınan trafiği (TTL 127) farklı bir politika veya yoldan geçiriyor. 65 ile trafik "telefonun kendi trafiği" yoluna giriyor ve bu yolda DPI davranışı farklı | E10 (bağlam) | **Lab (S5-soket):** Sistem hop limiti değişmez (D5, ADR-014). Yalnızca prob soketlerine `IP_TTL` 64 / 65 / 128 verilir; tekniksiz + S2-U'nun en iyi 3 tekniği | Bir teknik 65'te geçip 128'de (veya 64'te) başarısızsa ya da tersi → destek |
 | H8 | GoodbyeDPI'ın otomatik TTL mantığı, gelen paket TTL'inden mesafe tahmin eder (128/64 − TTL). Giden TTL'in (65) bu hesaba doğrudan etkisi olmamalı | E8 | S2-U: sabit `IP_TTL` taraması (N = 1…8) ile `Disorder`; `Fake` Faz 0'da uygulanmadı ("test edilmedi"). GoodbyeDPI'ın gelen TTL'den otomatik hesabı ölçülmez (iptal, D8) | Giden TTL'den bağımsızlık beklenir; kısmi test, gerekçesiyle |
 | H9 | MTU veya parçalama: hücresel yolda etkin MTU daha düşük; ters parçalama ve `--max-payload` etkileşimi | — | S2-U: bölme konumu taraması (sabit ofset, SNI ortası) ve `TlsRecordSplit`; Path MTU ölçümü | Varyantlar arasında anlamlı fark → destek |
 
@@ -80,7 +80,7 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 4. **S2-U — Sürücüsüz soket teknikleri** (hop limit 65; sistem değişikliği yok): `None`, `Split`, `TlsRecordSplit`, `Disorder { IP_TTL 1…8 }`, `Oob` (`Fake` Faz 0'da yok) × bölme konumu {sabit ofset, SNI ortası} × DNS {sistem, DoH} × 3 tekrar. `IP_TTL` yalnızca probun kendi soketindedir. Path MTU ölçümü (H1, H8, H9).
 5. **Wintun spike'ı** (onaylı, yönetici terminali): tek bir test IP'si için TUN rotası, kullanıcı modunda TCP sonlandırma + teknikli yeniden kurma, UDP iletimi; CPU, bellek ve gecikme ölçümü (H5'in UDP kısmı).
 6. **S4 — Gerçek istemciler (el ile, yönergeli; Wintun spike'ından sonra):** Discord masaüstü (giriş, metin, sesli kanal), Roblox (oyuna katılım). S2-U'nun en iyi 2 tekniğiyle, Wintun yolundan (H5).
-7. **S5 — D5 onaylanırsa:** S2-U'nun en iyi 3 tekniği, hop limit 128 ile ≤ 10 dk içinde tekrarlanır. Bekçi 65'e döner (H7).
+7. **S5-soket (H7):** Sistem hop limiti değişmez (D5 kapandı, ADR-014). Tekniksiz bağlantı ve S2-U'nun en iyi 3 tekniği, prob soketinde `IP_TTL` 64 / 65 / 128 ile 3'er kez denenir. Operatör 64 ve 128 paketlerini paylaşım trafiği gibi görebilir; çalıştırmadan önce kullanıcı onayı alınır.
 8. **S6 — Başka ağ varsa:** S1 ve S2-U tekrarlanır (H2).
 9. **Rapor:** Hipotez tablosu (destek / çürüdü / belirsiz + kanıt), Faz 2 için başlangıç strateji kataloğu ve sıralama önerisi.
 
@@ -135,11 +135,11 @@ Diğer ölçümler:
 |---|---|---|---|
 | H1 | Belirsiz (kısmi kanıt) | S2-U, S0 (E12, E13) | TTL'den bağımsız `TlsRecordSplit`, `Oob` ve `Split` (1. bayt) hop limit 65'te çalışıyor. TTL'e bağlı `Disorder` yalnızca ilk bölüt TTL ≥ 3 ile geçiyor; bu durumda sonuç `Split` (1. bayt) ile aynı. TTL ≤ 2'li bölüt DPI'a ulaşmıyor, TTL ≥ 3'lü ulaşıyor. Eski yapılandırmanın sabit TTL 5'i bu yolda DPI'a ulaşacak büyüklükte; sunucuya varmadan düşüp düşmediği ölçülmedi. Sahte paket (`Fake`) Faz 0'da uygulanmadı. "Sahte paket DPI'a ulaşmıyor" açıklaması bu ağ için desteklenmedi |
 | H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
-| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması |
+| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması. Wattpad'de de aynı: üç DNS yolunda da TLS sıfırlaması (2026-11-12) |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
-| H5 | Kısmen | S0 yanıtı (E13), Wintun spike'ı | Web dahil erişim kaybolduğu için tek açıklama UDP değil. Wintun yolu UDP'yi iletiyor: test IP'sinin 443/UDP portu sürüm anlaşması datagramlarına doğrudan ve TUN üzerinden 3/3 yanıt verdi. Discord sesi ve Roblox oyunu S4'te ölçülecek |
+| H5 | Çürüdü (bu ağda) | S4 (beş koşu) | Engel UDP değil, TCP/TLS SNI. Wintun yolunda UDP'ye hiçbir teknik uygulanmadan Discord masaüstü sesi ve Roblox oyunu çalıştı; TLS bağlantıları `Oob@SNI` ile açılınca bütün istemciler çalıştı |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
-| H7 | Ölçülmedi | — | Yalnızca S5 (D5 onayı) ölçebilir |
+| H7 | Çürüdü (akış düzeyinde, bu ağda) | S5-soket | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
 | H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
 
@@ -152,6 +152,42 @@ Diğer ölçümler:
 - **Diğer trafik:** etkilenmedi. UDP iletildi.
 - **Gecikme:** toplam p50 +12 ms, p95 +231 ms.
 - **Kurtarma:** işlem öldürülünce adaptör ve rota 1,6 sn içinde kalktı.
+
+**Wattpad ve S5-soket (2026-11-12):**
+- **Wattpad (S1):** `wattpad.com`, `www` ve `api` alan adları üç DNS yolunda da TLS sıfırlamasıyla engelli (9/9 her biri); kontrol probları geçti.
+- **Wattpad (S2-U):** Discord ve Roblox ile aynı örüntü:
+  - `TlsRecordSplit` (iki konum), `Oob` (iki konum) ve `Split@1`: 18/18.
+  - `Split@SNI`: 0/18; `Disorder@SNI`: her TTL'de 0/18.
+  - `Disorder@1`: TTL ≤ 2'de 0/18, TTL ≥ 3'te 18/18.
+- **S5-soket (H7):** Sistem hop limiti değiştirilmedi; yalnızca prob soketinin TTL'i 64 / 65 / 128 oldu. Sonuç TTL'den bağımsız: tekniksiz bağlantı her TTL'de sıfırlandı, en iyi 3 teknik her TTL'de 27/27 geçti.
+- **Korunan değerler (ADR-014):** üç koşunun başında ve sonunda değişmedi.
+
+**S4, ilk koşu (2026-11-12; Wintun + kullanıcı modu motor, `TlsRecordSplit@SNI`, 310 sn):**
+- **Yönlendirme:** Roblox'un kendi 4 bloğu ve alan adlarından çözülen 28 tek IP (Discord, Roblox, Wattpad).
+- **Tarayıcı (normal ve gizli sekme):** Discord, Roblox ve Wattpad web tünel kurulur kurulmaz açıldı. Discord web'de bir kullanıcıyla sesli sohbet sorunsuz kuruldu.
+- **Masaüstü istemciler:** Discord masaüstü ve Roblox Player hiç açılmadı (web'deki "oyna" düğmesi de Player'ı başlatamadı).
+  - Muhtemel neden (ölçülmedi): istemcilerin açılışta kullandığı adlar rota kümesinin dışında kaldı; bu adreslere giden trafik TUN'a girmeden doğrudan çıktı. Koşudan sonra çözülen adreslerde `dl.discordapp.net`, `media.discordapp.net`, `latency.discord.media`, `clientsettingscdn.roblox.com`, `setup.rbxcdn.com` ve `setup-aws.rbxcdn.com` kümede değildi; `updates.discord.com`, `clientsettings.roblox.com`, `gamejoin.roblox.com` kümedeydi.
+  - Çalışırken öğrenme hiç adres eklemedi: bu makinede Windows DNS önbelleği boş (`Get-DnsClientCache` ve `ipconfig /displaydns` 0 kayıt, yeni bir sorgudan sonra da). Kayıt defterinde TTL geçersiz kılması yok; neden bilinmiyor. Ayrıca Chromium tabanlı istemciler kendi çözücülerini kullanabilir. DNS önbelleğine dayanan öğrenme bu yüzden güvenilir değil.
+- **Motor:** 27 TCP, 24 UDP oturumu (16 450 giden, 112 265 gelen datagram); döngü 0; kontrol probu 16/16.
+- **Söküm ve korunan değerler:** 34 kayıt geri alındı, kalıntı yok; korunan değerler değişmedi. Öncesinde yeniden koşulan `kill-test` de temizdi (adaptör ve rota 1,7 sn içinde kalktı).
+- **Faz 2 için çıkarım:** Hedef başına adres listesi kırılgan; istemciler çok sayıda CDN adı kullanıyor. Motorun trafiği daha geniş alması ve tekniği SNI'ye göre seçmesi (ya da DNS'i motorun kendisinin çözmesi) değerlendirilmeli. Bu, kullanıcının varsayılan rotasına dokunmadan, yalnızca kendi rotalarımızla yapılmalı (ADR-014).
+
+**S4, ikinci koşu (2026-11-12; eksik CDN adları eklendi: 4 önek + 48 tek IP, 304 sn):**
+- **Roblox Player:** açıldı; uygulamadan ve web'deki "oyna" düğmesinden oyuna girildi ve oynandı. Hyperion uyarısı ya da çökme yok.
+- **Tarayıcı:** Discord (metin, ses), Roblox ve Wattpad yine çalıştı.
+- **Discord masaüstü:** "Checking for updates" ekranında kaldı.
+  - Güncelleyicinin günlüğü: tünel yokken `updates.discord.com` bildirim isteği yaklaşık 100 ms içinde hatayla bitiyor (DPI sıfırlamasıyla uyumlu). Tünel açıkken aynı istek yanıtsız kalıyor; ne hata ne başarı yazılıyor.
+  - Bu adın adresleri rota kümesinde; istek tünele giriyor. Tarayıcının aynı adreslere UDP (QUIC) ile gitmiş olabileceği, güncelleyicinin ise TCP + TLS kullandığı düşünülüyor; ölçülmedi.
+  - Sonraki adım: motorda bağlantı başına kayıt (hedef, SNI, iki yöndeki bayt, kapanış nedeni).
+- **Üçüncü koşu (bağlantı kaydıyla, 180 sn):** Discord güncelleyicisinin `updates.discord.com` bağlantıları tünele girdi; ilk uçuş (ClientHello) yalnızca 175 bayttı. `TlsRecordSplit@SNI` uygulanmasına rağmen karşı taraf yaklaşık 150 ms içinde bağlantıyı sıfırladı, hiç yanıt gelmedi. Aynı koşuda tarayıcı boyutlu (1,8–2 KB) ClientHello'lar geçti: `gateway.discord.gg` (≈1,6 MB veri), `cdn.discordapp.com` ve bir `*.discord.media` ses sunucusu. Sonuç: sorun yönlendirme değil; bu teknik küçük ClientHello'da DPI'ı atlatmıyor. Sonraki adım: aynı istemciyle `Oob@SNI` ve `Split@1` denemesi (S2-U'da ikisi de 36/36). Faz 2 için: teknik, istemcinin ClientHello biçimine göre seçilebilmeli.
+- **Dördüncü ve beşinci koşu (yalnız teknik değişti, 90 sn):**
+  - `Oob@SNI`: Discord masaüstü (giriş, metin, sesli kanal), Discord web, Roblox (web, Player, oyun), Wattpad; hepsi çalıştı. Güncelleyicinin 175 baytlık ClientHello'su geçti (yanıt alındı, bağlantı düzgün kapandı). Hyperion uyarısı yok.
+  - `Split@1`: Roblox ve Wattpad çalıştı; Discord masaüstü açılmadı (güncelleyici bağlantıları sıfırlandı).
+  - İki koşuda da söküm temiz, korunan değerler değişmedi.
+- **S4 sonucu (bu ağ):** Wintun + kullanıcı modu motor, `Oob@SNI` ile hedeflenen bütün istemcileri çalıştırdı. Faz 2'nin varsayılan tekniği için aday `Oob@SNI`; `TlsRecordSplit@SNI` küçük ClientHello'da, `Split@1` aynı istemcide başarısız.
+- **Motor:** 100 TCP, 44 UDP oturumu; döngü 0; kontrol probu 16/16.
+- **Söküm:** Wintun oturumu 15 sn içinde kapanmadı; adaptör, işlem çıkınca kalktı. Journal'ın adaptör kaydı geri alınamadı: doğrulama, adaptörün gerçek açıklamasını ("AlterDNS Tunnel") ve karışık harfli PnP kimliğini (`SWD\Wintun\{…}`) reddediyordu. Düzeltildi (test); bekleme 30 sn'ye çıktı; kayıt `lab recover` ile kapatıldı, kalıntı yok.
+- **Korunan değerler:** "dns" farkı bizim adaptörümüzden geldi (Windows'un yer tutucu DNS adresleri; adaptör son okumada hâlâ vardı). Kullanıcının değerleri o sabahki okumayla birebir aynı. Betik artık kendi adaptörümüzü DNS bölümünde de dışarıda tutuyor.
 
 **Faz 2 için ilk sinyal (bu ağ):**
 - Aday sıralama: `TlsRecordSplit` → `Oob` → `Split` (1. bayt). Üçü de sürücüsüz ve TTL'e bağlı değil.

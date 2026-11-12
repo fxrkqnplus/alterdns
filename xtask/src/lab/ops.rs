@@ -164,10 +164,8 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
                     "rota hedefi genel bir adres olmalı (yerel ağ, DNS ya da ağ geçidi TUN'a çekilmez): {prefix}"
                 );
             }
-            let host_len = if parsed.is_ipv4() { "32" } else { "128" };
-            if len != host_len {
-                bail!("rota yalnızca tek IP içindir (/{host_len}): {prefix}");
-            }
+            route_prefix_ok(parsed, len)
+                .map_err(|why| anyhow!("rota reddedildi ({why}): {prefix}"))?;
             let (p, i) = (quoted(prefix)?, quoted(if_name)?);
             Ok(if add {
                 format!(
@@ -214,6 +212,34 @@ pub(crate) fn write_script(op: &OpKind, value: &str) -> anyhow::Result<String> {
 
 /// Rotalanabilir genel bir adres mi? Özel, döngü, bağlantı yerel, CGNAT, test, çoklu yayın,
 /// yayın ve ayrılmış aralıklar `false`.
+/// Rota öneki denetimi. IPv6 yalnızca tek IP (/128). IPv4 /16…/32 olabilir (sağlayıcının
+/// kendi bloğu, ör. oyun sunucuları): ağ biçiminde olmalı, ilk ve son adresi genel olmalı.
+/// Ayrılmış blokların hepsi (özel, CGNAT, bağlantı yerel, 198.18.0.0/15, çoklu yayın…) /16'ya
+/// hizalı ya da daha geniş olduğundan, /16 veya daha dar bir önek bunları ya tamamen içerir
+/// (ilk adres yakalar) ya da hiç içermez: yerel ağ, ağ geçidi ve DNS TUN'a çekilemez.
+fn route_prefix_ok(ip: std::net::IpAddr, len: &str) -> Result<(), &'static str> {
+    let len: u8 = len.parse().map_err(|_| "önek uzunluğu sayı değil")?;
+    match ip {
+        std::net::IpAddr::V6(_) => (len == 128).then_some(()).ok_or("IPv6'da yalnızca /128"),
+        std::net::IpAddr::V4(v4) => {
+            if !(16..=32).contains(&len) {
+                return Err("IPv4 öneki /16…/32 olmalı");
+            }
+            let bits = u32::from(v4);
+            let host_mask = u32::MAX.checked_shr(u32::from(len)).unwrap_or(0);
+            if bits & host_mask != 0 {
+                return Err("önek ağ biçiminde değil");
+            }
+            let last = std::net::IpAddr::V4(std::net::Ipv4Addr::from(bits | host_mask));
+            if routable_global(ip) && routable_global(last) {
+                Ok(())
+            } else {
+                Err("önek genel olmayan adres içeriyor")
+            }
+        }
+    }
+}
+
 pub(crate) fn routable_global(ip: std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(v4) => {
@@ -245,10 +271,15 @@ pub(crate) fn routable_global(ip: std::net::IpAddr) -> bool {
 
 /// Wintun yazılım aygıtının PnP örnek kimliği: `SWD\WINTUN\{GUID}`.
 pub(crate) fn valid_wintun_instance_id(id: &str) -> bool {
-    let Some(guid) = id
-        .strip_prefix(r"SWD\WINTUN\{")
-        .and_then(|r| r.strip_suffix('}'))
-    else {
+    // Windows kimliği karışık harfle bildirebilir (`SWD\Wintun\{…}`).
+    let prefix = r"SWD\WINTUN\{";
+    let Some(head) = id.get(..prefix.len()) else {
+        return false;
+    };
+    if !head.eq_ignore_ascii_case(prefix) {
+        return false;
+    }
+    let Some(guid) = id.get(prefix.len()..).and_then(|r| r.strip_suffix('}')) else {
         return false;
     };
     let parts: Vec<&str> = guid.split('-').collect();
@@ -258,6 +289,15 @@ pub(crate) fn valid_wintun_instance_id(id: &str) -> bool {
             .zip([8usize, 4, 4, 4, 12])
             .all(|(p, n)| p.len() == n && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
+
+/// Spike adaptörü mü? Açıklama, Wintun'un tünel türünden ürettiği "AlterDNS Tunnel" (yinelenen
+/// adlarda " #2" eki) olmalı ve PnP kimliği Wintun yazılım aygıtı olmalı.
+pub(crate) fn spike_device_ok(desc: &str, id: &str) -> bool {
+    desc.starts_with(SPIKE_ADAPTER_DESCRIPTION) && valid_wintun_instance_id(id)
+}
+
+/// Spike'ın Wintun tünel türü "AlterDNS"; Windows açıklamaya " Tunnel" ekler.
+pub const SPIKE_ADAPTER_DESCRIPTION: &str = "AlterDNS Tunnel";
 
 /// Adaptör, işlem çöktüğü için kalakaldıysa kaldırır: yalnızca adı `AlterDNS-Spike`, açıklaması
 /// Wintun ve PnP kimliği `SWD\WINTUN\{GUID}` olan aygıt, `pnputil /remove-device` ile.
@@ -272,7 +312,7 @@ fn remove_spike_adapter(name: &str) -> anyhow::Result<()> {
     let (desc, id) = info
         .split_once('|')
         .ok_or_else(|| anyhow!("adaptör bilgisi okunamadı"))?;
-    if !desc.starts_with("Wintun") || !valid_wintun_instance_id(id) {
+    if !spike_device_ok(desc, id) {
         bail!("{SPIKE_ADAPTER} bir Wintun aygıtı değil ({desc}, {id}); dokunulmadı");
     }
     let status = Command::new(system32("pnputil.exe"))
@@ -412,6 +452,20 @@ mod tests {
     }
 
     #[test]
+    fn route_script_accepts_provider_prefixes() {
+        // Sağlayıcının kendi bloğu (ör. Roblox AS22697): /16…/32, ağ biçiminde.
+        for ok in [
+            "128.116.0.0/17",
+            "103.140.28.0/23",
+            "128.116.5.0/24",
+            "1.1.1.1/32",
+        ] {
+            let add = write_script(&route(ok, SPIKE_ADAPTER), "present").unwrap();
+            assert!(add.contains(&format!("-DestinationPrefix '{ok}'")), "{add}");
+        }
+    }
+
+    #[test]
     fn route_script_is_host_route_in_active_store_only() {
         let add = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "present").unwrap();
         assert!(add.starts_with("New-NetRoute "), "{add}");
@@ -421,9 +475,24 @@ mod tests {
         let del = write_script(&route("1.1.1.1/32", SPIKE_ADAPTER), "absent").unwrap();
         assert!(del.starts_with("Remove-NetRoute "), "{del}");
         assert!(del.contains("-Confirm:$false") && del.contains("-PolicyStore ActiveStore"));
-        // Geniş önek, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
+        // Belge aralığı, varsayılan rota, başka arayüz ve bilinmeyen değer reddedilir.
         for (op, v) in [
             (route("203.0.113.0/24", SPIKE_ADAPTER), "present"),
+            // Önek /16'dan geniş olamaz, ağ biçiminde olmalı, ayrılmış blok içeremez.
+            (route("128.0.0.0/15", SPIKE_ADAPTER), "present"),
+            (route("128.116.1.0/17", SPIKE_ADAPTER), "present"),
+            (
+                route(&["192.168", ".0.0/16"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (
+                route(&["172.16", ".0.0/16"].concat(), SPIKE_ADAPTER),
+                "present",
+            ),
+            (route("100.64.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("198.18.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("192.0.0.0/16", SPIKE_ADAPTER), "present"),
+            (route("2606:4700::/32", SPIKE_ADAPTER), "present"),
             (route("0.0.0.0/0", SPIKE_ADAPTER), "present"),
             (route("203.0.113.7/32", "Wi-Fi"), "present"),
             (route("203.0.113.7/32", SPIKE_ADAPTER), "maybe"),
@@ -484,6 +553,10 @@ mod tests {
         assert!(valid_wintun_instance_id(
             r"SWD\WINTUN\{1F0C5B3A-8E2D-4C71-9A6B-2D4E8F1A7C30}"
         ));
+        // Windows kimliği karışık harfle bildirir (S4 ikinci koşu, 2026-11-12).
+        assert!(valid_wintun_instance_id(
+            r"SWD\Wintun\{7C2E4B61-9D3A-4F58-B0E7-5A1CD2F48E93}"
+        ));
         for bad in [
             r"PCI\VEN_8086&DEV_1234",
             r"SWD\WINTUN\{1F0C5B3A} & calc",
@@ -492,5 +565,20 @@ mod tests {
         ] {
             assert!(!valid_wintun_instance_id(bad), "{bad:?}");
         }
+    }
+
+    /// Spike adaptörünün açıklaması "AlterDNS Tunnel" (Wintun, tünel türünün sonuna " Tunnel"
+    /// ekler); yalnız bu açıklama ve Wintun kimliği kabul edilir.
+    #[test]
+    fn spike_device_check_matches_real_adapter() {
+        let id = r"SWD\Wintun\{7C2E4B61-9D3A-4F58-B0E7-5A1CD2F48E93}";
+        assert!(spike_device_ok("AlterDNS Tunnel", id));
+        assert!(spike_device_ok("AlterDNS Tunnel #2", id));
+        assert!(!spike_device_ok("WireGuard Tunnel", id));
+        assert!(!spike_device_ok("Intel(R) Wi-Fi", id));
+        assert!(!spike_device_ok(
+            "AlterDNS Tunnel",
+            r"PCI\VEN_8086&DEV_1234"
+        ));
     }
 }

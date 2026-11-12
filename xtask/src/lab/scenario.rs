@@ -26,6 +26,9 @@ pub struct Cell {
     pub tech: SockTech,
     pub dns: DnsMode,
     pub reps: u8,
+    /// Probun kendi soketinin taban `IP_TTL`'i; `None` = sistem varsayılanı. Sistem hop
+    /// limiti hiçbir zaman yazılmaz (ADR-010, ADR-014).
+    pub socket_ttl: Option<u8>,
 }
 
 /// Lab'ın gördüğü sistem; testlerde sahte uygulama kullanılır.
@@ -147,6 +150,7 @@ pub fn s1_cells() -> Vec<Cell> {
             tech: SockTech::None,
             dns,
             reps: 3,
+            socket_ttl: None,
         })
         .collect()
 }
@@ -166,7 +170,12 @@ pub fn s2u_cells() -> Vec<Cell> {
         .flat_map(|tech| {
             [DnsMode::System, DnsMode::Doh]
                 .into_iter()
-                .map(move |dns| Cell { tech, dns, reps: 3 })
+                .map(move |dns| Cell {
+                    tech,
+                    dns,
+                    reps: 3,
+                    socket_ttl: None,
+                })
         })
         .collect()
 }
@@ -198,8 +207,37 @@ pub trait CellHooks {
 }
 
 /// Bir prob çalıştırıcısı; testlerde sahte uygulama kullanılır.
+/// S5-soket (H7): tekniksiz ve S2-U'nun en iyi 3 tekniği, probun kendi soketinde taban TTL
+/// 64 / 65 / 128 ile; sistem DNS'i, 3 tekrar. Sistem hop limiti değişmez (D5 kapandı).
+pub fn s5_cells() -> Vec<Cell> {
+    use super::sockettech::SplitAt;
+    let techs = [
+        SockTech::None,
+        SockTech::TlsRecordSplit {
+            at: SplitAt::SniMiddle,
+        },
+        SockTech::Oob {
+            at: SplitAt::SniMiddle,
+        },
+        SockTech::Split {
+            at: SplitAt::Offset(1),
+        },
+    ];
+    [64u8, 65, 128]
+        .into_iter()
+        .flat_map(|ttl| {
+            techs.into_iter().map(move |tech| Cell {
+                tech,
+                dns: DnsMode::System,
+                reps: 3,
+                socket_ttl: Some(ttl),
+            })
+        })
+        .collect()
+}
+
 pub trait ProbeRunner {
-    fn probe(&self, t: &ProbeTarget, dns: DnsMode, tech: &SockTech) -> ProbeResult;
+    fn probe(&self, t: &ProbeTarget, cell: &Cell) -> ProbeResult;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -241,7 +279,7 @@ pub fn run_cells(
                 if let Err(e) = hooks.heartbeat() {
                     return stop(hooks, Abort::WatchdogLost(format!("{e:#}")), rows);
                 }
-                let row = runner.probe(t, cell.dns, &cell.tech);
+                let row = runner.probe(t, cell);
                 if let Err(e) = hooks.on_row(&row) {
                     return stop(
                         hooks,
@@ -444,13 +482,14 @@ mod tests {
     }
 
     impl ProbeRunner for FakeRunner {
-        fn probe(&self, t: &ProbeTarget, dns: DnsMode, tech: &SockTech) -> ProbeResult {
+        fn probe(&self, t: &ProbeTarget, c: &Cell) -> ProbeResult {
             self.calls.set(self.calls.get() + 1);
             ProbeResult {
                 target: t.name.clone(),
                 domain: t.domain.clone(),
-                dns_mode: dns,
-                tech: *tech,
+                dns_mode: c.dns,
+                tech: c.tech,
+                socket_ttl: c.socket_ttl,
                 addrs: Vec::new(),
                 outcome: Outcome::TlsReset,
                 dns_ms: None,
@@ -499,7 +538,74 @@ mod tests {
             tech: SockTech::None,
             dns,
             reps,
+            socket_ttl: None,
         }
+    }
+
+    /// Hücrenin soket TTL'ini kaydeden koşucu.
+    struct TtlRunner {
+        seen: std::cell::RefCell<Vec<Option<u8>>>,
+    }
+
+    impl ProbeRunner for TtlRunner {
+        fn probe(&self, t: &ProbeTarget, c: &Cell) -> ProbeResult {
+            self.seen.borrow_mut().push(c.socket_ttl);
+            FakeRunner {
+                calls: StdCell::new(0),
+            }
+            .probe(t, c)
+        }
+    }
+
+    #[test]
+    fn s5_cells_vary_only_socket_ttl() {
+        let cells = s5_cells();
+        assert_eq!(cells.len(), 12);
+        let best = vec![
+            SockTech::None,
+            SockTech::TlsRecordSplit {
+                at: SplitAt::SniMiddle,
+            },
+            SockTech::Oob {
+                at: SplitAt::SniMiddle,
+            },
+            SockTech::Split {
+                at: SplitAt::Offset(1),
+            },
+        ];
+        for ttl in [64u8, 65, 128] {
+            let techs: Vec<SockTech> = cells
+                .iter()
+                .filter(|c| c.socket_ttl == Some(ttl))
+                .map(|c| c.tech)
+                .collect();
+            assert_eq!(techs, best, "ttl {ttl}");
+        }
+        assert!(
+            cells
+                .iter()
+                .all(|c| c.dns == DnsMode::System && c.reps == 3)
+        );
+    }
+
+    #[test]
+    fn s1_and_s2u_keep_system_ttl() {
+        assert!(s1_cells().iter().all(|c| c.socket_ttl.is_none()));
+        assert!(s2u_cells().iter().all(|c| c.socket_ttl.is_none()));
+    }
+
+    #[test]
+    fn run_cells_passes_socket_ttl_to_runner() {
+        let env = FakeEnv::default();
+        let runner = TtlRunner {
+            seen: std::cell::RefCell::new(Vec::new()),
+        };
+        let mut c = cell(DnsMode::System, 1);
+        c.socket_ttl = Some(128);
+        let mut hooks = RecHooks::default();
+        let out = run_cells(&env, &runner, &[c], &[target("a")], &mut hooks);
+        assert_eq!(out.aborted, None);
+        assert_eq!(*runner.seen.borrow(), vec![Some(128)]);
     }
 
     #[test]
@@ -726,6 +832,7 @@ mod tests {
                 },
                 dns: DnsMode::AltUdp1253,
                 reps: 2,
+                socket_ttl: None,
             },
         ];
         let targets = 5;
@@ -770,9 +877,11 @@ mod tests {
         }
     }
 
-    /// Kaynakta yalnızca hoplimit.rs sistem hop limitine dokunabilir (CLAUDE.md kural 2, ADR-010).
+    /// Kaynakta kullanıcıya ait sistem değerlerini yazan hiçbir komut yoktur; istisna da yoktur
+    /// (CLAUDE.md kural 2, ADR-010, ADR-014; D5 kapandı). Yalnızca kendi nesnelerimiz (adaptör,
+    /// rota, adres) `ops.rs` üzerinden eklenip kaldırılır.
     #[test]
-    fn hop_limit_write_only_in_hoplimit_module() {
+    fn no_user_owned_system_value_writes_in_source() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         // Kalıplar parçalı yazılır ki bu dosya kendini yakalamasın.
         let patterns = [
@@ -780,19 +889,54 @@ mod tests {
             ["set-netipv6", "protocol"].concat(),
             ["defaultcur", "hoplimit"].concat(),
             ["set-netipinter", "face"].concat(),
+            ["set-dnsclient", "serveraddress"].concat(),
+            ["set-dnsclient", "dohserveraddress"].concat(),
+            ["add-dnsclient", "dohserveraddress"].concat(),
+            ["set-dnsclient", "globalsetting"].concat(),
+            ["set-netfirewall", "profile"].concat(),
+            ["set-netconnection", "profile"].concat(),
+            ["set-nettcp", "setting"].concat(),
+            ["set-netoffload", "globalsetting"].concat(),
+            ["winhttp ", "set"].concat(),
+            ["set-mp", "preference"].concat(),
+            ["add-mp", "preference"].concat(),
+            // 2026-11-12 güvenlik incelemesi: kayıt defteri, netsh, diğer cmdlet'ler, Win32.
+            ["set-item", "property"].concat(),
+            ["new-item", "property"].concat(),
+            ["reg ", "add"].concat(),
+            ["netsh int ipv4 ", "set"].concat(),
+            ["netsh int ipv6 ", "set"].concat(),
+            ["netsh interface ", "ip set"].concat(),
+            ["winhttp ", "reset"].concat(),
+            ["winhttp ", "import"].concat(),
+            ["set-dns", "client "].concat(),
+            ["add-dnsclient", "nrptrule"].concat(),
+            ["set-dnsclient", "nrptrule"].concat(),
+            ["remove-dnsclient", "nrptrule"].concat(),
+            ["remove-dnsclient", "dohserveraddress"].concat(),
+            ["set-net", "route"].concat(),
+            ["set-net", "adapter"].concat(),
+            ["set-net", "ipaddress"].concat(),
+            ["new-netfirewall", "rule"].concat(),
+            ["set-netfirewall", "rule"].concat(),
+            ["set-netfirewall", "setting"].concat(),
+            ["setipinterface", "entry"].concat(),
+            ["setinterfacedns", "settings"].concat(),
+            ["createipforward", "entry2"].concat(),
+            ["winhttpsetdefault", "proxyconfiguration"].concat(),
         ];
-        let allowed = Path::new("xtask/src/lab/hoplimit.rs");
         let mut hits = Vec::new();
         for dir in ["xtask", "lab", "spikes", "apps", "crates", "scripts"] {
             walk(&root.join(dir), &mut |p| {
                 let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
-                if !["rs", "ps1", "cmd", "bat", "toml"].contains(&ext) {
+                if ![
+                    "rs", "ps1", "psm1", "cmd", "bat", "toml", "reg", "vbs", "js", "py",
+                ]
+                .contains(&ext)
+                {
                     return;
                 }
                 let rel = p.strip_prefix(&root).unwrap_or(p);
-                if rel == allowed {
-                    return;
-                }
                 let text = std::fs::read_to_string(p)
                     .unwrap_or_default()
                     .to_lowercase();
@@ -805,7 +949,7 @@ mod tests {
         }
         assert!(
             hits.is_empty(),
-            "hop limit yazımı yalnızca hoplimit.rs'de: {hits:?}"
+            "kullanıcıya ait sistem değeri yazımı bulundu: {hits:?}"
         );
     }
 
@@ -817,7 +961,12 @@ mod tests {
             let p = e.path();
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
             if p.is_dir() {
-                if !["target", "results", "bin", "node_modules", ".git"].contains(&name) {
+                // Yalnızca derleme çıktıları ve lab'ın veri dizinleri atlanır; `src/bin` gibi
+                // kaynak dizinleri taranır (2026-11-12 güvenlik incelemesi).
+                let generated = ["target", "node_modules", ".git"].contains(&name)
+                    || p.ends_with("lab/bin")
+                    || p.ends_with("lab/results");
+                if !generated {
                     walk(&p, f);
                 }
             } else {

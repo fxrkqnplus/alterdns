@@ -120,6 +120,7 @@ mod tests {
 
     fn row(target: &str, outcome: Outcome) -> ProbeResult {
         ProbeResult {
+            socket_ttl: None,
             target: target.into(),
             domain: format!("{target}.example"),
             dns_mode: DnsMode::Doh,

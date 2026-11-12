@@ -250,7 +250,20 @@ fn read_status_line(r: &mut impl Read, sock: &Socket, deadline: Instant) -> io::
 
 /// Zaman aşımlı TCP bağlantısı; okuma/yazma zaman aşımları da ayarlanır.
 pub fn connect_tcp(addr: SocketAddr) -> io::Result<Socket> {
+    connect_tcp_ttl(addr, None)
+}
+
+/// `connect_tcp`; `ttl` verilirse yalnızca bu soketin taban TTL'i (IPv6'da hop sayısı) ayarlanır.
+/// Sistem hop limiti okunmaz ve yazılmaz (ADR-010, ADR-014).
+pub fn connect_tcp_ttl(addr: SocketAddr, ttl: Option<u8>) -> io::Result<Socket> {
     let sock = Socket::new(Domain::for_address(addr), Type::STREAM, Some(Protocol::TCP))?;
+    if let Some(ttl) = ttl {
+        if addr.is_ipv4() {
+            sock.set_ttl_v4(u32::from(ttl))?;
+        } else {
+            sock.set_unicast_hops_v6(u32::from(ttl))?;
+        }
+    }
     sock.connect_timeout(&SockAddr::from(addr), PROBE_TIMEOUT)?;
     sock.set_read_timeout(Some(PROBE_TIMEOUT))?;
     sock.set_write_timeout(Some(PROBE_TIMEOUT))?;
@@ -312,6 +325,9 @@ pub struct ProbeResult {
     pub domain: String,
     pub dns_mode: DnsMode,
     pub tech: SockTech,
+    /// Probun soket taban TTL'i (S5-soket); `None` = sistem varsayılanı.
+    #[serde(default)]
+    pub socket_ttl: Option<u8>,
     pub addrs: Vec<String>,
     pub outcome: Outcome,
     pub dns_ms: Option<u64>,
@@ -333,12 +349,23 @@ pub fn run_probe(t: &ProbeTarget, dns_mode: DnsMode) -> ProbeResult {
 
 /// `run_probe`; ClientHello `tech` tekniğiyle gönderilir (S2-U).
 pub fn run_probe_with(t: &ProbeTarget, dns_mode: DnsMode, tech: &SockTech) -> ProbeResult {
+    run_probe_ttl(t, dns_mode, tech, None)
+}
+
+/// `run_probe_with`; `socket_ttl` verilirse yalnızca probun soket taban TTL'i ayarlanır (S5-soket).
+pub fn run_probe_ttl(
+    t: &ProbeTarget,
+    dns_mode: DnsMode,
+    tech: &SockTech,
+    socket_ttl: Option<u8>,
+) -> ProbeResult {
     let start = Instant::now();
     let mut r = ProbeResult {
         target: t.name.clone(),
         domain: t.domain.clone(),
         dns_mode,
         tech: *tech,
+        socket_ttl,
         addrs: Vec::new(),
         outcome: Outcome::DnsFail,
         dns_ms: None,
@@ -348,7 +375,7 @@ pub fn run_probe_with(t: &ProbeTarget, dns_mode: DnsMode, tech: &SockTech) -> Pr
         bytes_in: 0,
         detail: None,
     };
-    r.outcome = probe_stages(t, dns_mode, None, tech, &mut r);
+    r.outcome = probe_stages(t, dns_mode, None, tech, socket_ttl, &mut r);
     r.total_ms = ms(start.elapsed());
     r
 }
@@ -361,6 +388,7 @@ pub fn run_probe_at(t: &ProbeTarget, ip: std::net::IpAddr, tech: &SockTech) -> P
         domain: t.domain.clone(),
         dns_mode: DnsMode::Fixed,
         tech: *tech,
+        socket_ttl: None,
         addrs: Vec::new(),
         outcome: Outcome::DnsFail,
         dns_ms: None,
@@ -370,7 +398,7 @@ pub fn run_probe_at(t: &ProbeTarget, ip: std::net::IpAddr, tech: &SockTech) -> P
         bytes_in: 0,
         detail: None,
     };
-    r.outcome = probe_stages(t, DnsMode::Fixed, Some(ip), tech, &mut r);
+    r.outcome = probe_stages(t, DnsMode::Fixed, Some(ip), tech, None, &mut r);
     r.total_ms = ms(start.elapsed());
     r
 }
@@ -380,6 +408,7 @@ fn probe_stages(
     dns_mode: DnsMode,
     fixed: Option<std::net::IpAddr>,
     tech: &SockTech,
+    socket_ttl: Option<u8>,
     r: &mut ProbeResult,
 ) -> Outcome {
     let fail = |r: &mut ProbeResult, stage: Stage, e: &io::Error| {
@@ -407,7 +436,7 @@ fn probe_stages(
         return Outcome::DnsFail;
     };
     let t1 = Instant::now();
-    let sock = match connect_tcp(SocketAddr::new(*ip, t.port)) {
+    let sock = match connect_tcp_ttl(SocketAddr::new(*ip, t.port), socket_ttl) {
         Ok(s) => s,
         Err(e) => return fail(r, Stage::Tcp, &e),
     };
@@ -426,6 +455,23 @@ fn probe_stages(
             }
         }
         Err(e) => fail(r, Stage::Http, &e),
+    }
+}
+
+#[cfg(test)]
+mod ttl_tests {
+    use super::*;
+
+    /// Taban TTL yalnızca probun kendi soketine yazılır; `None` sistem varsayılanını bırakır.
+    #[test]
+    fn connect_tcp_ttl_sets_base_ttl_on_own_socket() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap();
+        let s = connect_tcp_ttl(addr, Some(128)).unwrap();
+        assert_eq!(s.ttl_v4().unwrap(), 128);
+        let s = connect_tcp_ttl(addr, Some(64)).unwrap();
+        assert_eq!(s.ttl_v4().unwrap(), 64);
+        assert!(connect_tcp_ttl(addr, None).is_ok());
     }
 }
 

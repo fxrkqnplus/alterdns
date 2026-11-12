@@ -14,7 +14,9 @@ mod config;
 mod ffi;
 mod forward;
 mod harden;
+mod hold;
 mod measure;
+mod s4;
 mod tunnel;
 
 use std::io::{BufRead, Write as _};
@@ -35,8 +37,8 @@ use xtask::lab::sockettech::{SockTech, SplitAt};
 
 use crate::measure::{Latency, UdpProbe};
 use crate::tunnel::{
-    AdapterSnapshot, Ctx, Teardown, Tunnel, adapter_snapshot, is_absent, other_wintun_adapters,
-    route_op, tun_op, wait_for,
+    AdapterSnapshot, Ctx, RoutePlan, Teardown, Tunnel, adapter_snapshot, is_absent,
+    other_wintun_adapters, route_op, tun_op, wait_for,
 };
 
 /// `kill-test` alt işlemine verilen iç kullanım belirteci (`serve` doğrudan çalıştırılmasın).
@@ -74,12 +76,16 @@ fn main() -> ExitCode {
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("run") => run(),
-        Some("kill-test") => kill_test(),
+        Some("run") => guarded(run),
+        Some("kill-test") => guarded(kill_test),
         Some("serve") => serve(),
         Some("status") => status(),
+        Some("s4-plan") => s4_plan(),
+        Some("hold") => guarded(hold),
         _ => {
-            eprintln!("kullanım: wintun-spike run | kill-test | status");
+            eprintln!(
+                "kullanım: wintun-spike run | kill-test | status | s4-plan | hold [--tech tls-record-sni|oob-sni|split-1] [--max <sn>]"
+            );
             return ExitCode::from(2);
         }
     };
@@ -90,6 +96,33 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// ADR-014: kullanıcıya ait sistem değerleri (hop limit, DNS, proxy, varsayılan rotalar…)
+/// komuttan önce ve sonra okunur. Baştaki okuma başarısızsa komut başlamaz (2026-11-12
+/// güvenlik incelemesi). Fark varsa komut başarısız sayılır; değer geri yazılmaz (AlterDNS
+/// bunlara yazmaz, farkı başka bir program veya ağ yapmış olabilir).
+fn guarded(f: fn() -> anyhow::Result<()>) -> anyhow::Result<()> {
+    use xtask::lab::guarded;
+    let before = guarded::snapshot()
+        .map_err(|e| anyhow!("korunan değerler okunamadı; komut başlatılmadı: {e:#}"))?;
+    let result = f();
+    match guarded::snapshot() {
+        Ok(after) => {
+            let changed = guarded::diff(&before, &after);
+            if changed.is_empty() {
+                println!("Korunan değerler: değişmedi.");
+            } else {
+                eprintln!(
+                    "UYARI: korunan değerler değişti: {changed:?}. AlterDNS bunlara yazmaz; dokunulmadı."
+                );
+                result?;
+                bail!("korunan değerler değişti: {changed:?}");
+            }
+        }
+        Err(e) => eprintln!("Uyarı: korunan değerler sonda okunamadı: {e:#}"),
+    }
+    result
 }
 
 #[derive(Debug, Serialize)]
@@ -564,6 +597,369 @@ fn kill_test() -> anyhow::Result<()> {
 }
 
 /// Salt okunur durum.
+/// S4 girdileri: sağlayıcı önekleri, alan adlarından sistem çözücüsüyle çözülen tek IP'ler
+/// ve DNS önbelleğinden öğrenilenler. Salt okunurdur.
+struct S4Inputs {
+    prefixes: Vec<(std::net::Ipv4Addr, u8)>,
+    hosts: std::collections::BTreeSet<std::net::Ipv4Addr>,
+    suffixes: Vec<String>,
+    from_cache: usize,
+    targets: Vec<s4::S4Target>,
+}
+
+const DNS_CACHE_QUERY: &str =
+    "Get-DnsClientCache | Select-Object Entry, Name, Type, Data | ConvertTo-Json -Compress";
+
+fn s4_inputs() -> anyhow::Result<S4Inputs> {
+    use std::net::ToSocketAddrs as _;
+    let root = xtask::lab::cli::repo_root();
+    let targets = s4::load(&root)?;
+    let prefixes = s4::prefixes(&targets)?;
+    let suffixes: Vec<String> = targets.iter().flat_map(|t| t.sonekler.clone()).collect();
+    let mut hosts = std::collections::BTreeSet::new();
+    for name in targets.iter().flat_map(|t| &t.alan_adlari) {
+        match (name.as_str(), 443).to_socket_addrs() {
+            Ok(addrs) => {
+                for a in addrs {
+                    if let std::net::IpAddr::V4(v4) = a.ip()
+                        && config::validate_test_ip(v4).is_ok()
+                    {
+                        hosts.insert(v4);
+                    }
+                }
+            }
+            Err(e) => eprintln!("{name}: çözülemedi: {e}"),
+        }
+    }
+    let cache = ps_query(DNS_CACHE_QUERY).unwrap_or_default();
+    let learned = s4::learn_from_dns_cache(&cache, &suffixes)?;
+    let from_cache = learned.iter().filter(|ip| !hosts.contains(*ip)).count();
+    hosts.extend(learned);
+    Ok(S4Inputs {
+        prefixes,
+        hosts,
+        suffixes,
+        from_cache,
+        targets,
+    })
+}
+
+/// S4 rota planı (salt okunur): K10 onayında kullanıcıya gösterilir. Hiçbir rota veya ayar
+/// yazılmaz.
+fn s4_plan() -> anyhow::Result<()> {
+    let mut inputs = s4_inputs()?;
+    let live = harden::live_net()?;
+    let skipped = protect_live(&mut inputs.hosts, &live);
+    let plan = RoutePlan::s4(&inputs.prefixes, &inputs.hosts)?;
+    println!("S4 rota planı (salt okunur; hiçbir rota yazılmadı)");
+    for t in &inputs.targets {
+        println!(
+            "- {}: {} alan adı, {} sonek, {} önek",
+            t.ad,
+            t.alan_adlari.len(),
+            t.sonekler.len(),
+            t.onekler.len()
+        );
+    }
+    println!("Önek rotaları ({}):", inputs.prefixes.len());
+    for (net, len) in &inputs.prefixes {
+        println!("  {net}/{len}");
+    }
+    println!(
+        "Tek IP rotaları (/32): {} ({} tanesi DNS önbelleğinden; {} tanesi canlı uç noktayla çakıştığı için atlandı)",
+        plan.set.host_count(),
+        inputs.from_cache,
+        skipped
+    );
+    match harden::prefix_conflict(&plan.set, &live) {
+        None => println!("Canlı çakışma (DNS sunucusu, ağ geçidi, açık bağlantı): yok"),
+        Some(why) => println!("Canlı çakışma: {why} — S4 bu kümeyle başlamaz"),
+    }
+    Ok(())
+}
+
+/// DNS sunucusu, ağ geçidi veya başta açık bir bağlantının uzak adresi olan tek IP'leri çıkarır;
+/// çıkarılanların sayısı.
+fn protect_live(
+    hosts: &mut std::collections::BTreeSet<std::net::Ipv4Addr>,
+    live: &harden::LiveNet,
+) -> usize {
+    let before = hosts.len();
+    hosts.retain(|ip| harden::host_conflict(*ip, live).is_none());
+    before - hosts.len()
+}
+
+#[derive(Debug, Default, Serialize)]
+struct HoldReport {
+    tech: Option<SockTech>,
+    max_secs: u64,
+    prefixes: Vec<String>,
+    initial_hosts: usize,
+    skipped_live: usize,
+    learned: usize,
+    /// (öğrenilen IP, oturum başından ms): rota eklenince açık akışların kopması bu zamanla
+    /// ilişkilendirilebilsin.
+    learned_ips: Vec<(String, u64)>,
+    learn_skipped_live: usize,
+    learn_errors: Vec<String>,
+    controls_ok: usize,
+    controls_failed: usize,
+    stop: String,
+    duration_ms: u64,
+    phys_if: u32,
+    tun_if: u32,
+    mtu: u16,
+    engine: Option<serde_json::Value>,
+    teardown: Option<Teardown>,
+    answers: Vec<(String, Option<bool>)>,
+    notes: Vec<String>,
+    /// Bağlantı başına kayıt (hedef, SNI, iki yönde bayt, süre, sonuç; kapanmamışsa `None`).
+    flows: Vec<forward::FlowRecord>,
+}
+
+const HOLD_QUESTIONS: [&str; 6] = [
+    "Discord masaüstü: giriş ve metin kanalları çalıştı mı?",
+    "Discord masaüstü: sesli kanala bağlanıp ses alıp verebildiniz mi?",
+    "Roblox: uygulama/web açıldı mı?",
+    "Roblox: bir oyuna katılıp oynayabildiniz mi?",
+    "Roblox: Hyperion (hile önleme) uyarısı veya çökme oldu mu?",
+    "Wattpad: bir hikâye açılıp okunabildi mi?",
+];
+
+/// S4: Discord, Roblox ve Wattpad trafiğini (sağlayıcı önekleri + tek IP'ler) Wintun'a
+/// yönlendirir ve kullanıcı gerçek istemcileri dener. Kontrol probu 20 sn'de bir geçtikçe
+/// kira yenilenir; en çok 600 sn, Enter ile erken biter. Sonunda söküm ve kısa sorular.
+fn hold() -> anyhow::Result<()> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let rest: Vec<String> = std::env::args().skip(2).collect();
+    let args = hold::parse_args(&rest)?;
+    let ctx = Ctx::load()?;
+    harden::elevated_preconditions(&ctx.root, ctx.test_ip())?;
+    preflight(&ctx.env, true).map_err(|e| anyhow!("{e}"))?;
+    require_driver_store()?;
+    let mut inputs = s4_inputs()?;
+    let live = harden::live_net()?;
+    let skipped_live = protect_live(&mut inputs.hosts, &live);
+    let plan = RoutePlan::s4(&inputs.prefixes, &inputs.hosts)?;
+    if let Some(why) = harden::prefix_conflict(&plan.set, &live) {
+        bail!("{why}");
+    }
+    let mut notes = Vec::new();
+    // IPv6 rotası yok: genel IPv6 varsa uygulamalar TUN'u atlayabilir (sonuç yanıltıcı olur).
+    let global_v6 = ps_query(
+        "@(Get-NetIPAddress -AddressFamily IPv6 -ErrorAction SilentlyContinue | Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notlike 'fe80*' -and $_.IPAddress -ne '::1' }).Count",
+    )
+    .ok()
+    .and_then(|v| v.trim().parse::<u32>().ok())
+    .unwrap_or(0);
+    if global_v6 > 0 {
+        let n = format!(
+            "Uyarı: genel IPv6 adresi var ({global_v6}); S4 yalnızca IPv4'ü yönlendirir, IPv6 trafiği TUN'u atlar."
+        );
+        println!("{n}");
+        notes.push(n);
+    }
+    let prefix_list: Vec<String> = inputs
+        .prefixes
+        .iter()
+        .map(|(n, l)| format!("{n}/{l}"))
+        .collect();
+    let probes = args.max.as_secs() / hold::PROBE_EVERY.as_secs() + 1;
+    let summary = Summary {
+        scenario:
+            "S4 — gerçek istemciler: Discord, Roblox, Wattpad (Wintun + kullanıcı modu motor)"
+                .into(),
+        changes: format!(
+            "{SPIKE_ADAPTER} adaptörü, 198.18.0.1/30 adresi, {} önek ({}) ve {} tek IP rotası (ActiveStore, yalnızca bu adaptöre; {} tek IP canlı uç noktayla çakıştığı için atlandı); çalışırken DNS önbelleğinden en çok {} yeni tek IP rotası. Teknik {:?}. Süre en çok {} sn; Enter ile erken biter. Hop limit, DNS, proxy ve diğer kullanıcı ayarlarına dokunulmaz (başta ve sonda denetlenir). Başlamadan önce Discord, Roblox ve Wattpad'i kapatın. Tahmin yalnızca kontrol problarıdır; uygulamaların kendi trafiği dahil değildir.",
+            inputs.prefixes.len(),
+            prefix_list.join(", "),
+            plan.set.host_count(),
+            skipped_live,
+            hold::MAX_LEARNED,
+            args.tech,
+            args.max.as_secs()
+        ),
+        revert: REVERT_TEXT.into(),
+        probes,
+        bytes: probes * PROBE_BYTES,
+    };
+    if !confirm(&summary) {
+        println!("İptal edildi; hiçbir değişiklik yapılmadı.");
+        return Ok(());
+    }
+    let run = run_id("wintun-hold");
+    let out_dir = results_dir(&ctx.root).join(&run);
+    std::fs::create_dir_all(&out_dir)?;
+    let mut rep = HoldReport {
+        tech: Some(args.tech),
+        max_secs: args.max.as_secs(),
+        prefixes: prefix_list,
+        initial_hosts: plan.set.host_count(),
+        skipped_live,
+        notes,
+        ..HoldReport::default()
+    };
+    write_json(&out_dir, "hold.json", &rep)?;
+    println!(
+        "Wintun yükleniyor ve tünel kuruluyor ({} rota)…",
+        plan.ops.len()
+    );
+    let lib = ffi::Wintun::load(&ctx.dll, ffi::WINTUN_DLL_SHA256)?;
+    let mut t = Tunnel::up_with(&ctx, &lib, &out_dir, &run, args.tech, plan)?;
+    // Tünel kuruldu: bundan sonra `?` yok, söküm her durumda çalışır (2026-11-12 arıza incelemesi).
+    rep.phys_if = t.phys_if;
+    rep.tun_if = t.tun_if;
+    rep.mtu = t.mtu;
+    let _ = write_json(&out_dir, "hold.json", &rep);
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+        let _ = tx.send(());
+    });
+    println!(
+        "Tünel hazır. Şimdi Discord masaüstünü (giriş, metin, sesli kanal), Roblox'u (oyuna katılım) ve Wattpad'i deneyin. Bitirince Enter'a basın (en çok {} sn).",
+        args.max.as_secs()
+    );
+    let started = Instant::now();
+    let (mut last_probe, mut last_learn) = (None, None);
+    let mut by_user = false;
+    let stop = 'hold: loop {
+        let now = started.elapsed();
+        if rx.try_recv().is_ok() {
+            by_user = true;
+            break "kullanıcı (Enter)".to_string();
+        }
+        if now >= args.max {
+            break "süre doldu".to_string();
+        }
+        // Motor durduysa rotalar karadelik olur: kirayı beklemeden hemen çık.
+        if !t.engine_alive() {
+            break "motor durdu (görev bitti ya da döngü saptandı)".to_string();
+        }
+        if hold::due(now, last_learn, hold::LEARN_EVERY) {
+            last_learn = Some(now);
+            let budget =
+                hold::learn_budget(rep.learned, hold::MAX_LEARNED).min(hold::LEARN_PER_TICK);
+            match ps_query(DNS_CACHE_QUERY)
+                .and_then(|c| s4::learn_from_dns_cache(&c, &inputs.suffixes))
+            {
+                Ok(cands) => {
+                    let mut fresh = Vec::new();
+                    for ip in cands {
+                        if t.set.contains(std::net::IpAddr::V4(ip)) {
+                            continue;
+                        }
+                        if harden::host_conflict(ip, &live).is_some() {
+                            rep.learn_skipped_live += 1;
+                            // Bir daha denenmesin: kümeye girer ama rotası yazılmaz.
+                            t.set.add_host(ip);
+                            continue;
+                        }
+                        fresh.push(ip);
+                        if fresh.len() >= budget {
+                            break;
+                        }
+                    }
+                    for ip in fresh {
+                        if rx.try_recv().is_ok() {
+                            by_user = true;
+                            break 'hold "kullanıcı (Enter)".to_string();
+                        }
+                        match t.add_host(ip) {
+                            Ok(true) => {
+                                rep.learned += 1;
+                                rep.learned_ips.push((
+                                    ip.to_string(),
+                                    u64::try_from(started.elapsed().as_millis())
+                                        .unwrap_or(u64::MAX),
+                                ));
+                            }
+                            Ok(false) => {}
+                            Err(e) => rep.learn_errors.push(format!("{e:#}")),
+                        }
+                    }
+                }
+                Err(e) => rep.learn_errors.push(format!("DNS önbelleği: {e:#}")),
+            }
+        }
+        if hold::due(now, last_probe, hold::PROBE_EVERY) {
+            last_probe = Some(now);
+            let c = probe::run_probe(&ctx.control, DnsMode::System);
+            if !c.outcome.is_ok() {
+                rep.controls_failed += 1;
+                break format!("kontrol probu başarısız ({:?})", c.outcome);
+            }
+            rep.controls_ok += 1;
+            if let Err(e) = t.beat() {
+                break format!("motor: {e:#}");
+            }
+            let st = &t.engine.stats;
+            println!(
+                "{} sn: kontrol tamam; öğrenilen {}, TCP {} (hata {}), UDP {} (giden {}, gelen {}), aktarılmayan {}, döngü {}",
+                now.as_secs(),
+                rep.learned,
+                st.tcp_sessions.load(Relaxed),
+                st.tcp_errors.load(Relaxed),
+                st.udp_sessions.load(Relaxed),
+                st.udp_datagrams_out.load(Relaxed),
+                st.udp_datagrams_in.load(Relaxed),
+                st.ignored.load(Relaxed),
+                st.loops.load(Relaxed)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    rep.stop = stop;
+    rep.duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    rep.engine = serde_json::to_value(&*t.engine.stats).ok();
+    rep.flows = t.engine.flows();
+    let _ = write_json(&out_dir, "hold.json", &rep);
+    let silent = hold::silent_by_sni(&rep.flows);
+    if !silent.is_empty() {
+        println!("Yanıt almayan TCP bağlantıları (SNI'ye göre, ilk 10):");
+        for (name, n) in silent.iter().take(10) {
+            println!("  {name}: {n}");
+        }
+    }
+    println!(
+        "Durdu: {}. Discord, Roblox ve Wattpad sekmelerini şimdi kapatın; tünel kaldırılıyor ({} rota)…",
+        rep.stop,
+        t.route_count()
+    );
+    let td = t.down();
+    let clean =
+        td.adapter_absent && td.route_absent && td.failed.is_empty() && td.conflicts.is_empty();
+    rep.teardown = Some(td);
+    let _ = write_json(&out_dir, "hold.json", &rep);
+    if !by_user {
+        println!("Sorulara geçmek için Enter'a basın.");
+        let _ = rx.recv();
+    }
+    println!("Kısa sorular (e = evet, h = hayır, boş = bilmiyorum):");
+    for q in HOLD_QUESTIONS {
+        print!("{q} ");
+        let _ = std::io::stdout().flush();
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+        rep.answers.push((q.to_string(), hold::parse_answer(&line)));
+    }
+    write_json(&out_dir, "hold.json", &rep)?;
+    println!(
+        "Sonuç: {} (ayrıntı {})",
+        if clean {
+            "söküm temiz"
+        } else {
+            "SÖKÜMDE SORUN VAR"
+        },
+        out_dir.join("hold.json").display()
+    );
+    if !clean {
+        bail!("söküm temiz değil; `wintun-spike status` ve `xtask lab recover` çalıştırın");
+    }
+    Ok(())
+}
+
 fn status() -> anyhow::Result<()> {
     let ctx = Ctx::load()?;
     println!(

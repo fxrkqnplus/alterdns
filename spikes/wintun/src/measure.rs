@@ -145,6 +145,7 @@ mod tests {
 
     fn row(outcome: Outcome, total: u64, tls: Option<u64>) -> ProbeResult {
         ProbeResult {
+            socket_ttl: None,
             target: "t".into(),
             domain: "t.example".into(),
             dns_mode: DnsMode::Fixed,

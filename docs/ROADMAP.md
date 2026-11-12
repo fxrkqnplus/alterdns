@@ -38,7 +38,7 @@ Not (2026-11-09): Geliştirici makinesindeki eski DPI paketi Faz 0 başında kal
 
 Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini engelledi. Bağlantı motoru D8 ile yeniden değerlendiriliyor (aday: Wintun TUN + kullanıcı modu motor; yedek: yerel aktarıcı/PAC; WinDivert askıda). Karar Faz 0 ölçümlerinden sonra kesinleşir (ADR-003).
 
-**Kullanıcı onayı gereken noktalar:** Wintun spike'ı (indirme, adaptör ve rota), gerçek istemci testleri, D5 (TTL 128 karşılaştırması), push ve depo ayarları.
+**Kullanıcı onayı gereken noktalar:** Wintun spike'ı (indirme, adaptör ve rota), gerçek istemci testleri, kendi soketimizde TTL karşılaştırması (S5-soket; D5 kapandı, sistem hop limiti değişmez), push ve depo ayarları.
 
 **Testler:** T-LAB-001…006, T-SPK-001…004
 

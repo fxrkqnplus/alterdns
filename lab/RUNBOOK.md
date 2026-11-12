@@ -21,6 +21,19 @@ target\xtask\debug\xtask.exe lab preflight
   - `lab preflight` çıktısında "Bekçi: iş nesnesi dışında" yazmalıdır.
 - S1 (`lab baseline`) ve S2-U (`lab techniques`) sistem değiştirmez. Bu yüzden `cargo xtask` altında
   da çalışırlar; yalnızca bir uyarı basılır.
+- S5-soket (`lab ttl`) da sistem değiştirmez: yalnızca probun kendi soketinin taban `IP_TTL`'i
+  64 / 65 / 128 olur. Sistem hop limiti hiçbir senaryoda yazılmaz (ADR-010, ADR-014).
+  - Telefon hotspot'unda TTL 64 ve 128 ile giden prob paketleri operatöre paylaşım trafiği gibi
+    görünebilir; onay ekranı bunu belirtir.
+- `--only <önek>` yalnızca adı o önekle başlayan hedefleri ölçer; kontrol probları her zaman
+  kalır. Örnek: `lab baseline --only wattpad`, `lab techniques --only wattpad`.
+- **Korunan değerler (ADR-014):** Her senaryo başında ve sonunda kullanıcıya ait değerlerin
+  anlık görüntüsü alınır (`lab/scripts/korunan-degerler.ps1`, salt okunur): hop limit, bağlı
+  arayüzlerin MTU'su ve otomatik metrik ayarı, varsayılan rotalar, DNS, DoH, NRPT, WinINET ve
+  WinHTTP proxy'si, güvenlik duvarı profilleri.
+  - Sonuç `lab/results/<koşu>/korunan-degerler.json` dosyasına yazılır.
+  - Fark varsa koşu başarısız sayılır. AlterDNS bu değerlere yazmaz ve düzeltmeye çalışmaz;
+    farkı başka bir program veya ağ (ör. DHCP) yapmış olabilir.
 
 ## 2. Bayat journal: `lab recover`
 
@@ -127,6 +140,34 @@ spikes\wintun\target\release\wintun-spike.exe status
     rotayı, adresi ve kalakaldıysa adaptörü geri alır; raporu `ParentGone`dur.
   - Sonra yaklaşık 10 sn bekleyip `wintun-spike status` çalıştırın. Bir şey kaldıysa
     `xtask lab recover`, o da yetmezse bölüm 5.
+- **Korunan değerler (ADR-014):** `run` ve `kill-test` önce ve sonra kullanıcıya ait değerleri
+  okur (bölüm 1). Fark varsa komut başarısız sayılır; değerlere dokunulmaz.
+- **S4 rota planı:** `wintun-spike s4-plan` salt okunurdur; yönetici gerekmez. Kaynak:
+  `data/s4/hedefler.toml`. Gösterdikleri:
+  - sağlayıcının kendi önekleri (yalnızca Roblox AS22697);
+  - alan adlarından çözülen tek IP'ler;
+  - DNS önbelleğinden öğrenilen tek IP'ler.
+  Paylaşımlı CDN'lerde (Discord: Cloudflare, Wattpad: CloudFront) önek kullanılmaz.
+- **S4 gerçek istemciler (`hold`, Görev 9 K10):** yönetici terminalinde, `kill-test` geçtikten sonra:
+
+  ```powershell
+  spikes\wintun\target\release\wintun-spike.exe s4-plan
+  spikes\wintun\target\release\wintun-spike.exe hold
+  ```
+
+  - Başlamadan önce Discord, Roblox ve Wattpad sekmelerini kapatın: açık bağlantılar rota
+    eklenince kopar.
+  - Seçenekler: `--tech tls-record-sni` (varsayılan) | `oob-sni` | `split-1`; `--max <sn>` (≤ 600).
+  - Tünel hazır olunca uygulamaları deneyin: Discord masaüstü (giriş, metin, sesli kanal),
+    Roblox (oyuna katılım), Wattpad (hikâye açma). Bitirince Enter.
+  - Kontrol probu 20 sn'de bir geçmezse oturum kendiliğinden biter. DNS önbelleğinden 5 sn'de
+    bir yeni tek IP'ler öğrenilir (en çok 128); Discord sesi ilk denemede bağlanmazsa birkaç
+    saniye sonra yeniden deneyin.
+  - Güvenlik: DNS sunucuları, ağ geçidi ve başlangıçta açık bağlantıların uzak adresleri (ör.
+    bu oturum) hiçbir zaman TUN'a yönlendirilmez; öğrenilen adresler de bu denetimden geçer.
+  - Motor durursa (döngü, hata) oturum hemen biter; kira beklenmez.
+  - Söküm sırasında uygulamaları kapatın; rota sayısına göre söküm bir iki dakika sürebilir.
+  - Sonda tünel sökülür ve kısa sorular sorulur (e / h / boş). Sonuç: `lab/results/wintun-hold-*/hold.json`.
 - **Sonuçlar** `lab/results/wintun-*/` altındadır (git dışı):
   - `wintun-run.json`: başlangıç verisi baştan yazılır.
   - `kill-test.json`.

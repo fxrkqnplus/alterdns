@@ -95,6 +95,18 @@ TLS aşaması iki yol arasında karşılaştırılamaz. TUN yolunda uygulamanın
 - **Kalan ölçümler:** UDP teknikleri, Discord sesi ve Roblox oyunu (S4); IPv6 hedefler.
 - **Kabul edilen risk:** Yükseltilmiş çalışmada kullanıcının yazabildiği ikililer (spike `exe`, `xtask.exe`) kullanıldı. Aynı kullanıcı yetkisiyle yazabilen biri spike'ın kendisini de değiştirebilir, bu yüzden bu risk geliştirme spike'ının tehdit modeli dışında tutuldu. Ürün, yalnızca yöneticinin yazabildiği Program Files altına kurulacak (Faz 5).
 
+## S4 ilk koşu (Görev 9, 2026-11-12)
+
+Ayrıntı ve çıkarımlar `docs/research/CONNECTIVITY_RESEARCH.md` §7'de. Özet:
+- `hold` kipi: 4 önek + 28 tek IP, `TlsRecordSplit@SNI`, 310 sn.
+- Tarayıcıda Discord (sesli sohbet dahil), Roblox ve Wattpad açıldı; masaüstü istemciler açılmadı.
+- DNS önbelleğinden öğrenme bu makinede çalışmadı (önbellek boş).
+- Söküm temiz; korunan değerler değişmedi.
+
+**İkinci koşu:** eksik CDN adları eklendi. Roblox Player ve oyun çalıştı (Hyperion uyarısı yok); Discord masaüstü güncelleme denetiminde kaldı. Söküm sırasında oturum 15 sn'de kapanmadı ve adaptör doğrulaması gerçek açıklamayı reddetti; ikisi düzeltildi, kalıntı yok.
+
+**Üçüncü–beşinci koşu:** Bağlantı kaydıyla neden bulundu: Discord güncelleyicisinin 175 baytlık ClientHello'su `TlsRecordSplit@SNI` ve `Split@1` ile sıfırlanıyor, `Oob@SNI` ile geçiyor. `Oob@SNI` ile hedeflenen bütün istemciler (Discord masaüstü ve ses, Roblox Player ve oyun, Wattpad) çalıştı.
+
 ## Lisans ve SignPath
 
 Değişmedi; ayrıntı `docs/research/THIRD_PARTY.md` §1.1. Ön derlenmiş DLL lisansı OSI onaylı değil. GPL-3.0 §7 ek izni ve "yalnızca `alterdns-svc` yükler" önlemi yürürlükte. SignPath ön sorusu açık.

@@ -4,6 +4,7 @@
 
 - Her kabul ölçütü en az bir otomatik teste veya tekrarlanabilir bir ölçüm betiğine bağlıdır. El ile yapılan testlerin adımları ve beklenen sonuçları yazılıdır.
 - Sistemi değiştiren testler yalnızca VM'de veya `xtask lab` / `dev-install` düzeneğinde çalışır. Bu testler journal ve bekçi ile korunur.
+- **Makineye özgü değerler (ADR-014):** Testler kullanıcıya ya da başka yazılıma ait değerleri (hop limit, DNS/DoH, proxy, MTU, rotalar, güvenlik duvarı…) değiştirmez; yalnızca AlterDNS'in kendi nesnelerini ekleyip kaldırır. Her lab senaryosu başta ve sonda bu değerlerin anlık görüntüsünü alır; fark testi başarısız yapar. Farklı değerlerin etkisi kendi soketimizde (ör. `IP_TTL`) veya uyumluluk matrisinde ölçülür.
 - Testler deterministiktir. Ağa bağlı testler (`#[ignore]` + `--features net-tests`) ayrı koşulur ve sonuçları zaman damgalı kaydedilir.
 - "Bitti" demeden önce şunlar çalıştırılır ve çıktıları rapora eklenir: `superpowers:verification-before-completion`, `cargo xtask check`, `cargo xtask perf`.
 
@@ -168,11 +169,15 @@
 - Smart App Control: açık / kapalı
 - AV: yalnız Defender / üçüncü taraf (en az bir)
 - Diğer WinDivert kullanıcısı: yok / GoodbyeDPI 0.2.3rc3 (2.2.0) / zapret / VPN istemcisi
-- Ağ: ev Wi-Fi, Ethernet, iPhone hotspot (hop limit 65 ve 128), Android hotspot, USB tethering, IPv6-only/NAT64, captive portal
+- Ağ: ev Wi-Fi, Ethernet, iPhone hotspot, Android hotspot, USB tethering, IPv6-only/NAT64, captive portal
+- Makinenin kendi hop limiti: 64, 65, 128 (değiştirilmez; farklı değerler farklı makinelerde/VM'lerde bulunur, ADR-014)
+- Proxy: yok / WinINET elle / PAC / WinHTTP
+- Başka VPN veya TUN: yok / WireGuard (Wintun) / OpenVPN (TAP) / `198.18.0.0/15` kullanan bir VPN
+- IPv6: yok / var; MTU: 1500 / 1400 / 1280
 - Adaptör sayısı: 1 / 2+ (Wi-Fi + Ethernet, Hyper-V/WSL vSwitch)
 - Mimari: x64 (ARM64'te kurulum açık bir hata koduyla durmalı)
 
-Bütün kombinasyonlar denenmez; çift yönlü (pairwise) kapsama ile seçilen alt küme kullanılır. Geliştirici makinesinin yapılandırması (`CLAUDE.local.md`: HVCI açık, telefon hotspot'u, hop limit 65) her zaman matristedir.
+Bütün kombinasyonlar denenmez; çift yönlü (pairwise) kapsama ile seçilen alt küme kullanılır. Geliştirici makinesinin yapılandırması (HVCI açık, telefon hotspot'u, hop limit 65) her zaman matristedir.
 
 - **T-CMP-001** (Yalnızca WinDivert modu geri gelirse; D8.) Aynı adlı `WinDivert` servisi başka bir sürücü yoluna bağlıyken (GoodbyeDPI kurulu VM; sürücü yüklü ve yüklü değil) AlterDNS bağlantı modülünün davranışı: hangi sürücüyü kullandığı, sürüm uyumsuzluğunda verilen hata kodu, kaldırmada diğer aracın servisine dokunulmaması.
 
