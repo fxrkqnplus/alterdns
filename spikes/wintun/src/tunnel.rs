@@ -37,7 +37,6 @@ pub struct Ctx {
     pub control: ProbeTarget,
     pub env: RealEnv,
     pub dll: PathBuf,
-    pub xtask_exe: PathBuf,
 }
 
 impl Ctx {
@@ -65,25 +64,6 @@ impl Ctx {
             .join("bin")
             .join("amd64")
             .join("wintun.dll");
-        let xtask_exe = root
-            .join("target")
-            .join("xtask")
-            .join("debug")
-            .join("xtask.exe");
-        if !xtask_exe.exists() {
-            bail!(
-                "bekçi ikilisi yok: {} (önce `cargo build -p xtask --target-dir target/xtask`)",
-                xtask_exe.display()
-            );
-        }
-        let exe_time = std::fs::metadata(&xtask_exe)?.modified()?;
-        let src_time = newest_mtime(&root.join("xtask"))?;
-        if binary_is_stale(exe_time, src_time) {
-            bail!(
-                "bekçi ikilisi xtask kaynaklarından eski: {} (yeniden derleyin: `cargo build -p xtask --target-dir target/xtask`)",
-                xtask_exe.display()
-            );
-        }
         Ok(Ctx {
             root,
             cfg,
@@ -91,38 +71,12 @@ impl Ctx {
             control,
             env,
             dll,
-            xtask_exe,
         })
     }
 
     pub fn test_ip(&self) -> Ipv4Addr {
         self.cfg.test_ip
     }
-}
-
-/// Dizindeki `.rs` ve `Cargo.toml` dosyalarının en yeni değişiklik zamanı (`target` hariç).
-pub fn newest_mtime(dir: &Path) -> std::io::Result<std::time::SystemTime> {
-    let mut newest = std::time::SystemTime::UNIX_EPOCH;
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-        if path.is_dir() {
-            if name != "target" {
-                newest = newest.max(newest_mtime(&path)?);
-            }
-        } else if name.ends_with(".rs") || name == "Cargo.toml" {
-            newest = newest.max(std::fs::metadata(&path)?.modified()?);
-        }
-    }
-    Ok(newest)
-}
-
-/// İkili, kaynakların en yenisinden eskiyse yeniden derlenmemiştir.
-pub fn binary_is_stale(exe: std::time::SystemTime, sources: std::time::SystemTime) -> bool {
-    exe < sources
 }
 
 /// Başka yazılımlara ait Wintun adaptörleri (`ad:durum`), salt okunur. Spike bunlara dokunmaz;
@@ -334,7 +288,9 @@ impl Tunnel {
         let phys_if =
             ffi::best_interface_v4(plan.probe_ip).context("fiziksel arayüz bulunamadı")?;
         let mut journal = Journal::create(&journal_dir(&ctx.root), run)?;
-        let mut wd = WatchdogHandle::spawn_with(&ctx.xtask_exe, journal.path(), out_dir)?;
+        // Bekçi bu ikilinin kendisidir (`wintun-spike lab watchdog`): yükseltilmiş işlem,
+        // kullanıcının yazabildiği ayrı bir `xtask.exe`yi çalıştırmaz (2026-11-15 güvenlik incelemesi).
+        let mut wd = WatchdogHandle::spawn(journal.path(), out_dir)?;
         if let Err(why) = job_gate(wd.outside_job(), true) {
             let _ = wd.done();
             bail!("{why}");
@@ -597,7 +553,6 @@ impl Tunnel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, SystemTime};
 
     #[test]
     fn s4_route_plan_has_prefix_and_host_ops() {
@@ -642,39 +597,5 @@ mod tests {
         let plan = RoutePlan::single(ip);
         assert_eq!(plan.ops, [route_op(ip)]);
         assert_eq!(plan.probe_ip, ip);
-    }
-
-    #[test]
-    fn stale_watchdog_binary_is_detected() {
-        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        assert!(binary_is_stale(t0, t0 + Duration::from_secs(1)));
-        assert!(!binary_is_stale(t0 + Duration::from_secs(1), t0));
-        assert!(!binary_is_stale(t0, t0));
-    }
-
-    #[test]
-    fn newest_mtime_ignores_target_and_other_files() {
-        let d = std::env::temp_dir().join(format!("alterdns-mtime-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(d.join("src")).unwrap();
-        std::fs::create_dir_all(d.join("target")).unwrap();
-        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let new = old + Duration::from_secs(500);
-        let newest = old + Duration::from_secs(9_000);
-        let set = |p: PathBuf, t: SystemTime| {
-            std::fs::write(&p, b"x").unwrap();
-            std::fs::File::options()
-                .write(true)
-                .open(&p)
-                .unwrap()
-                .set_modified(t)
-                .unwrap();
-        };
-        set(d.join("src").join("a.rs"), old);
-        set(d.join("Cargo.toml"), new);
-        set(d.join("target").join("b.rs"), newest);
-        set(d.join("notlar.md"), newest);
-        assert_eq!(newest_mtime(&d).unwrap(), new);
-        let _ = std::fs::remove_dir_all(&d);
     }
 }

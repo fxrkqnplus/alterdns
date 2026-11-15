@@ -108,7 +108,7 @@ Yeni hipotez çıkarsa tabloya eklenir. Her hipotezin sonucu §7'ye kanıtıyla 
 
 ## 7. Sonuçlar (Faz 0'da doldurulacak)
 
-Ölçümler 2026-11-10'da, geliştirici makinesinde, telefon hotspot'u üzerinden ve sistem hop limiti 65 iken yapıldı. Ham veri `lab/results/` altında, git dışı. Sonuçlar **bu ağ ve bu tarih** içindir; başka ağlarda S6 ile yeniden ölçülecek.
+Ölçümler 2026-11-10'da, geliştirici makinesinde, telefon hotspot'u üzerinden ve sistem hop limiti 65 iken yapıldı. Ham veri `lab/results/` altında, git dışı. Sonuçlar **bu ağ ve bu tarih** içindir. S6 (2026-11-15) aynı makinede, sabit hatlı bir ev ağında (Ethernet) tekrarlandı; ayrı bölümde.
 
 **S1 (motor kapalı, 72 prob):**
 - Kontrol probları her DNS yolunda 3/3 geçti. Discord'un ve Roblox'un 3'er hedefi her DNS yolunda 0/3: TLS sıfırlaması (`TlsReset`).
@@ -134,12 +134,12 @@ Diğer ölçümler:
 | Hipotez | Durum | Kanıt (dosya/ölçüm) | Not |
 |---|---|---|---|
 | H1 | Belirsiz (kısmi kanıt) | S2-U, S0 (E12, E13) | TTL'den bağımsız `TlsRecordSplit`, `Oob` ve `Split` (1. bayt) hop limit 65'te çalışıyor. TTL'e bağlı `Disorder` yalnızca ilk bölüt TTL ≥ 3 ile geçiyor; bu durumda sonuç `Split` (1. bayt) ile aynı. TTL ≤ 2'li bölüt DPI'a ulaşmıyor, TTL ≥ 3'lü ulaşıyor. Eski yapılandırmanın sabit TTL 5'i bu yolda DPI'a ulaşacak büyüklükte; sunucuya varmadan düşüp düşmediği ölçülmedi. Sahte paket (`Fake`) Faz 0'da uygulanmadı. "Sahte paket DPI'a ulaşmıyor" açıklaması bu ağ için desteklenmedi |
-| H2 | Belirsiz; karıştırıcı değişken doğrulandı | S0 yanıtı (E13) | Hop limit değişikliğiyle aynı dönemde ağ da değişti. Ayırmak için S6 (başka ağ) gerekli |
-| H3 | Çürüdü (bu ağda) | S1 | Üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil. Engel DNS değil, SNI tabanlı TLS sıfırlaması. Wattpad'de de aynı: üç DNS yolunda da TLS sıfırlaması (2026-11-12) |
+| H2 | Destekleniyor | S0 yanıtı (E13), S6 | Hop limit değişikliğiyle aynı dönemde ağ da değişti. S6: engel mekanizması ağa göre değişiyor (hotspot'ta SNI tabanlı TLS sıfırlaması, ev ağında DNS zehirleme ve SNI denetimi yok); TTL iki ağda da sonucu değiştirmiyor. Eski yapılandırmanın (DNS'i başka çözücüye yönlendirme) ev ağında çalışıp hotspot'ta çalışmaması ağ farkıyla açıklanıyor |
+| H3 | Ağa bağlı | S1, S6 | Hotspot'ta çürüdü: üç DNS yolu aynı adresleri verdi; UDP 1253 engelli değil; engel SNI tabanlı TLS sıfırlaması (Wattpad dahil, 2026-11-12). Ev ağında doğrulandı (S6): sistem DNS'i engelli kök adları bir engelleme adresine çözüyor; DoH ve `77.88.8.8:1253` doğru adresi veriyor ve bağlantı tekniksiz açılıyor |
 | H4 | Belirsiz | — | Hatalı checksum'lı paket sürücüsüz yöntemle gönderilemez; test yöntemi yok |
 | H5 | Çürüdü (bu ağda) | S4 (beş koşu) | Engel UDP değil, TCP/TLS SNI. Wintun yolunda UDP'ye hiçbir teknik uygulanmadan Discord masaüstü sesi ve Roblox oyunu çalıştı; TLS bağlantıları `Oob@SNI` ile açılınca bütün istemciler çalıştı |
 | H6 | Belirsiz (destekleyen kanıt var) | S0 (E14, E15) | Eski DPI servisi Ekim'de iki kez beklenmedik şekilde kapandı; Defender aynı tehdit adını lab indirmesinden önce tespit etti. TTL değişikliğinin tarihi bilinmeden ilişki kurulamaz |
-| H7 | Çürüdü (akış düzeyinde, bu ağda) | S5-soket | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
+| H7 | Çürüdü (akış düzeyinde, iki ağda) | S5-soket, S6 | Prob soketinde TTL 64, 65 ve 128 arasında fark yok: tekniksiz bağlantı üçünde de sıfırlandı (27/27 her biri), `TlsRecordSplit@SNI`, `Oob@SNI` ve `Split@1` üçünde de 27/27 geçti (Discord, Roblox, Wattpad). Teknikler Windows varsayılanı 128'de de çalışıyor; hop limit 65 gerekmiyor. Operatörün cihaz düzeyindeki tethering sınıflaması ölçülmedi (ADR-014 gereği sistem değeri değiştirilmez) |
 | H8 | Kısmen | S2-U | Sabit `IP_TTL` taraması DPI'ın yaklaşık 2.–3. sıçrama arasında olduğunu gösterdi (eşik TTL 3). Sistem hop limiti değiştirilmediği için giden TTL'den bağımsızlık doğrudan ölçülmedi; `Fake` test edilmedi |
 | H9 | Çürüdü (MTU kısmı) | S2-U | Path MTU 1500. Bölme konumu fark yaratıyor (`Split` 1. baytta çalışıyor, SNI ortasında çalışmıyor), ama bu MTU değil, DPI'ın ayrıştırma davranışı |
 
@@ -189,7 +189,15 @@ Diğer ölçümler:
 - **Söküm:** Wintun oturumu 15 sn içinde kapanmadı; adaptör, işlem çıkınca kalktı. Journal'ın adaptör kaydı geri alınamadı: doğrulama, adaptörün gerçek açıklamasını ("AlterDNS Tunnel") ve karışık harfli PnP kimliğini (`SWD\Wintun\{…}`) reddediyordu. Düzeltildi (test); bekleme 30 sn'ye çıktı; kayıt `lab recover` ile kapatıldı, kalıntı yok.
 - **Korunan değerler:** "dns" farkı bizim adaptörümüzden geldi (Windows'un yer tutucu DNS adresleri; adaptör son okumada hâlâ vardı). Kullanıcının değerleri o sabahki okumayla birebir aynı. Betik artık kendi adaptörümüzü DNS bölümünde de dışarıda tutuyor.
 
-**Faz 2 için başlangıç teknik sıralaması (bu ağ; S2-U, S5-soket ve S4 sonrası, 2026-11-12):**
+**S6 — sabit hatlı ev ağı (2026-11-15; Ethernet, yalnızca IPv4 internet, sistem hop limiti 65):**
+- **Hazırlık:** Ön kontrol, makinede yeniden kurulmuş başka bir DPI aracının yüklü WinDivert sürücüsünü buldu ve senaryoyu başlatmadı. Aracın etkin bir DNS politikası kuralı (NRPT: Discord ve Roblox adları başka çözücüye) da vardı; bu kural DNS ölçümlerini bozardı. Kullanıcının isteğiyle araç bütün izleriyle kaldırıldı; hop limit ve DoH tablosu değişmedi. Ölçümler bundan sonra yapıldı.
+- **S1 (99 prob):** Kontrol probları geçti. Sistem DNS'i `discord.com` ve `wattpad.com` kök adlarını tek bir engelleme adresine çözdü; bu bağlantılar TCP zaman aşımı veya sertifika uyuşmazlığıyla bitti. Diğer adlar (`gateway.discord.gg`, Discord CDN'i, `www.wattpad.com`, Wattpad API'si, Roblox'un üç hedefi) doğru adrese çözüldü ve açıldı. DoH ve `77.88.8.8:1253` ile 33/33.
+- **S2-U (1 242 prob):** 23 tekniğin ve tekniksiz ölçümün hepsinde aynı tablo: sistem DNS'iyle 21/27 (yalnızca iki kök ad başarısız), DoH ile 27/27. Doğru adrese ulaşınca TLS sıfırlaması hiç görülmedi; bu ağda SNI tabanlı DPI yok. Sistem DNS hücrelerinde görülen birkaç TLS sıfırlaması ve hatası engelleme sunucusunun kendisinden geldi.
+- **S5-soket (396 prob):** TTL 64 / 65 / 128 ve dört teknik arasında fark yok (her biri 63/81; başarısızlar yalnızca iki kök ad).
+- **Korunan değerler:** üç koşunun başında ve sonunda değişmedi.
+- **Sonuç:** Engel türü ağa göre değişiyor. Aynı makinede hotspot'ta DNS fark etmiyor ve teknik gerekiyor; ev ağında teknik fark etmiyor ve doğru DNS yeterli. Motor iki durumu da kendisi algılamalı.
+
+**Faz 2 için başlangıç teknik sıralaması (hotspot ağı; S2-U, S5-soket ve S4 sonrası, 2026-11-12):**
 
 | Sıra | Teknik | Gerekçe |
 |---|---|---|
@@ -202,7 +210,8 @@ Diğer ölçümler:
 - **UDP:** Ses ve oyun trafiği tekniksiz geçti (H5 çürüdü); motor UDP'yi olduğu gibi aktarır.
 - **Uyum (ADR-014):** Sıralama bu ağa aittir. Motor her ağda kısa bir denemeyle sırayı doğrulamalı ve istemcinin ClientHello biçimine göre geri dönüş tekniği seçebilmelidir.
 - **Yönlendirme:** Uygulama başına adres listesi kırılgan (çok sayıda CDN adı; bu makinede Windows DNS önbelleği boş). Faz 2'de daha geniş yönlendirme ve SNI'ye göre teknik seçimi tasarlanacak; kullanıcının rotalarına dokunulmaz.
-- **Açık:** S6 (başka ağ) ölçülmedi; H2 bu yüzden belirsiz.
+- **DNS (S6):** Ev ağında engel DNS'te. Motor engelli adları kendisi şifreli DNS ile çözebilmeli (ADR-008); kullanıcının DNS ve DoH ayarları değişmez (ADR-014). Aday tasarım (ölçülmedi): engelleme adresine giden bağlantıları kendi tek IP rotamızla TUN'a almak ve SNI'deki (HTTP'de `Host` başlığındaki) adı motorun DoH ile çözdüğü gerçek adrese bağlamak. Bu, uygulamanın sorduğu DNS yanıtına dokunmadan çalışır.
+- **Ağ algılama:** Motor her ağda önce kısa bir sınıflandırma yapmalı: DNS yanıtı tutarlı mı (sistem çözücüsü ve DoH), doğru adrese tekniksiz bağlantı açılıyor mu. Teknik yalnızca SNI tabanlı engel görülen ağda uygulanır.
 
 ## 8. GoodbyeDPI paketleri ve güvenlik uyarıları
 

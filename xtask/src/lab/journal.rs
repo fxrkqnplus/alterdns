@@ -163,6 +163,10 @@ fn validate(e: &Entry) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Kilit için en uzun bekleme. Başka bir işlemin tuttuğu kilit, bekçinin geri almasını süresiz
+/// bekletmesin; süre dolunca hata verilir (2026-11-15 güvenlik incelemesi).
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Özel kilit dosyası; düşünce bırakılır.
 fn lock_file(path: &Path) -> anyhow::Result<std::fs::File> {
     let f = std::fs::OpenOptions::new()
@@ -171,9 +175,23 @@ fn lock_file(path: &Path) -> anyhow::Result<std::fs::File> {
         .write(true)
         .open(path)
         .with_context(|| format!("{} açılamadı", path.display()))?;
-    f.lock()
-        .with_context(|| format!("{} kilitlenemedi", path.display()))?;
-    Ok(f)
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Ok(f),
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => bail!(
+                "{} başka bir işlemde kilitli ({} sn beklendi)",
+                path.display(),
+                LOCK_WAIT.as_secs()
+            ),
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(e).with_context(|| format!("{} kilitlenemedi", path.display()));
+            }
+        }
+    }
 }
 
 impl Journal {
@@ -194,10 +212,14 @@ impl Journal {
             );
         }
         let path = dir.join(format!("{run_id}.jsonl"));
-        if path.exists() {
-            bail!("{} zaten var", path.display());
-        }
-        std::fs::File::create(&path)?.sync_all()?;
+        // `create_new`: önceden yerleştirilmiş bir dosya veya bağlantı üzerine yazılmaz
+        // (denetle-sonra-kullan penceresi yok; 2026-11-15 güvenlik incelemesi).
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .with_context(|| format!("{} oluşturulamadı (zaten var olabilir)", path.display()))?
+            .sync_all()?;
         Ok(Journal {
             path,
             entries: Vec::new(),

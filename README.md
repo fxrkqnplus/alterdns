@@ -17,7 +17,7 @@
 </p>
 
 > [!IMPORTANT]
-> AlterDNS **ön geliştirme aşamasındadır** (Faz 0: araştırma ve doğrulama). Henüz indirilebilir bir sürüm yoktur. Bu sayfadaki işlevler, tasarımı ve ölçümleri tamamlanmış hedeflerdir; her biri ilgili fazda geliştirilip test edilecektir.
+> AlterDNS **ön geliştirme aşamasındadır.** Faz 0 (araştırma ve doğrulama) tamamlandı; sırada Faz 1 (çekirdek altyapı) var. Henüz indirilebilir bir sürüm yoktur. Bu sayfadaki işlevler, tasarımı ve ölçümleri tamamlanmış hedeflerdir; her biri ilgili fazda geliştirilip test edilecektir.
 
 ## İçindekiler
 
@@ -91,13 +91,13 @@ Ağ düzeyinde **derin paket incelemesiyle (DPI)** engellenen servislere, uzak b
 3. TLS el sıkışmasının ilk mesajına (ClientHello) sürücü gerektirmeyen bir teknik uygulanır (ör. bant dışı veriyle bölme). Bu, DPI'ın alan adına bakarak bağlantıyı kesmesini önler.
 4. UDP trafiği (ses, oyun) olduğu gibi aktarılır.
 
-**Faz 0 bulguları** (tek bir mobil ağda ölçüldü; ayrıntı: [`docs/research/CONNECTIVITY_RESEARCH.md`](docs/research/CONNECTIVITY_RESEARCH.md)):
+**Faz 0 bulguları** (bir mobil ağda ve bir sabit hatlı ev ağında ölçüldü; ayrıntı: [`docs/research/CONNECTIVITY_RESEARCH.md`](docs/research/CONNECTIVITY_RESEARCH.md)):
 
 | Soru | Sonuç |
 |---|---|
-| Engel nasıl uygulanıyor? | Alan adına (SNI) bakılarak TLS bağlantısı sıfırlanıyor. Farklı DNS çözümleyicileri aynı yanıtı verdi; engel DNS'te değil. |
-| Hangi teknik en geniş uyumlu? | Bant dışı veriyle bölme (`Oob@SNI`): problarda ve gerçek istemcilerin hepsinde çalıştı. |
-| Hop limit (TTL) değeri önemli mi? | Hayır. Teknikler 64, 65 ve Windows varsayılanı olan 128'de aynı sonucu verdi. |
+| Engel nasıl uygulanıyor? | Ağa göre değişiyor. Mobil ağda alan adına (SNI) bakılarak TLS bağlantısı sıfırlanıyor; DNS fark etmiyor. Ev ağında sağlayıcının DNS'i engelli adları başka bir adrese çözüyor; şifreli DNS ile doğru adrese ulaşınca bağlantı tekniksiz açılıyor. |
+| Hangi teknik en geniş uyumlu? | SNI tabanlı engelde bant dışı veriyle bölme (`Oob@SNI`): problarda ve gerçek istemcilerin hepsinde çalıştı. DNS tabanlı engelde teknik gerekmiyor. |
+| Hop limit (TTL) değeri önemli mi? | Hayır. İki ağda da 64, 65 ve Windows varsayılanı olan 128 aynı sonucu verdi. |
 | Ses ve oyun trafiği engelleniyor mu? | Hayır. UDP trafiğine teknik uygulamadan sesli sohbet ve çok oyunculu oyun çalıştı. |
 | Gerçek uygulamalar çalıştı mı? | Evet. Masaüstü ve web istemcileri, sesli sohbet ve oyun dahil, motor üzerinden çalıştı. |
 

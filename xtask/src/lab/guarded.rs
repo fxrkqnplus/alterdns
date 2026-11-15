@@ -35,10 +35,33 @@ pub fn script_path() -> PathBuf {
 /// derlemede denetlenmiş metni çalıştırır (2026-11-12 güvenlik incelemesi).
 const SCRIPT: &str = include_str!("../../../lab/scripts/korunan-degerler.ps1");
 
-/// Korunan değerleri okur (salt okunur PowerShell betiği; AST denetimli).
+/// Korunan değerleri okur (salt okunur PowerShell betiği; AST denetimli). Eksik ya da
+/// okunamayan bir bölüm varsa hata döner: sessizce boş kalan bir bölüm sahte bir "değişmedi"
+/// sonucu vermesin (2026-11-15 güvenlik incelemesi).
 pub fn snapshot() -> anyhow::Result<Value> {
     let out = super::ops::ps_query(SCRIPT.trim_start_matches('\u{feff}'))?;
-    Ok(serde_json::from_str(&out)?)
+    let value: Value = serde_json::from_str(&out)?;
+    let bad = unreadable(&value);
+    if !bad.is_empty() {
+        anyhow::bail!("okunamayan bölümler: {}", bad.join("; "));
+    }
+    Ok(value)
+}
+
+/// Eksik bölümler ve betiğin `{"hata": …}` yazdığı bölümler (`bölüm: neden`).
+pub fn unreadable(snapshot: &Value) -> Vec<String> {
+    let error_of = |v: &Value| v.get("hata").map(|h| h.as_str().unwrap_or("?").to_string());
+    SECTIONS
+        .iter()
+        .filter_map(|key| match snapshot.get(*key) {
+            None => Some(format!("{key}: yok")),
+            Some(Value::Array(items)) => items
+                .iter()
+                .find_map(error_of)
+                .map(|e| format!("{key}: {e}")),
+            Some(v) => error_of(v).map(|e| format!("{key}: {e}")),
+        })
+        .collect()
 }
 
 /// Değeri farklı olan, eksik ya da yeni bölümlerin adları (sıralı).
@@ -74,6 +97,33 @@ mod tests {
     #[test]
     fn non_object_snapshot_is_a_diff() {
         assert_eq!(diff(&json!({}), &json!(null)), ["<anlık görüntü>"]);
+    }
+
+    #[test]
+    fn missing_or_failed_sections_are_unreadable() {
+        let mut full = serde_json::Map::new();
+        for key in SECTIONS {
+            full.insert(key.to_string(), json!([]));
+        }
+        let ok = Value::Object(full.clone());
+        assert!(unreadable(&ok).is_empty());
+
+        let mut bad = full.clone();
+        bad.remove("nrpt");
+        bad.insert("hop_limit".into(), json!({ "hata": "erişim reddedildi" }));
+        bad.insert("dns".into(), json!([{ "hata": "CIM hatası" }]));
+        assert_eq!(
+            unreadable(&Value::Object(bad)),
+            [
+                "hop_limit: erişim reddedildi",
+                "dns: CIM hatası",
+                "nrpt: yok"
+            ]
+        );
+        // Bir değerin içinde geçen "hata" sözcüğü bölüm hatası değildir.
+        let mut odd = full;
+        odd.insert("doh".into(), json!([{ "DohTemplate": "hata" }]));
+        assert!(unreadable(&Value::Object(odd)).is_empty());
     }
 
     #[test]

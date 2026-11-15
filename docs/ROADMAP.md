@@ -43,11 +43,13 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
 **Testler:** T-LAB-001…006, T-SPK-001…004
 
 **Çıkış ölçütleri**
-- [ ] `cargo build` çalışıyor; CI taslağı yeşil.
-- [ ] Depoda kişisel veri yok (yerel notlar ve lab sonuçları git dışı); güvenlik ayarları açık.
-- [ ] ADR-002 ölçümle kesinleşti. ADR-003 / D8 için ölçümler (S2-U, Wintun spike'ı) tamamlandı ve karar kullanıcıya sunuldu.
-- [ ] TTL 65 hipotezleri için ölçüm tablosu var. Her hipotezin durumu destekleniyor, çürütüldü veya belirsiz olarak işaretlendi; belirsizlerin gerekçesi yazıldı.
-- [ ] Ağ ayarları başlangıç durumunda; Wintun spike'ının adaptörü ve test rotası kaldırıldı. Hop limit değişmedi.
+- [x] `cargo build` çalışıyor; CI taslağı yeşil.
+- [x] Depoda kişisel veri yok (yerel notlar ve lab sonuçları git dışı); güvenlik ayarları açık.
+- [x] ADR-002 ölçümle kesinleşti. ADR-003 / D8 için ölçümler (S2-U, Wintun spike'ı) tamamlandı ve karar kullanıcıya sunuldu.
+- [x] TTL 65 hipotezleri için ölçüm tablosu var. Her hipotezin durumu destekleniyor, çürütüldü veya belirsiz olarak işaretlendi; belirsizlerin gerekçesi yazıldı.
+- [x] Ağ ayarları başlangıç durumunda; Wintun spike'ının adaptörü ve test rotası kaldırıldı. Hop limit değişmedi.
+
+**Durum (2026-11-15):** Faz 0 tamamlandı. ADR-003 / D8 koşullu kabul olarak kalır; kesinleşmesi için SignPath ön sorusunun yanıtı bekleniyor. Kapanış güvenlik incelemesinin açık bulguları `SECURITY.md` §6'da, fazlarıyla.
 
 ---
 

@@ -399,7 +399,7 @@ const PS_DYNAMIC_ALLOWED: [&str; 1] = ["& $Block"];
 /// yönlendirmeler ve ayrıştırma hataları ihlaldir.
 pub fn ps_script_violations(script: &Path) -> anyhow::Result<Vec<String>> {
     let dump = Path::new(env!("CARGO_MANIFEST_DIR")).join("../lab/scripts/ps-ast-dump.ps1");
-    let out = std::process::Command::new(super::ops::powershell())
+    let out = super::ops::ps_command()
         .args(["-NoProfile", "-NonInteractive", "-File"])
         .arg(&dump)
         .arg("-Path")
@@ -904,8 +904,8 @@ mod tests {
             ["set-item", "property"].concat(),
             ["new-item", "property"].concat(),
             ["reg ", "add"].concat(),
-            ["netsh int ipv4 ", "set"].concat(),
-            ["netsh int ipv6 ", "set"].concat(),
+            ["netsh int ipv4 ", "\u{73}et"].concat(),
+            ["netsh int ipv6 ", "\u{73}et"].concat(),
             ["netsh interface ", "ip set"].concat(),
             ["winhttp ", "reset"].concat(),
             ["winhttp ", "import"].concat(),
@@ -924,28 +924,57 @@ mod tests {
             ["setinterfacedns", "settings"].concat(),
             ["createipforward", "entry2"].concat(),
             ["winhttpsetdefault", "proxyconfiguration"].concat(),
+            // 2026-11-15 güvenlik incelemesi.
+            ["set-dnsclient", "nrptglobal"].concat(),
+            ["remove-item", "property"].concat(),
+            ["regsetvalue", "ex"].concat(),
+            ["setipforward", "entry2"].concat(),
+            ["setunicastip", "addressentry"].concat(),
+            ["internetset", "option"].concat(),
+        ];
+        // Argümanları parçalı yazılmış komutlar (`Command::new("netsh").args(["interface",
+        // "ipv4", "set", …])`) için: tırnak, virgül ve köşeli ayraç atılıp boşluk tekleştirilmiş
+        // metinde aranır. `\u{73}` ("s"): bu dosyanın düzleştirilmiş metni kendini yakalamasın.
+        let split_patterns = [
+            ["interface ipv4 ", "\u{73}et"].concat(),
+            ["interface ipv6 ", "\u{73}et"].concat(),
+            ["int ipv4 ", "\u{73}et"].concat(),
+            ["int ipv6 ", "\u{73}et"].concat(),
+            ["int tcp ", "\u{73}et"].concat(),
+            ["interface tcp ", "\u{73}et"].concat(),
+            ["advfire", "wall"].concat(),
         ];
         let mut hits = Vec::new();
-        for dir in ["xtask", "lab", "spikes", "apps", "crates", "scripts"] {
-            walk(&root.join(dir), &mut |p| {
-                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
-                if ![
-                    "rs", "ps1", "psm1", "cmd", "bat", "toml", "reg", "vbs", "js", "py",
-                ]
-                .contains(&ext)
-                {
-                    return;
+        for p in repo_files(&root) {
+            let p = p.as_path();
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
+            if ![
+                "rs", "ps1", "psm1", "psd1", "cmd", "bat", "toml", "reg", "vbs", "js", "mjs", "ts",
+                "py", "sh", "yml", "yaml",
+            ]
+            .contains(&ext)
+            {
+                continue;
+            }
+            let rel = p.strip_prefix(&root).unwrap_or(p);
+            let text = std::fs::read_to_string(p)
+                .unwrap_or_default()
+                .to_lowercase();
+            let flat = text
+                .replace(['"', '\'', ',', '[', ']', '(', ')'], " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            for pat in &patterns {
+                if text.contains(pat.as_str()) {
+                    hits.push(format!("{}: {pat}", rel.display()));
                 }
-                let rel = p.strip_prefix(&root).unwrap_or(p);
-                let text = std::fs::read_to_string(p)
-                    .unwrap_or_default()
-                    .to_lowercase();
-                for pat in &patterns {
-                    if text.contains(pat.as_str()) {
-                        hits.push(format!("{}: {pat}", rel.display()));
-                    }
+            }
+            for pat in &split_patterns {
+                if flat.contains(pat.as_str()) {
+                    hits.push(format!("{}: {pat}", rel.display()));
                 }
-            });
+            }
         }
         assert!(
             hits.is_empty(),
@@ -953,26 +982,31 @@ mod tests {
         );
     }
 
-    fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
-        let Ok(rd) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if p.is_dir() {
-                // Yalnızca derleme çıktıları ve lab'ın veri dizinleri atlanır; `src/bin` gibi
-                // kaynak dizinleri taranır (2026-11-12 güvenlik incelemesi).
-                let generated = ["target", "node_modules", ".git"].contains(&name)
-                    || p.ends_with("lab/bin")
-                    || p.ends_with("lab/results");
-                if !generated {
-                    walk(&p, f);
-                }
-            } else {
-                f(&p);
-            }
-        }
+    /// Depoya girebilecek bütün dosyalar: izlenenler ve yok sayılmayan izlenmeyenler
+    /// (`git ls-files`; `.gitignore` ve yerel dışlamalar uygulanır). Derleme çıktıları ve lab
+    /// verisi böylece kendiliğinden dışarıda kalır; yeni bir üst dizin de taranır
+    /// (2026-11-15 güvenlik incelemesi).
+    fn repo_files(root: &Path) -> Vec<std::path::PathBuf> {
+        let out = std::process::Command::new("git")
+            .args([
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git ls-files başarısız");
+        let files: Vec<std::path::PathBuf> = String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .map(|s| root.join(s))
+            .filter(|p| p.is_file())
+            .collect();
+        assert!(files.len() > 50, "beklenenden az dosya: {}", files.len());
+        files
     }
 
     /// S0 betiği yalnızca okur: her cmdlet `Get-*` veya izinli boru hattı yardımcısıdır.

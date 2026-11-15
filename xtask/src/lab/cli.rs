@@ -230,8 +230,8 @@ pub fn filter_targets(
     Ok(kept)
 }
 
-/// Korunan değerleri okur; okunamazsa nedeni kaydedilir ve senaryo yine güvenle sürer
-/// (okuma sistemi değiştirmez), ama sonuçta "denetlenemedi" yazılır.
+/// Korunan değerleri okur. Baştaki okuma başarısızsa senaryo başlamaz; sondaki başarısızsa
+/// koşu başarısız sayılır (kapalı kalır; 2026-11-15 güvenlik incelemesi).
 fn guarded_snapshot() -> Result<serde_json::Value, String> {
     guarded::snapshot().map_err(|e| format!("{e:#}"))
 }
@@ -275,10 +275,13 @@ fn run_scenario(
         println!("İptal edildi; hiçbir prob gönderilmedi.");
         return Ok(());
     }
+    let guarded_before = match guarded_snapshot() {
+        Ok(v) => v,
+        Err(e) => bail!("korunan değerler okunamadı; senaryo başlatılmadı: {e}"),
+    };
     let id = run_id(prefix);
     let out_dir = results_dir(&root).join(&id);
     std::fs::create_dir_all(&out_dir)?;
-    let guarded_before = guarded_snapshot();
     extra(&out_dir)?;
     let mut journal = Journal::create(&journal_dir(&root), &id)?;
     let mut wd = WatchdogHandle::spawn(journal.path(), &out_dir)?;
@@ -322,14 +325,14 @@ fn run_scenario(
     std::fs::write(out_dir.join("rapor.md"), report::summarize(&rows))?;
     // ADR-014: kullanıcıya ait değerler koşudan önceki gibi mi?
     let guarded_after = guarded_snapshot();
-    let changed = match (&guarded_before, &guarded_after) {
-        (Ok(b), Ok(a)) => Ok(guarded::diff(b, a)),
-        (Err(e), _) | (_, Err(e)) => Err(e.clone()),
+    let changed = match &guarded_after {
+        Ok(a) => Ok(guarded::diff(&guarded_before, a)),
+        Err(e) => Err(e.clone()),
     };
     std::fs::write(
         out_dir.join("korunan-degerler.json"),
         serde_json::to_string_pretty(&serde_json::json!({
-            "once": guarded_before.as_ref().ok(),
+            "once": &guarded_before,
             "sonra": guarded_after.as_ref().ok(),
             "degisen": changed.as_ref().ok(),
             "hata": changed.as_ref().err(),
@@ -346,7 +349,8 @@ fn run_scenario(
     match (outcome.aborted, changed) {
         (Some(a), _) => bail!("koşu durdu: {a}"),
         (None, Ok(d)) if !d.is_empty() => bail!("korunan değerler değişti: {d:?}"),
-        _ => Ok(()),
+        (None, Err(e)) => bail!("korunan değerler sonda denetlenemedi: {e}"),
+        (None, Ok(_)) => Ok(()),
     }
 }
 
@@ -354,7 +358,7 @@ fn run_scenario(
 fn inventory() -> anyhow::Result<()> {
     let root = repo_root();
     let cfg = local_config(&root)?;
-    let mut cmd = Command::new(ops::powershell());
+    let mut cmd = ops::ps_command();
     cmd.args(["-NoProfile", "-NonInteractive", "-File"])
         .arg(root.join("lab").join("scripts").join("s0-inventory.ps1"));
     if !cfg.history_dirs.is_empty() {
