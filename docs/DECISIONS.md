@@ -159,7 +159,10 @@ Ed25519 imzalı manifest (açık anahtar uygulamaya derlenir, `next_key` ile dev
 
 ## ADR-008 — DNS yaklaşımı · Önerilen
 
-Önce **motor içi, alan adına sınırlı DoH aktarıcısı** denenir: sistem ayarı değişmez, motor durunca kendiliğinden kapanır. Gerekirse journal'lı ve onaylı **sistem DoH** modu kullanılır. GoodbyeDPI'ın şifresiz standart dışı port yönlendirmesi varsayılan değildir (H3 sonucuna göre yeniden değerlendirilir).
+Önce **motor içi, alan adına sınırlı DoH aktarıcısı** denenir: sistem ayarı değişmez, motor durunca kendiliğinden kapanır. GoodbyeDPI'ın şifresiz standart dışı port yönlendirmesi varsayılan değildir.
+
+- **ADR-014 (2026-11-12):** Sistem DoH modu kullanılmaz; kullanıcının DNS ve DoH ayarları yazılmaz.
+- **S6 (2026-11-15):** Ölçülen ev ağında engel DNS tabanlı (H3 bu ağda doğrulandı). Motor içi çözümleme bu yüzden Faz 2'de gerekli. Aday tasarım `CONNECTIVITY_RESEARCH.md` §7'de.
 
 ---
 
