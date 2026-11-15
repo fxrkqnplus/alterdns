@@ -82,6 +82,10 @@ fn main() -> ExitCode {
         Some("status") => status(),
         Some("s4-plan") => s4_plan(),
         Some("hold") => guarded(hold),
+        // İçsel: tünelin bekçisi (`WatchdogHandle::spawn` bu ikiliyi `lab watchdog` ile başlatır).
+        Some("lab") if args.get(1).map(String::as_str) == Some("watchdog") => {
+            xtask::lab::watchdog::main(&args[2..])
+        }
         _ => {
             eprintln!(
                 "kullanım: wintun-spike run | kill-test | status | s4-plan | hold [--tech tls-record-sni|oob-sni|split-1] [--max <sn>]"
@@ -120,7 +124,12 @@ fn guarded(f: fn() -> anyhow::Result<()>) -> anyhow::Result<()> {
                 bail!("korunan değerler değişti: {changed:?}");
             }
         }
-        Err(e) => eprintln!("Uyarı: korunan değerler sonda okunamadı: {e:#}"),
+        Err(e) => {
+            // Kapalı kalır: sonda denetlenemeyen koşu başarılı sayılmaz (2026-11-15 güvenlik incelemesi).
+            eprintln!("UYARI: korunan değerler sonda okunamadı: {e:#}");
+            result?;
+            bail!("korunan değerler sonda denetlenemedi: {e:#}");
+        }
     }
     result
 }

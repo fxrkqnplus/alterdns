@@ -133,7 +133,7 @@ spikes\wintun\target\release\wintun-spike.exe status
 - **Ön koşullar:**
   - `lab preflight` "Bekçi: iş nesnesi dışında" demeli.
   - `status` "Yükseltilmiş çalıştırma ön koşulları: tamam" demeli.
-  - `xtask.exe` kaynaklardan eskiyse spike çalışmaz; yeniden derleyin.
+  - Spike, bekçiyi kendi ikilisinden başlatır (`wintun-spike lab watchdog`); ayrı bir `xtask.exe` çalıştırmaz. `xtask` kaynakları değiştiyse spike'ı yeniden derleyin.
 - **Ctrl+C güvenlidir:**
   - `evet` sorusunda ve doğrudan ölçümde henüz hiçbir şey değişmemiştir.
   - Tünel açıkken Ctrl+C'de spike işlemi ölür. Ayrı işlemdeki bekçi stdin kapanmasını görür,

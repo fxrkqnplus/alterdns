@@ -13,6 +13,10 @@ secrets/
 *.p12
 *.key
 *.pem
+*.cer
+*.snk
+*.sec
+*.keystore
 .env
 .env.*
 *.minisign.key
@@ -30,6 +34,9 @@ lab/local/
 perf/results/raw/
 *.etl
 *.pcapng
+*.dmp
+*.evtx
+*.har
 
 # Test derlemleri (betiklerle yeniden üretilir)
 corpus/

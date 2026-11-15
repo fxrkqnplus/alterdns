@@ -1,4 +1,4 @@
 [alias]
 # xtask kendi hedef dizininde derlenir: `cargo xtask check` çalışırken `cargo test`
 # target/debug/xtask.exe'yi (entegrasyon testlerinin ikilisi) yeniden bağlayabilsin.
-xtask = "run --quiet --package xtask --target-dir target/xtask --"
+xtask = "run --quiet --locked --package xtask --target-dir target/xtask --"

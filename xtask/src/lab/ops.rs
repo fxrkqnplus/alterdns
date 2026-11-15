@@ -33,6 +33,18 @@ pub(crate) fn powershell() -> PathBuf {
     system32(r"WindowsPowerShell\v1.0\powershell.exe")
 }
 
+/// PowerShell komutu; modüller yalnızca sistem dizininden yüklenir. Devralınan `PSModulePath`
+/// kullanıcının yazabildiği `Documents\WindowsPowerShell\Modules` dizinini içerir; yükseltilmiş
+/// işlemde orada aynı adlı bir komut dışa aktaran modül yüklenmesin (2026-11-15 güvenlik incelemesi).
+pub(crate) fn ps_command() -> Command {
+    let mut cmd = Command::new(powershell());
+    cmd.env(
+        "PSModulePath",
+        system32(r"WindowsPowerShell\v1.0\Modules").as_os_str(),
+    );
+    cmd
+}
+
 /// Komut dizesine gömülebilecek değer: ASCII harf, rakam ve `._:/-`; en çok 64 karakter.
 /// (PowerShell tipografik tırnakları da dize sınırlayıcı sayar; izin listesi bunları dışarıda tutar.)
 pub(crate) fn valid_token(v: &str) -> bool {
@@ -50,9 +62,29 @@ pub(crate) fn quoted(v: &str) -> anyhow::Result<String> {
     Ok(format!("'{v}'"))
 }
 
+/// Nesne var mı? Yalnızca "bulunamadı" (`ObjectNotFound`) hatası `absent` sayılır. Geçici bir
+/// CIM hatası "yok" diye okunup kaldırılmamış bir rota journal'da geri alınmış sayılmasın
+/// (2026-11-15 güvenlik incelemesi). `cmd` yalnızca `quoted` değerler içerir.
+fn presence_script(cmd: &str) -> String {
+    format!(
+        "try {{ $null = {cmd} -ErrorAction Stop; 'present' }} catch {{ if ($_.CategoryInfo.Category -eq 'ObjectNotFound') {{ 'absent' }} else {{ 'hata: ' + $_.Exception.Message }} }}"
+    )
+}
+
+fn parse_presence(out: &str) -> anyhow::Result<String> {
+    match out.trim() {
+        v @ ("present" | "absent") => Ok(v.to_string()),
+        other => bail!("nesne durumu okunamadı: {other}"),
+    }
+}
+
+fn presence(cmd: &str) -> anyhow::Result<String> {
+    parse_presence(&ps_query(&presence_script(cmd))?)
+}
+
 /// Salt okunur PowerShell sorgusu; çıktının ilk satırını döndürür. 15 sn'de bitmezse sonlandırılır.
 pub fn ps_query(script: &str) -> anyhow::Result<String> {
-    let mut child = Command::new(powershell())
+    let mut child = ps_command()
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -343,20 +375,19 @@ impl SystemOps for RealOps {
                 IpFamily::V4 => "(Get-NetIPv4Protocol).DefaultHopLimit",
                 IpFamily::V6 => "(Get-NetIPv6Protocol).DefaultHopLimit",
             }),
-            OpKind::TunAdapter { name } => ps_query(&format!(
-                "if (Get-NetAdapter -Name {} -ErrorAction SilentlyContinue) {{ 'present' }} else {{ 'absent' }}",
-                quoted(name)?
-            )),
+            OpKind::TunAdapter { name } => {
+                presence(&format!("Get-NetAdapter -Name {}", quoted(name)?))
+            }
             OpKind::UnicastAddress { if_name, cidr } => {
                 let ip = cidr.split('/').next().unwrap_or(cidr);
-                ps_query(&format!(
-                    "if (Get-NetIPAddress -InterfaceAlias {} -IPAddress {} -ErrorAction SilentlyContinue) {{ 'present' }} else {{ 'absent' }}",
+                presence(&format!(
+                    "Get-NetIPAddress -InterfaceAlias {} -IPAddress {}",
                     quoted(if_name)?,
                     quoted(ip)?
                 ))
             }
-            OpKind::Route { prefix, if_name } => ps_query(&format!(
-                "if (Get-NetRoute -DestinationPrefix {} -InterfaceAlias {} -ErrorAction SilentlyContinue) {{ 'present' }} else {{ 'absent' }}",
+            OpKind::Route { prefix, if_name } => presence(&format!(
+                "Get-NetRoute -DestinationPrefix {} -InterfaceAlias {}",
                 quoted(prefix)?,
                 quoted(if_name)?
             )),
@@ -429,6 +460,31 @@ mod tests {
         assert_eq!(quoted("AlterDNS-Spike").unwrap(), "'AlterDNS-Spike'");
         assert!(quoted("203.0.113.7/32").is_ok());
         assert!(quoted("2001:db8::1/128").is_ok());
+    }
+
+    #[test]
+    fn presence_distinguishes_not_found_from_errors() {
+        let s = presence_script("Get-NetRoute -DestinationPrefix '203.0.113.7/32'");
+        assert!(s.contains("-ErrorAction Stop"));
+        assert!(s.contains("'ObjectNotFound'"));
+        assert!(!s.contains("SilentlyContinue"));
+        assert_eq!(parse_presence("present\r\n").unwrap(), "present");
+        assert_eq!(parse_presence("absent").unwrap(), "absent");
+        assert!(parse_presence("hata: CIM sunucusu yanıt vermedi").is_err());
+        assert!(parse_presence("").is_err());
+    }
+
+    #[test]
+    fn powershell_loads_modules_only_from_system_dir() {
+        let cmd = ps_command();
+        let module_path = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "PSModulePath")
+            .and_then(|(_, v)| v)
+            .map(PathBuf::from)
+            .unwrap();
+        assert!(module_path.is_absolute());
+        assert!(module_path.ends_with(r"System32\WindowsPowerShell\v1.0\Modules"));
     }
 
     #[test]
