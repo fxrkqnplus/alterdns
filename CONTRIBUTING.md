@@ -25,7 +25,7 @@ Bu kurallar bütün kod, test ve deneyler için bağlayıcıdır. Mimari ve kara
    - `cargo xtask check` bunları tarar.
 7. **Bulgu uydurulmaz.** Doğrulanmamış sürüm, lisans veya API davranışı "doğrulandı" diye yazılmaz. `docs/research/THIRD_PARTY.md` durum sütunu güncel tutulur.
 8. **Lisans uyumu (GPL-3.0-or-later + SignPath "kapalı bileşen yok" şartı).** Yeni bağımlılık OSI onaylı ve GPL-3.0 ile uyumlu olmalıdır.
-   - İzin verilenler: MIT, Apache-2.0, BSD, 0BSD, ISC, Zlib, MPL-2.0, LGPL-3.0, GPL-3.0, Unicode-3.0.
+   - İzin verilenler: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, ISC, Zlib, BSL-1.0, MPL-2.0, LGPL-3.0, GPL-3.0 (`-only` ve `-or-later`), Unicode-3.0. Liste `deny.toml` ile birebir aynıdır.
    - `alterdns-svc` ağacında GPL-3.0-only yasaktır (`wintun.dll` ek izni; `deny-svc.toml`, ADR-003).
    - Yasaklılar: kapalı veya özgür olmayan lisanslar (UnRAR dahil), GPL-2.0-only bağlama, Slint royalty-free lisansı (Slint yalnızca GPL-3.0 seçeneğiyle).
    - Denetim `cargo deny check licenses` ile yapılır.
