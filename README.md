@@ -17,7 +17,7 @@
 </p>
 
 > [!IMPORTANT]
-> AlterDNS **ön geliştirme aşamasındadır** (Faz 0: araştırma ve doğrulama). Henüz indirilebilir bir sürüm yoktur. Bu sayfadaki işlevler, tasarımı ve ölçümleri tamamlanmış hedeflerdir; her biri ilgili fazda geliştirilip test edilecektir.
+> AlterDNS **ön geliştirme aşamasındadır.** Faz 0 (araştırma ve doğrulama) tamamlandı; sırada Faz 1 (çekirdek altyapı) var. Henüz indirilebilir bir sürüm yoktur. Bu sayfadaki işlevler, tasarımı ve ölçümleri tamamlanmış hedeflerdir; her biri ilgili fazda geliştirilip test edilecektir.
 
 ## İçindekiler
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="236" viewBox="0 0 960 236" role="img" aria-labelledby="t d">
   <title id="t">AlterDNS yol haritası</title>
-  <desc id="d">Sekiz faz: Faz 0 araştırma ve spike'lar (son adımlar), Faz 1 çekirdek altyapı, Faz 2 bağlantı yönetimi, Faz 3 dosya güvenliği, Faz 4 tarayıcı koruması, Faz 5 kurulum ve güncelleme, Faz 6 sağlamlaştırma, Faz 7 imzalı v1.0.</desc>
+  <desc id="d">Sekiz faz: Faz 0 araştırma ve spike'lar (tamamlandı), Faz 1 çekirdek altyapı, Faz 2 bağlantı yönetimi, Faz 3 dosya güvenliği, Faz 4 tarayıcı koruması, Faz 5 kurulum ve güncelleme, Faz 6 sağlamlaştırma, Faz 7 imzalı v1.0.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0B1220"/>
@@ -27,7 +27,7 @@
 
   <g text-anchor="middle">
     <circle cx="90" cy="92" r="17" fill="#0F2A2A" stroke="#2DD4BF" stroke-width="2.5"/><text class="n" x="90" y="97" fill="#5EEAD4">0</text>
-    <text class="l" x="90" y="140">Araştırma</text><text class="s" x="90" y="158">ve spike'lar</text><text class="s" x="90" y="176" fill="#5EEAD4">son adımlar</text>
+    <text class="l" x="90" y="140">Araştırma</text><text class="s" x="90" y="158">ve spike'lar</text><text class="s" x="90" y="176" fill="#5EEAD4">tamamlandı</text>
 
     <circle cx="201" cy="92" r="17" fill="#121C31" stroke="#3A4A6B" stroke-width="2"/><text class="n" x="201" y="97" fill="#A9B8D3">1</text>
     <text class="l" x="201" y="140">Çekirdek</text><text class="s" x="201" y="158">altyapı</text>
