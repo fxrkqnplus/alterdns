@@ -72,7 +72,7 @@ pub fn run() -> anyhow::Result<()> {
     eprintln!("==> catalog-coverage");
     crate::docs_errors::coverage(&root, &repo_files(&root)?)?;
     eprintln!("==> scan");
-    scan_repo(&root)
+    scan_repo(&root, &Source::Worktree)
 }
 
 /// Depoya girebilecek dosyalar (izlenenler + yok sayılmayan izlenmeyenler), göreli yollar.
@@ -117,51 +117,102 @@ fn read_optional(path: &Path) -> anyhow::Result<String> {
     }
 }
 
-/// İzlenen ve yok sayılmayan izlenmeyen dosyaları tarar (yeni dosyalar `git add` öncesinde de yakalanır).
-fn scan_repo(root: &Path) -> anyhow::Result<()> {
+/// Taranacak içeriğin kaynağı.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// Çalışma ağacı: izlenen ve yok sayılmayan izlenmeyen dosyalar (yeni dosyalar `git add`
+    /// öncesinde de yakalanır).
+    Worktree,
+    /// Git indeksi (`--staged`): commit'e hazırlanan içerik.
+    Index,
+    /// Bir commit'in ağacı (`--tree <rev>`): push edilecek içerik.
+    Tree(String),
+}
+
+fn git(root: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .with_context(|| format!("git {} çalıştırılamadı", args.join(" ")))?;
+    if !out.status.success() {
+        bail!(
+            "git {} başarısız: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(out.stdout)
+}
+
+fn list(root: &Path, source: &Source) -> anyhow::Result<Vec<String>> {
+    let raw = match source {
+        Source::Worktree => return repo_files(root),
+        Source::Index => git(root, &["ls-files", "--cached", "-z"])?,
+        Source::Tree(rev) => git(root, &["ls-tree", "-r", "-z", "--name-only", rev])?,
+    };
+    Ok(String::from_utf8_lossy(&raw)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn read(root: &Path, source: &Source, rel: &str) -> anyhow::Result<Option<Vec<u8>>> {
+    match source {
+        Source::Worktree => match std::fs::read(root.join(rel)) {
+            Ok(b) => Ok(Some(b)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).with_context(|| format!("{rel} okunamadı")),
+        },
+        Source::Index => git(root, &["show", &format!(":{rel}")]).map(Some),
+        Source::Tree(rev) => git(root, &["show", &format!("{rev}:{rel}")]).map(Some),
+    }
+}
+
+fn finding(rel: &str, rule: scan::Rule) -> scan::Finding {
+    scan::Finding {
+        path: rel.to_string(),
+        line: 0,
+        rule,
+        excerpt: String::new(),
+    }
+}
+
+/// Kaynaktaki dosyaları tarar: (taranan dosya sayısı, bulgular).
+pub fn scan_files(root: &Path, source: &Source) -> anyhow::Result<(usize, Vec<scan::Finding>)> {
     let ctx = ScanContext {
         allowlist: parse_allowlist(&read_optional(&root.join(ALLOWLIST_FILE))?),
         local_terms: parse_terms(&read_optional(&root.join(LOCAL_TERMS_FILE))?),
     };
-    let out = Command::new("git")
-        .args([
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ])
-        .current_dir(root)
-        .output()
-        .context("git ls-files çalıştırılamadı")?;
-    if !out.status.success() {
-        bail!("git ls-files başarısız");
-    }
-    let list = String::from_utf8(out.stdout)?;
     let mut findings = Vec::new();
     let mut scanned = 0usize;
-    for rel in list.split('\0').filter(|p| !p.is_empty()) {
+    for rel in list(root, source)? {
+        if scan::forbidden_file(&rel) {
+            findings.push(finding(&rel, scan::Rule::ForbiddenFile));
+            continue;
+        }
         let lower = rel.to_ascii_lowercase();
         if BINARY_EXTS.iter().any(|e| lower.ends_with(e)) {
             continue;
         }
-        let bytes = match std::fs::read(root.join(rel)) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e).with_context(|| format!("{rel} okunamadı")),
+        let Some(bytes) = read(root, source, &rel)? else {
+            continue;
         };
         scanned += 1;
-        findings.extend(scan::scan_bytes_header(rel, &bytes));
-        match std::str::from_utf8(&bytes) {
-            Ok(text) => findings.extend(scan::scan_text(rel, text, &ctx)),
-            Err(_) => eprintln!("uyarı: {rel} UTF-8 değil; metin taraması atlandı"),
+        findings.extend(scan::scan_bytes_header(&rel, &bytes));
+        match scan::decode_text(&bytes) {
+            Some(text) => findings.extend(scan::scan_text(&rel, &text, &ctx)),
+            None => findings.push(finding(&rel, scan::Rule::UndecodableText)),
         }
     }
-    eprintln!(
-        "scan: {scanned} dosya, {} izinli değer, {} yerel terim",
-        ctx.allowlist.len(),
-        ctx.local_terms.len()
-    );
+    Ok((scanned, findings))
+}
+
+/// Kişisel veri ve politika taraması; bulgu varsa başarısız olur.
+pub fn scan_repo(root: &Path, source: &Source) -> anyhow::Result<()> {
+    let (scanned, findings) = scan_files(root, source)?;
+    eprintln!("scan ({source:?}): {scanned} dosya");
     if findings.is_empty() {
         return Ok(());
     }
@@ -169,6 +220,11 @@ fn scan_repo(root: &Path) -> anyhow::Result<()> {
         eprintln!("{}:{}: {:?} {}", f.path, f.line, f.rule, f.excerpt);
     }
     bail!("{} kişisel veri / politika bulgusu", findings.len())
+}
+
+/// `cargo xtask check --staged | --tree <rev>`: yalnızca tarama (push öncesi kanca için hızlı).
+pub fn run_scan_only(source: &Source) -> anyhow::Result<()> {
+    scan_repo(&repo_root()?, source)
 }
 
 fn meaningful_lines(text: &str) -> impl Iterator<Item = &str> {
@@ -316,5 +372,26 @@ mod tests {
             parse_terms(text),
             vec!["terim-a".to_string(), "terim-b".to_string()]
         );
+    }
+
+    #[test]
+    fn staged_scan_reads_index_not_worktree() {
+        let dir = std::env::temp_dir().join(format!("alterdns-staged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]).unwrap();
+        let file = dir.join("not.txt");
+        // Örnek adres parçalı kurulur; tarayıcı bu dosyayı yakalamasın.
+        std::fs::write(&file, ["adres 192.168", ".7.9\n"].concat()).unwrap();
+        git(&dir, &["add", "not.txt"]).unwrap();
+        std::fs::write(&file, "temiz\n").unwrap();
+        let (_, staged) = scan_files(&dir, &Source::Index).unwrap();
+        assert!(
+            staged.iter().any(|f| f.rule == scan::Rule::PrivateIpv4),
+            "{staged:?}"
+        );
+        let (_, work) = scan_files(&dir, &Source::Worktree).unwrap();
+        assert!(work.is_empty(), "{work:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

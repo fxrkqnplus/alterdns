@@ -7,12 +7,19 @@
 
 use std::process::ExitCode;
 
-use xtask::{check, docs_errors, lab};
+use xtask::{check, docs_errors, hooks, lab};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("check") => match check::run() {
+        Some("check") => match match (args.get(1).map(String::as_str), args.get(2)) {
+            (Some("--staged"), _) => check::run_scan_only(&check::Source::Index),
+            (Some("--tree"), Some(rev)) => check::run_scan_only(&check::Source::Tree(rev.clone())),
+            (None, _) => check::run(),
+            _ => Err(anyhow::anyhow!(
+                "kullanım: cargo xtask check [--staged | --tree <rev>]"
+            )),
+        } {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("xtask check başarısız: {e:#}");
@@ -26,6 +33,18 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("hooks") if args.get(1).map(String::as_str) == Some("install") => {
+            match check::repo_root().and_then(|r| hooks::install(&r)) {
+                Ok(p) => {
+                    eprintln!("kanca yazıldı: {}", p.display());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("xtask hooks install başarısız: {e:#}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some("lab") => match lab::run(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -35,7 +54,7 @@ fn main() -> ExitCode {
         },
         _ => {
             eprintln!(
-                "kullanım: cargo xtask check | cargo xtask docs-errors | cargo xtask lab <komut>"
+                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | hooks install | lab <komut>"
             );
             ExitCode::from(2)
         }

@@ -7,5 +7,6 @@
 
 pub mod check;
 pub mod docs_errors;
+pub mod hooks;
 pub mod lab;
 pub mod scan;
