@@ -18,6 +18,11 @@ version = "0.0.0"
 [[package]]
 name = "alterdns-core"
 version = "0.0.0"
+dependencies = [
+ "alterdns-errors",
+ "alterdns-winsys",
+ "toml",
+]
 
 [[package]]
 name = "alterdns-errors"

@@ -10,6 +10,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+alterdns-errors.workspace = true
+alterdns-winsys.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
