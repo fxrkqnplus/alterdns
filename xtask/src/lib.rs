@@ -6,5 +6,6 @@
 #![forbid(unsafe_code)]
 
 pub mod check;
+pub mod docs_errors;
 pub mod lab;
 pub mod scan;

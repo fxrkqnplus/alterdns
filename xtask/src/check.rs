@@ -67,11 +67,38 @@ pub fn run() -> anyhow::Result<()> {
         }
         None => eprintln!("{SVC_MANIFEST} yok; svc ağacı denetimi atlandı (Faz 1'de etkinleşir)"),
     }
+    eprintln!("==> catalog-doc");
+    crate::docs_errors::check_doc(&root)?;
+    eprintln!("==> catalog-coverage");
+    crate::docs_errors::coverage(&root, &repo_files(&root)?)?;
     eprintln!("==> scan");
     scan_repo(&root)
 }
 
-fn repo_root() -> anyhow::Result<PathBuf> {
+/// Depoya girebilecek dosyalar (izlenenler + yok sayılmayan izlenmeyenler), göreli yollar.
+pub fn repo_files(root: &Path) -> anyhow::Result<Vec<String>> {
+    let out = Command::new("git")
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ])
+        .current_dir(root)
+        .output()
+        .context("git ls-files çalıştırılamadı")?;
+    if !out.status.success() {
+        bail!("git ls-files başarısız");
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+pub fn repo_root() -> anyhow::Result<PathBuf> {
     let out = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()

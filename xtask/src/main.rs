@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use xtask::{check, lab};
+use xtask::{check, docs_errors, lab};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -19,6 +19,13 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("docs-errors") => match check::repo_root().and_then(|r| docs_errors::write(&r)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("xtask docs-errors başarısız: {e:#}");
+                ExitCode::FAILURE
+            }
+        },
         Some("lab") => match lab::run(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -27,7 +34,9 @@ fn main() -> ExitCode {
             }
         },
         _ => {
-            eprintln!("kullanım: cargo xtask check | cargo xtask lab <komut>");
+            eprintln!(
+                "kullanım: cargo xtask check | cargo xtask docs-errors | cargo xtask lab <komut>"
+            );
             ExitCode::from(2)
         }
     }
