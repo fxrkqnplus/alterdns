@@ -1,0 +1,1566 @@
+# AlterDNS hata kataloğu — tek kaynak. docs/ERROR_CATALOG.md bu dosyadan üretilir (cargo xtask docs-errors).
+# Biçim: docs/ERROR_CATALOG.md §1–2.
+
+[[error]]
+code = "ADNS-GEN-900"
+name = "GenUnexpected"
+area = "GEN"
+severity = "critical"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-gen-900"
+
+[error.tr]
+title = "Beklenmeyen hata"
+message = "Bir iç hata oluştu. İşlem güvenli biçimde durduruldu."
+causes = ["Yazılım hatası"]
+solutions = ["Uygulamayı yeniden başlatın", "Tekrarlarsa \"Tanılama paketi oluştur\" ile kaydı paylaşın"]
+
+[error.en]
+title = "Unexpected error"
+message = "An internal error occurred. The operation was stopped safely."
+causes = ["Software bug"]
+solutions = ["Restart the app", "If it keeps happening, use \"Create diagnostic package\" and share the log"]
+
+[[error]]
+code = "ADNS-IPC-001"
+name = "IpcConnect"
+area = "IPC"
+severity = "error"
+faz = 1
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-ipc-001"
+
+[error.tr]
+title = "AlterDNS hizmetine bağlanılamıyor"
+message = "Arayüz arka plan hizmetine ulaşamadı."
+causes = ["Hizmet durdu", "Hizmet başlatılıyor", "Kurulum eksik"]
+solutions = ["Birkaç saniye bekleyin", "\"Hizmeti yeniden başlat\"", "Bileşenler > Onar"]
+
+[error.en]
+title = "Cannot connect to the AlterDNS service"
+message = "The interface could not reach the background service."
+causes = ["The service stopped", "The service is starting", "The installation is incomplete"]
+solutions = ["Wait a few seconds", "\"Restart service\"", "Components > Repair"]
+
+[[error]]
+code = "ADNS-IPC-002"
+name = "IpcBadRequest"
+area = "IPC"
+severity = "error"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ipc-002"
+
+[error.tr]
+title = "Geçersiz istek"
+message = "Hizmet isteği anlayamadı."
+causes = ["Sürüm farkı", "Bozuk veri"]
+solutions = ["Uygulamayı güncelleyin", "Yeniden başlatın"]
+
+[error.en]
+title = "Invalid request"
+message = "The service could not understand the request."
+causes = ["Version difference", "Corrupted data"]
+solutions = ["Update the app", "Restart it"]
+
+[[error]]
+code = "ADNS-IPC-003"
+name = "IpcUnauthorized"
+area = "IPC"
+severity = "warning"
+faz = 1
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-ipc-003"
+
+[error.tr]
+title = "Yetkisiz istek reddedildi"
+message = "AlterDNS dışından gelen bir ayar değiştirme isteği engellendi."
+causes = ["Başka bir yazılım hizmete erişmeye çalıştı"]
+solutions = ["İşlem gerekmiyor", "Tekrarlıyorsa güvenlik taraması yapın"]
+
+[error.en]
+title = "Unauthorized request rejected"
+message = "A request to change settings that did not come from AlterDNS was blocked."
+causes = ["Another program tried to reach the service"]
+solutions = ["No action needed", "If it keeps happening, run a security scan"]
+
+[[error]]
+code = "ADNS-IPC-004"
+name = "IpcVersionMismatch"
+area = "IPC"
+severity = "warning"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ipc-004"
+
+[error.tr]
+title = "Sürüm uyuşmazlığı"
+message = "Arayüz ile hizmet farklı sürümlerde."
+causes = ["Yarım kalan güncelleme"]
+solutions = ["\"Güncellemeyi tamamla\"", "Bileşenler > Onar"]
+
+[error.en]
+title = "Versions do not match"
+message = "The interface and the service are on different versions."
+causes = ["An update was left unfinished"]
+solutions = ["\"Finish update\"", "Components > Repair"]
+
+[[error]]
+code = "ADNS-IPC-005"
+name = "IpcPipeInUse"
+area = "IPC"
+severity = "critical"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ipc-005"
+
+[error.tr]
+title = "Hizmet kanalı kullanımda"
+message = "Hizmetin iletişim kanalı başka bir uygulama tarafından açılmış; güvenlik için hizmet başlatılmadı."
+causes = ["Kötü amaçlı veya hatalı yazılım"]
+solutions = ["Bilgisayarı yeniden başlatın", "Tekrarlarsa tam tarama yapın"]
+
+[error.en]
+title = "Service channel in use"
+message = "The service's communication channel was opened by another application, so the service was not started for your safety."
+causes = ["Malicious or faulty software"]
+solutions = ["Restart your computer", "If it happens again, run a full scan"]
+
+[[error]]
+code = "ADNS-SVC-001"
+name = "SvcStartFailed"
+area = "SVC"
+severity = "error"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-svc-001"
+
+[error.tr]
+title = "Hizmet başlatılamadı"
+message = "AlterDNS hizmeti başlamadı; korumalar devre dışı."
+causes = ["Dosyalar eksik", "İzinler bozuk", "Başka hata"]
+solutions = ["Bileşenler > Onar", "Bilgisayarı yeniden başlatın"]
+
+[error.en]
+title = "Service could not start"
+message = "The AlterDNS service did not start; protections are off."
+causes = ["Files are missing", "Permissions are damaged", "Another error"]
+solutions = ["Components > Repair", "Restart your computer"]
+
+[[error]]
+code = "ADNS-SVC-002"
+name = "SvcRestarted"
+area = "SVC"
+severity = "warning"
+faz = 1
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-svc-002"
+
+[error.tr]
+title = "Hizmet yeniden başlatıldı"
+message = "Hizmet beklenmedik şekilde durdu ve otomatik olarak yeniden başladı."
+causes = ["Yazılım hatası", "Kaynak yetersizliği"]
+solutions = ["İşlem gerekmiyor", "Sık tekrarlarsa tanılama paketi oluşturun"]
+
+[error.en]
+title = "Service restarted"
+message = "The service stopped unexpectedly and restarted automatically."
+causes = ["Software bug", "Not enough resources"]
+solutions = ["No action needed", "If it happens often, create a diagnostic package"]
+
+[[error]]
+code = "ADNS-SYS-001"
+name = "SysApplyFailed"
+area = "SYS"
+severity = "error"
+faz = 1
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-sys-001"
+
+[error.tr]
+title = "Ayar uygulanamadı"
+message = "İstenen sistem ayarı değiştirilemedi; hiçbir değişiklik yapılmadı."
+causes = ["Yönetici izni yok", "Kurum ilkesi", "Ayar kilitli"]
+solutions = ["Yönetici olarak tekrar deneyin", "Kurum cihazıysa BT yöneticinize danışın"]
+
+[error.en]
+title = "Setting could not be applied"
+message = "The requested system setting could not be changed; no changes were made."
+causes = ["No administrator permission", "Organization policy", "The setting is locked"]
+solutions = ["Try again as an administrator", "If this is a work device, ask your IT administrator"]
+
+[[error]]
+code = "ADNS-SYS-002"
+name = "SysRevertFailed"
+area = "SYS"
+severity = "critical"
+faz = 1
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-sys-002"
+
+[error.tr]
+title = "Değişiklik geri alınamadı"
+message = "AlterDNS'in yaptığı bir ayar eski haline döndürülemedi. Ayrıntılar aşağıda."
+causes = ["Ayar kilitli", "Dosya veya kayıt silinmiş"]
+solutions = ["\"Yeniden dene\"", "Olmazsa ekrandaki eski değeri el ile geri yükleme yönergesini izleyin"]
+
+[error.en]
+title = "Change could not be reverted"
+message = "A setting changed by AlterDNS could not be restored. Details are below."
+causes = ["The setting is locked", "A file or registry entry was deleted"]
+solutions = ["\"Try again\"", "If that fails, follow the on-screen steps to restore the old value manually"]
+
+[[error]]
+code = "ADNS-SYS-003"
+name = "SysChangedByOther"
+area = "SYS"
+severity = "warning"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-sys-003"
+
+[error.tr]
+title = "Ayar başka biri tarafından değiştirilmiş"
+message = "Geri alınacak ayar AlterDNS'ten sonra değiştirilmiş; üzerine yazılmadı."
+causes = ["Kullanıcı veya başka uygulama değiştirdi"]
+solutions = ["Mevcut değeri koru (önerilen) veya AlterDNS öncesi değeri geri yükle"]
+
+[error.en]
+title = "Setting changed by someone else"
+message = "The setting to be reverted was changed after AlterDNS; it was not overwritten."
+causes = ["A user or another app changed it"]
+solutions = ["Keep the current value (recommended) or restore the value from before AlterDNS"]
+
+[[error]]
+code = "ADNS-SYS-004"
+name = "SysElevationDenied"
+area = "SYS"
+severity = "info"
+faz = 1
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-sys-004"
+
+[error.tr]
+title = "Yönetici izni verilmedi"
+message = "İşlem için Windows yönetici onayı gerekiyor; işlem iptal edildi."
+causes = ["UAC penceresi reddedildi"]
+solutions = ["İşlemi yeniden başlatıp onay verin"]
+
+[error.en]
+title = "Administrator permission not granted"
+message = "This action needs Windows administrator approval; it was cancelled."
+causes = ["The UAC prompt was declined"]
+solutions = ["Start the action again and approve it"]
+
+[[error]]
+code = "ADNS-NET-001"
+name = "NetNoInternet"
+area = "NET"
+severity = "warning"
+faz = 2
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-net-001"
+
+[error.tr]
+title = "İnternet bağlantısı yok"
+message = "Ağa bağlısınız ama internete erişilemiyor; bağlantı koruması beklemede."
+causes = ["Modem/telefon bağlantısı", "Kota", "Operatör sorunu"]
+solutions = ["Telefonun veya modemin internetini kontrol edin", "Bağlantı gelince otomatik devam edilir"]
+
+[error.en]
+title = "No internet connection"
+message = "You are connected to a network but cannot reach the internet; connection protection is on hold."
+causes = ["Modem or phone connection", "Data quota", "Carrier issue"]
+solutions = ["Check the internet on your phone or modem", "Protection resumes automatically once the connection is back"]
+
+[[error]]
+code = "ADNS-NET-002"
+name = "NetCaptivePortal"
+area = "NET"
+severity = "info"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-net-002"
+
+[error.tr]
+title = "Giriş gerektiren ağ"
+message = "Bu ağ tarayıcıda giriş istiyor; giriş yapılana kadar ayar yapılmaz."
+causes = ["Otel/kafe ağı (captive portal)"]
+solutions = ["Tarayıcıda ağın giriş sayfasını tamamlayın"]
+
+[error.en]
+title = "Network requires sign-in"
+message = "This network asks for sign-in in the browser; no tuning is done until you sign in."
+causes = ["Hotel or cafe network (captive portal)"]
+solutions = ["Complete the network's sign-in page in your browser"]
+
+[[error]]
+code = "ADNS-NET-003"
+name = "NetVpnActive"
+area = "NET"
+severity = "info"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-net-003"
+
+[error.tr]
+title = "VPN veya proxy etkin"
+message = "VPN/proxy açıkken bağlantı koruması devre dışı kalır."
+causes = ["VPN istemcisi", "Sistem proxy'si"]
+solutions = ["Gerekirse VPN'i kapatın", "AlterDNS otomatik devam eder"]
+
+[error.en]
+title = "VPN or proxy is active"
+message = "Connection protection is turned off while a VPN or proxy is on."
+causes = ["VPN client", "System proxy"]
+solutions = ["Turn off the VPN if needed", "AlterDNS resumes automatically"]
+
+[[error]]
+code = "ADNS-NET-004"
+name = "NetMeteredConnection"
+area = "NET"
+severity = "info"
+faz = 2
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-net-004"
+
+[error.tr]
+title = "Ölçülü bağlantı"
+message = "Veri tasarrufu için hız ölçümleri yapılmadı; yalnızca kısa kontroller kullanıldı."
+causes = ["Mobil veri / ölçülü ağ"]
+solutions = ["İşlem gerekmiyor", "Ayarlar'dan değiştirilebilir"]
+
+[error.en]
+title = "Metered connection"
+message = "To save data, no speed tests were run; only short checks were used."
+causes = ["Mobile data or a metered network"]
+solutions = ["No action needed", "Can be changed in Settings"]
+
+[[error]]
+code = "ADNS-NET-010"
+name = "NetProtectionDisabled"
+area = "NET"
+severity = "error"
+faz = 2
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-net-010"
+
+[error.tr]
+title = "Bağlantı koruması kapatıldı"
+message = "Etkinleştirilen yapılandırma genel internet erişimini bozdu; değişiklikler geri alındı."
+causes = ["Ağ yapılandırmayla uyumsuz"]
+solutions = ["\"Yeniden ayarla\"", "Sorun sürerse tanılama paketi oluşturun"]
+
+[error.en]
+title = "Connection protection turned off"
+message = "The configuration that was enabled broke general internet access; the changes were reverted."
+causes = ["The network is not compatible with the configuration"]
+solutions = ["\"Reconfigure\"", "If the problem continues, create a diagnostic package"]
+
+[[error]]
+code = "ADNS-NET-011"
+name = "NetNoWorkingConfig"
+area = "NET"
+severity = "warning"
+faz = 2
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-net-011"
+
+[error.tr]
+title = "Uygun yapılandırma bulunamadı"
+message = "Bu ağda denenen yöntemlerin hiçbiri hedef sitelere erişimi sağlamadı."
+causes = ["Engel türü desteklenmiyor", "Ağ yeni yöntem kullanıyor"]
+solutions = ["Daha sonra yeniden deneyin", "Strateji güncellemelerini bekleyin"]
+
+[error.en]
+title = "No suitable configuration found"
+message = "None of the methods tried on this network gave access to the target sites."
+causes = ["The type of block is not supported", "The network uses a new method"]
+solutions = ["Try again later", "Wait for strategy updates"]
+
+[[error]]
+code = "ADNS-NET-012"
+name = "NetIpBlockDetected"
+area = "NET"
+severity = "info"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-net-012"
+
+[error.tr]
+title = "Engel IP tabanlı görünüyor"
+message = "Hedefe giden bağlantı IP düzeyinde engelleniyor; bu yöntemle aşılamaz."
+causes = ["IP engeli"]
+solutions = ["VPN/proxy olmadan çözüm yok", "AlterDNS bu engeli aşmaz"]
+
+[error.en]
+title = "Block appears to be IP-based"
+message = "The connection to the target is blocked at the IP level; this method cannot get around it."
+causes = ["IP block"]
+solutions = ["There is no solution without a VPN or proxy", "AlterDNS does not bypass this kind of block"]
+
+[[error]]
+code = "ADNS-NET-013"
+name = "NetTuningTimeout"
+area = "NET"
+severity = "warning"
+faz = 2
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-net-013"
+
+[error.tr]
+title = "Ayar araması süre sınırına ulaştı"
+message = "Otomatik ayar zaman sınırında tamamlanamadı; önceki güvenli durum korundu."
+causes = ["Yavaş/kararsız bağlantı"]
+solutions = ["Bağlantı iyileşince \"Yeniden ayarla\""]
+
+[error.en]
+title = "Tuning reached its time limit"
+message = "Automatic tuning could not finish within the time limit; the previous safe state was kept."
+causes = ["Slow or unstable connection"]
+solutions = ["Choose \"Reconfigure\" when the connection improves"]
+
+[[error]]
+code = "ADNS-DPI-001"
+name = "DpiDriverOpenFailed"
+area = "DPI"
+severity = "error"
+faz = 2
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-dpi-001"
+
+[error.tr]
+title = "Paket sürücüsü açılamadı"
+message = "Bağlantı koruması ağ sürücüsünü başlatamadı. İnternet bağlantınız etkilenmedi."
+causes = ["Yönetici izni", "Sürücü dosyası eksik veya değişmiş", "Güvenlik yazılımı engeli"]
+solutions = ["Bileşenler > Onar", "Güvenlik yazılımı bildirimlerini kontrol edin (antivirüsü kapatmayın)"]
+
+[error.en]
+title = "Packet driver could not be opened"
+message = "Connection protection could not start the network driver. Your internet connection was not affected."
+causes = ["Administrator permission", "The driver file is missing or has been changed", "Blocked by security software"]
+solutions = ["Components > Repair", "Check your security software's notifications (do not disable the antivirus)"]
+
+[[error]]
+code = "ADNS-DPI-002"
+name = "DpiDriverBlocked"
+area = "DPI"
+severity = "error"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dpi-002"
+
+[error.tr]
+title = "Sürücü Windows tarafından engellendi"
+message = "Sürücü imzası veya bellek bütünlüğü ilkesi nedeniyle yüklenemedi."
+causes = ["İmza doğrulanamadı (577)", "Kurum WDAC ilkesi", "Sürücü engel listesi"]
+solutions = ["Bileşenler > Onar", "Kurum cihazıysa BT yöneticinize danışın", "Bellek bütünlüğünü kapatmayın"]
+
+[error.en]
+title = "Driver blocked by Windows"
+message = "The driver could not be loaded because of its signature or the memory integrity policy."
+causes = ["The signature could not be verified (577)", "Organization WDAC policy", "Driver block list"]
+solutions = ["Components > Repair", "If this is a work device, ask your IT administrator", "Do not turn off memory integrity"]
+
+[[error]]
+code = "ADNS-DPI-003"
+name = "DpiOtherToolRunning"
+area = "DPI"
+severity = "warning"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dpi-003"
+
+[error.tr]
+title = "Başka bir paket aracı çalışıyor"
+message = "GoodbyeDPI, zapret veya benzeri bir araç aynı anda çalışıyor; çakışma olabilir."
+causes = ["Eski DPI aracı", "VPN istemcisi"]
+solutions = ["Diğer aracı geçici olarak durdurmayı onaylayın veya AlterDNS bağlantı modülünü kapalı tutun"]
+
+[error.en]
+title = "Another packet tool is running"
+message = "GoodbyeDPI, zapret or a similar tool is running at the same time; they may conflict."
+causes = ["An older DPI tool", "A VPN client"]
+solutions = ["Approve stopping the other tool temporarily, or keep the AlterDNS connection module off"]
+
+[[error]]
+code = "ADNS-DPI-004"
+name = "DpiDriverVersionConflict"
+area = "DPI"
+severity = "error"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dpi-004"
+
+[error.tr]
+title = "Sürücü sürüm çakışması"
+message = "Sistemde farklı sürümde bir WinDivert sürücüsü yüklü."
+causes = ["Başka uygulamanın sürücüsü"]
+solutions = ["Diğer uygulamayı kapatıp yeniden deneyin", "Bilgisayarı yeniden başlatın"]
+
+[error.en]
+title = "Driver version conflict"
+message = "A WinDivert driver of a different version is installed on this system."
+causes = ["Another application's driver"]
+solutions = ["Close the other application and try again", "Restart your computer"]
+
+[[error]]
+code = "ADNS-DPI-005"
+name = "DpiUnsupportedCpu"
+area = "DPI"
+severity = "error"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dpi-005"
+
+[error.tr]
+title = "Desteklenmeyen işlemci"
+message = "Bağlantı modülü ARM64 Windows'ta desteklenmiyor."
+causes = ["ARM64 cihaz"]
+solutions = ["Diğer modüller kullanılabilir"]
+
+[error.en]
+title = "Unsupported processor"
+message = "The connection module is not supported on ARM64 Windows."
+causes = ["ARM64 device"]
+solutions = ["The other modules remain available"]
+
+[[error]]
+code = "ADNS-DPI-006"
+name = "DpiEngineRestarting"
+area = "DPI"
+severity = "warning"
+faz = 2
+retryable = true
+user_action_required = false
+params = []
+docs = "errors#adns-dpi-006"
+
+[error.tr]
+title = "Paket motoru yeniden başlatılıyor"
+message = "Motor hata verdi; trafik normal akıyor, motor yeniden başlatılıyor."
+causes = ["Geçici sürücü/ağ hatası"]
+solutions = ["İşlem gerekmiyor", "Tekrarlarsa tanılama paketi"]
+
+[error.en]
+title = "Packet engine restarting"
+message = "The engine reported an error; traffic is flowing normally and the engine is restarting."
+causes = ["A temporary driver or network error"]
+solutions = ["No action needed", "If it repeats, create a diagnostic package"]
+
+[[error]]
+code = "ADNS-DNS-001"
+name = "DnsEncryptedUnreachable"
+area = "DNS"
+severity = "warning"
+faz = 2
+retryable = true
+user_action_required = false
+params = []
+docs = "errors#adns-dns-001"
+
+[error.tr]
+title = "Şifreli DNS'e ulaşılamıyor"
+message = "Seçilen şifreli DNS sağlayıcısına bağlanılamadı; başka sağlayıcı deneniyor."
+causes = ["Sağlayıcı engelli veya kapalı"]
+solutions = ["İşlem gerekmiyor", "Ayarlar'dan sağlayıcı seçilebilir"]
+
+[error.en]
+title = "Encrypted DNS is unreachable"
+message = "The selected encrypted DNS provider could not be reached; another provider is being tried."
+causes = ["The provider is blocked or down"]
+solutions = ["No action needed", "You can pick a provider in Settings"]
+
+[[error]]
+code = "ADNS-DNS-002"
+name = "DnsInconsistentAnswers"
+area = "DNS"
+severity = "info"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dns-002"
+
+[error.tr]
+title = "DNS yanıtları tutarsız"
+message = "Bu ağın DNS yanıtları şifreli DNS ile uyuşmuyor; DNS tabanlı engel olabilir."
+causes = ["DNS engeli/yönlendirmesi"]
+solutions = ["AlterDNS gerekirse alan adına özel şifreli çözümleme kullanır"]
+
+[error.en]
+title = "DNS answers are inconsistent"
+message = "This network's DNS answers do not match encrypted DNS; there may be a DNS-based block."
+causes = ["DNS block or redirection"]
+solutions = ["AlterDNS uses domain-specific encrypted resolution when needed"]
+
+[[error]]
+code = "ADNS-DNS-003"
+name = "DnsSettingFailed"
+area = "DNS"
+severity = "error"
+faz = 2
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-dns-003"
+
+[error.tr]
+title = "DNS ayarı değiştirilemedi"
+message = "Sistem DNS ayarı uygulanamadı; ayarlar değişmedi."
+causes = ["Kurum ilkesi", "Yönetici izni"]
+solutions = ["Alan adına özel modu kullanın (sistem ayarı değiştirmez)"]
+
+[error.en]
+title = "DNS setting could not be changed"
+message = "The system DNS setting could not be applied; settings were not changed."
+causes = ["Organization policy", "Administrator permission"]
+solutions = ["Use the domain-specific mode (it does not change system settings)"]
+
+[[error]]
+code = "ADNS-SCN-001"
+name = "ScnSandboxStartFailed"
+area = "SCN"
+severity = "error"
+faz = 3
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-scn-001"
+
+[error.tr]
+title = "Güvenli inceleme ortamı başlatılamadı"
+message = "Dosya, korumalı ortam başlamadığı için incelenmedi. Dosya açılmadı."
+causes = ["AppContainer profili bozuk", "Sistem kaynakları"]
+solutions = ["Bileşenler > Onar", "Yeniden başlatın"]
+
+[error.en]
+title = "Safe inspection environment could not start"
+message = "The file was not inspected because the protected environment did not start. The file was not opened."
+causes = ["The AppContainer profile is damaged", "System resources"]
+solutions = ["Components > Repair", "Restart your computer"]
+
+[[error]]
+code = "ADNS-SCN-002"
+name = "ScnTimeLimitExceeded"
+area = "SCN"
+severity = "warning"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-scn-002"
+
+[error.tr]
+title = "İnceleme süre sınırını aştı"
+message = "Bazı kısımlar süre sınırında incelenemedi; rapor \"eksik inceleme\" içeriyor."
+causes = ["Çok büyük veya karmaşık dosya"]
+solutions = ["Ayarlar'dan süre sınırını artırıp yeniden tarayın"]
+
+[error.en]
+title = "Inspection exceeded the time limit"
+message = "Some parts could not be inspected within the time limit; the report includes an \"incomplete inspection\" note."
+causes = ["A very large or complex file"]
+solutions = ["Raise the time limit in Settings and scan again"]
+
+[[error]]
+code = "ADNS-SCN-003"
+name = "ScnMemoryLimitExceeded"
+area = "SCN"
+severity = "warning"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-scn-003"
+
+[error.tr]
+title = "İnceleme bellek sınırını aştı"
+message = "Bir parça bellek sınırı nedeniyle incelenemedi."
+causes = ["Bomba şüphesi", "Çok büyük içerik"]
+solutions = ["Dosyayı açmayın", "Karantinayı değerlendirin"]
+
+[error.en]
+title = "Inspection exceeded the memory limit"
+message = "A part could not be inspected because of the memory limit."
+causes = ["Suspected decompression bomb", "Very large content"]
+solutions = ["Do not open the file", "Consider quarantining it"]
+
+[[error]]
+code = "ADNS-SCN-004"
+name = "ScnFileOpenFailed"
+area = "SCN"
+severity = "error"
+faz = 3
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-scn-004"
+
+[error.tr]
+title = "Dosya açılamadı"
+message = "Dosya başka bir uygulama tarafından kullanılıyor veya erişim izni yok."
+causes = ["Kilitli dosya", "İzin"]
+solutions = ["İndirme bittikten sonra tekrar deneyin"]
+
+[error.en]
+title = "File could not be opened"
+message = "The file is in use by another application or access is not permitted."
+causes = ["Locked file", "Permissions"]
+solutions = ["Try again after the download finishes"]
+
+[[error]]
+code = "ADNS-SCN-005"
+name = "ScnArchiveLimitExceeded"
+area = "SCN"
+severity = "warning"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-scn-005"
+
+[error.tr]
+title = "Arşiv sınırı aşıldı"
+message = "Arşiv olağan dışı oranda açılıyor (sıkıştırma bombası şüphesi); inceleme durduruldu."
+causes = ["Kasıtlı bomba", "Aşırı büyük arşiv"]
+solutions = ["Dosyayı açmayın", "Karantina önerilir"]
+
+[error.en]
+title = "Archive limit exceeded"
+message = "The archive expands at an unusual ratio (suspected decompression bomb); inspection was stopped."
+causes = ["A deliberate bomb", "An extremely large archive"]
+solutions = ["Do not open the file", "Quarantine is recommended"]
+
+[[error]]
+code = "ADNS-SCN-006"
+name = "ScnEncryptedContent"
+area = "SCN"
+severity = "info"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-scn-006"
+
+[error.tr]
+title = "Şifreli içerik incelenemedi"
+message = "Parola korumalı içerik incelenemedi."
+causes = ["Şifreli arşiv/belge"]
+solutions = ["Parolayı biliyorsanız girip yeniden tarayın"]
+
+[error.en]
+title = "Encrypted content could not be inspected"
+message = "Password-protected content could not be inspected."
+causes = ["Encrypted archive or document"]
+solutions = ["If you know the password, enter it and scan again"]
+
+[[error]]
+code = "ADNS-SCN-007"
+name = "ScnDefenderUnavailable"
+area = "SCN"
+severity = "info"
+faz = 3
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-scn-007"
+
+[error.tr]
+title = "Windows Defender taraması kullanılamadı"
+message = "Defender etkin değil veya yanıt vermedi; diğer incelemeler yapıldı."
+causes = ["Başka AV etkin", "Defender kapalı"]
+solutions = ["İşlem gerekmiyor", "Rapor bunu belirtir"]
+
+[error.en]
+title = "Windows Defender scan unavailable"
+message = "Defender is not active or did not respond; the other inspections were done."
+causes = ["Another antivirus is active", "Defender is off"]
+solutions = ["No action needed", "The report notes this"]
+
+[[error]]
+code = "ADNS-SCN-008"
+name = "ScnRulesOutdated"
+area = "SCN"
+severity = "warning"
+faz = 3
+retryable = true
+user_action_required = true
+params = ["gun"]
+docs = "errors#adns-scn-008"
+
+[error.tr]
+title = "İnceleme kuralları güncel değil"
+message = "Kural veritabanı {gun} gündür güncellenmedi."
+causes = ["Bağlantı yok", "Besleme hatası"]
+solutions = ["\"Şimdi güncelle\""]
+
+[error.en]
+title = "Inspection rules are out of date"
+message = "The rule database has not been updated for {gun} days."
+causes = ["No connection", "A feed error"]
+solutions = ["\"Update now\""]
+
+[[error]]
+code = "ADNS-SCN-009"
+name = "ScnHashLookupFailed"
+area = "SCN"
+severity = "info"
+faz = 3
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-scn-009"
+
+[error.tr]
+title = "Çevrim içi hash sorgusu yapılamadı"
+message = "Hash itibarı sorgulanamadı; yerel inceleme tamamlandı."
+causes = ["Bağlantı yok", "Anahtar geçersiz", "Kota"]
+solutions = ["Ayarlar > Çevrim içi sorgular"]
+
+[error.en]
+title = "Online hash lookup could not be made"
+message = "The hash reputation could not be queried; the local inspection finished."
+causes = ["No connection", "Invalid key", "Quota"]
+solutions = ["Settings > Online lookups"]
+
+[[error]]
+code = "ADNS-QRN-001"
+name = "QrnQuarantineFailed"
+area = "QRN"
+severity = "error"
+faz = 3
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-qrn-001"
+
+[error.tr]
+title = "Karantinaya alınamadı"
+message = "Dosya karantinaya taşınamadı; dosya yerinde."
+causes = ["Kilitli dosya", "İzin", "Disk dolu"]
+solutions = ["Dosyayı kullanan uygulamayı kapatın", "\"Yeniden başlatmada karantinaya al\""]
+
+[error.en]
+title = "Could not quarantine"
+message = "The file could not be moved to quarantine; it is still in place."
+causes = ["Locked file", "Permissions", "Disk full"]
+solutions = ["Close the app that uses the file", "\"Quarantine on restart\""]
+
+[[error]]
+code = "ADNS-QRN-002"
+name = "QrnDeleteOnReboot"
+area = "QRN"
+severity = "warning"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-qrn-002"
+
+[error.tr]
+title = "Dosya yeniden başlatmada silinecek"
+message = "Dosya kullanımda olduğu için hemen silinemedi; yeniden başlatmada silinecek."
+causes = ["Çalışan işlem dosyayı tutuyor"]
+solutions = ["Bilgisayarı yeniden başlatın"]
+
+[error.en]
+title = "File will be deleted on restart"
+message = "The file is in use so it could not be deleted right away; it will be deleted when the computer restarts."
+causes = ["A running process is holding the file"]
+solutions = ["Restart your computer"]
+
+[[error]]
+code = "ADNS-QRN-003"
+name = "QrnVerifyFailed"
+area = "QRN"
+severity = "error"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-qrn-003"
+
+[error.tr]
+title = "İşlem doğrulanamadı"
+message = "Silme veya karantina sonrası denetim başarısız; dosya hâlâ mevcut olabilir."
+causes = ["Başka işlem dosyayı yeniden oluşturdu", "İzin"]
+solutions = ["Tam tarama yapın", "Dosyanın konumunu kontrol edin"]
+
+[error.en]
+title = "Action could not be verified"
+message = "The check after deleting or quarantining failed; the file may still exist."
+causes = ["Another process recreated the file", "Permissions"]
+solutions = ["Run a full scan", "Check the file's location"]
+
+[[error]]
+code = "ADNS-QRN-004"
+name = "QrnRestoreUnsafe"
+area = "QRN"
+severity = "warning"
+faz = 3
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-qrn-004"
+
+[error.tr]
+title = "Geri yükleme konumu güvenli değil"
+message = "Özgün konum değişmiş (bağlantı noktası/kısayol); geri yükleme durduruldu."
+causes = ["Junction/symlink"]
+solutions = ["Farklı bir konuma geri yükleyin"]
+
+[error.en]
+title = "Restore location is not safe"
+message = "The original location has changed (junction or shortcut); the restore was stopped."
+causes = ["Junction or symlink"]
+solutions = ["Restore to a different location"]
+
+[[error]]
+code = "ADNS-WEB-001"
+name = "WebHostUnreachable"
+area = "WEB"
+severity = "warning"
+faz = 4
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-web-001"
+
+[error.tr]
+title = "Uzantı uygulamaya bağlanamıyor"
+message = "Tarayıcı uzantısı AlterDNS'e ulaşamıyor; son kurallarla çalışıyor."
+causes = ["Native host kaydı eksik", "Uygulama kapalı"]
+solutions = ["Bileşenler > Tarayıcı koruması > Onar", "Tarayıcıyı yeniden başlatın"]
+
+[error.en]
+title = "Extension cannot reach the app"
+message = "The browser extension cannot reach AlterDNS; it is working with the latest rules."
+causes = ["The native host registration is missing", "The app is closed"]
+solutions = ["Components > Browser protection > Repair", "Restart the browser"]
+
+[[error]]
+code = "ADNS-WEB-002"
+name = "WebExtensionMissing"
+area = "WEB"
+severity = "info"
+faz = 4
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-web-002"
+
+[error.tr]
+title = "Uzantı kurulu değil"
+message = "Tarayıcı koruması için uzantıyı tarayıcınıza eklemeniz gerekiyor."
+causes = ["Uzantı henüz yüklenmedi"]
+solutions = ["\"Tarayıcıda kur\" (sihirbaz; geliştirici modu adımlarını gösterir)"]
+
+[error.en]
+title = "Extension not installed"
+message = "To get browser protection you need to add the extension to your browser."
+causes = ["The extension has not been installed yet"]
+solutions = ["\"Install in browser\" (the wizard shows the developer mode steps)"]
+
+[[error]]
+code = "ADNS-WEB-003"
+name = "WebVersionMismatch"
+area = "WEB"
+severity = "warning"
+faz = 4
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-web-003"
+
+[error.tr]
+title = "Uzantı sürümü uyumsuz"
+message = "Uzantı ile uygulama sürümleri uyumsuz."
+causes = ["Biri güncellenmedi"]
+solutions = ["Tarayıcı uzantılarını ve AlterDNS'i güncelleyin"]
+
+[error.en]
+title = "Extension version incompatible"
+message = "The extension and app versions are not compatible."
+causes = ["One of them was not updated"]
+solutions = ["Update your browser extensions and AlterDNS"]
+
+[[error]]
+code = "ADNS-WEB-004"
+name = "WebRulesOverflow"
+area = "WEB"
+severity = "warning"
+faz = 4
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-web-004"
+
+[error.tr]
+title = "Engelleme kuralları sığmadı"
+message = "Tarayıcı sınırları nedeniyle listenin bir kısmı ön engellemeye eklenemedi; kalan adresler gezinme sırasında kontrol ediliyor."
+causes = ["Tarayıcı kural sınırı"]
+solutions = ["İşlem gerekmiyor"]
+
+[error.en]
+title = "Blocking rules did not fit"
+message = "Because of browser limits, part of the list could not be added to pre-blocking; the remaining addresses are checked while you browse."
+causes = ["Browser rule limit"]
+solutions = ["No action needed"]
+
+[[error]]
+code = "ADNS-WEB-005"
+name = "WebExtensionDisabled"
+area = "WEB"
+severity = "warning"
+faz = 4
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-web-005"
+
+[error.tr]
+title = "Tarayıcı uzantısı devre dışı kalmış olabilir"
+message = "Tarayıcı açık ama AlterDNS uzantısından bir süredir haber alınamıyor; tarayıcıda engelleme çalışmıyor olabilir."
+causes = ["Tarayıcı güncellemesi sonrası geliştirici modu uzantısı kapatıldı", "Uzantı elle kapatıldı veya kaldırıldı"]
+solutions = ["\"Yeniden etkinleştir\" yönergesi: Uzantılar sayfası → AlterDNS → aç", "Gerekirse \"Tarayıcıda kur\" ile yeniden yükleyin"]
+
+[error.en]
+title = "Browser extension may be disabled"
+message = "The browser is open but AlterDNS has not heard from the extension for a while; blocking may not be working in the browser."
+causes = ["The developer mode extension was turned off after a browser update", "The extension was turned off or removed manually"]
+solutions = ["Follow the \"Re-enable\" steps: Extensions page → AlterDNS → turn on", "If needed, reinstall it with \"Install in browser\""]
+
+[[error]]
+code = "ADNS-WEB-006"
+name = "WebDevModeBlocked"
+area = "WEB"
+severity = "warning"
+faz = 4
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-web-006"
+
+[error.tr]
+title = "Tarayıcı geliştirici modunu engelliyor"
+message = "Bu tarayıcıda geliştirici modu kurum ilkesiyle kapatılmış; uzantı yüklenemiyor."
+causes = ["Kurum/okul yönetimli tarayıcı"]
+solutions = ["Başka bir tarayıcı kullanın veya BT yöneticinize danışın", "İlkeyi aşmaya çalışmayın"]
+
+[error.en]
+title = "Browser blocks developer mode"
+message = "Developer mode is turned off by organization policy in this browser; the extension cannot be loaded."
+causes = ["A browser managed by a company or school"]
+solutions = ["Use another browser or ask your IT administrator", "Do not try to get around the policy"]
+
+[[error]]
+code = "ADNS-WEB-007"
+name = "WebNoBrowserFound"
+area = "WEB"
+severity = "info"
+faz = 4
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-web-007"
+
+[error.tr]
+title = "Desteklenen tarayıcı bulunamadı"
+message = "Bilgisayarda Chrome, Edge veya başka bir Chromium tabanlı tarayıcı bulunamadı."
+causes = ["Tarayıcı kurulu değil", "Taşınabilir sürüm"]
+solutions = ["Tarayıcı klasörünü elle seçin veya desteklenen bir tarayıcı kurun"]
+
+[error.en]
+title = "No supported browser found"
+message = "No Chrome, Edge or other Chromium-based browser was found on this computer."
+causes = ["No browser is installed", "A portable version"]
+solutions = ["Choose the browser folder manually or install a supported browser"]
+
+[[error]]
+code = "ADNS-REP-001"
+name = "RepDownloadFailed"
+area = "REP"
+severity = "warning"
+faz = 4
+retryable = true
+user_action_required = true
+params = ["kaynak", "tarih"]
+docs = "errors#adns-rep-001"
+
+[error.tr]
+title = "Tehdit listesi indirilemedi"
+message = "{kaynak} listesi güncellenemedi; {tarih} tarihli kopya kullanılıyor."
+causes = ["Bağlantı", "Kaynak kapalı"]
+solutions = ["Otomatik yeniden denenir"]
+
+[error.en]
+title = "Threat list could not be downloaded"
+message = "The {kaynak} list could not be updated; the copy dated {tarih} is being used."
+causes = ["Connection", "The source is down"]
+solutions = ["It will be retried automatically"]
+
+[[error]]
+code = "ADNS-REP-002"
+name = "RepFeedInvalid"
+area = "REP"
+severity = "warning"
+faz = 4
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-rep-002"
+
+[error.tr]
+title = "Tehdit listesi doğrulanamadı"
+message = "İndirilen liste beklenen biçimde değil; kullanılmadı."
+causes = ["Kaynak değişikliği", "Bozuk indirme"]
+solutions = ["Otomatik yeniden denenir", "Sürerse güncelleme bekleyin"]
+
+[error.en]
+title = "Threat list could not be verified"
+message = "The downloaded list is not in the expected format; it was not used."
+causes = ["The source changed", "A corrupted download"]
+solutions = ["It will be retried automatically", "If it continues, wait for an update"]
+
+[[error]]
+code = "ADNS-REP-003"
+name = "RepDataStale"
+area = "REP"
+severity = "warning"
+faz = 4
+retryable = true
+user_action_required = true
+params = ["gun"]
+docs = "errors#adns-rep-003"
+
+[error.tr]
+title = "Tehdit verisi eski"
+message = "Tehdit listeleri {gun} gündür güncellenmedi; koruma eksik olabilir."
+causes = ["Uzun süre çevrim dışı"]
+solutions = ["İnternete bağlanınca \"Şimdi güncelle\""]
+
+[error.en]
+title = "Threat data is out of date"
+message = "Threat lists have not been updated for {gun} days; protection may be incomplete."
+causes = ["Offline for a long time"]
+solutions = ["Choose \"Update now\" once you are online"]
+
+[[error]]
+code = "ADNS-UPD-001"
+name = "UpdServerUnreachable"
+area = "UPD"
+severity = "info"
+faz = 5
+retryable = true
+user_action_required = false
+params = []
+docs = "errors#adns-upd-001"
+
+[error.tr]
+title = "Güncelleme sunucusuna ulaşılamadı"
+message = "Güncellemeler denetlenemedi; daha sonra yeniden denenecek."
+causes = ["Bağlantı", "Sunucu"]
+solutions = ["İşlem gerekmiyor"]
+
+[error.en]
+title = "Update server unreachable"
+message = "Updates could not be checked; it will be tried again later."
+causes = ["Connection", "The server"]
+solutions = ["No action needed"]
+
+[[error]]
+code = "ADNS-UPD-002"
+name = "UpdSignatureInvalid"
+area = "UPD"
+severity = "critical"
+faz = 5
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-upd-002"
+
+[error.tr]
+title = "Güncelleme imzası geçersiz"
+message = "İndirilen güncelleme AlterDNS imzası taşımıyor; kurulmadı."
+causes = ["Bozulma", "Araya girme saldırısı"]
+solutions = ["İşlem gerekmiyor", "Tekrarlarsa ağınızı kontrol edin"]
+
+[error.en]
+title = "Update signature invalid"
+message = "The downloaded update does not carry an AlterDNS signature; it was not installed."
+causes = ["Corruption", "A man-in-the-middle attack"]
+solutions = ["No action needed", "If it repeats, check your network"]
+
+[[error]]
+code = "ADNS-UPD-003"
+name = "UpdIntegrityFailed"
+area = "UPD"
+severity = "error"
+faz = 5
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-upd-003"
+
+[error.tr]
+title = "Paket bütünlüğü doğrulanamadı"
+message = "Güncelleme dosyası bozuk; kurulmadı."
+causes = ["Yarım/bozuk indirme"]
+solutions = ["Otomatik yeniden denenir"]
+
+[error.en]
+title = "Package integrity could not be verified"
+message = "The update file is corrupted; it was not installed."
+causes = ["A partial or corrupted download"]
+solutions = ["It will be retried automatically"]
+
+[[error]]
+code = "ADNS-UPD-004"
+name = "UpdDowngradeRejected"
+area = "UPD"
+severity = "warning"
+faz = 5
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-upd-004"
+
+[error.tr]
+title = "Eski sürüme geçiş reddedildi"
+message = "Sunulan sürüm kurulu sürümden eski; güvenlik nedeniyle kurulmadı."
+causes = ["Eski manifest", "Saldırı"]
+solutions = ["İşlem gerekmiyor"]
+
+[error.en]
+title = "Downgrade rejected"
+message = "The offered version is older than the installed one; it was not installed for safety."
+causes = ["An old manifest", "An attack"]
+solutions = ["No action needed"]
+
+[[error]]
+code = "ADNS-UPD-005"
+name = "UpdRolledBack"
+area = "UPD"
+severity = "error"
+faz = 5
+retryable = false
+user_action_required = false
+params = []
+docs = "errors#adns-upd-005"
+
+[error.tr]
+title = "Güncelleme geri alındı"
+message = "Yeni sürüm başlangıç denetimini geçemedi; önceki sürüme dönüldü."
+causes = ["Uyumsuzluk", "Dosya hatası"]
+solutions = ["İşlem gerekmiyor", "Sonraki sürüm beklenir", "Tanılama paketi"]
+
+[error.en]
+title = "Update rolled back"
+message = "The new version failed its startup check; the previous version was restored."
+causes = ["Incompatibility", "A file error"]
+solutions = ["No action needed", "Wait for the next version", "Create a diagnostic package"]
+
+[[error]]
+code = "ADNS-UPD-006"
+name = "UpdMetadataExpired"
+area = "UPD"
+severity = "warning"
+faz = 5
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-upd-006"
+
+[error.tr]
+title = "Güncelleme bilgisi süresi dolmuş"
+message = "Sunucudaki güncelleme bilgisi eski; güvenlik için kullanılmadı."
+causes = ["Sunucu güncellenmedi", "Dondurma saldırısı"]
+solutions = ["Daha sonra yeniden denenir"]
+
+[error.en]
+title = "Update information expired"
+message = "The update information on the server is old; it was not used for safety."
+causes = ["The server was not updated", "A freeze attack"]
+solutions = ["It will be retried later"]
+
+[[error]]
+code = "ADNS-UPD-007"
+name = "UpdRateLimited"
+area = "UPD"
+severity = "info"
+faz = 5
+retryable = true
+user_action_required = false
+params = []
+docs = "errors#adns-upd-007"
+
+[error.tr]
+title = "Güncelleme sunucusu isteği sınırladı"
+message = "GitHub geçici olarak yanıt vermedi veya isteği sınırladı; daha sonra yeniden denenecek."
+causes = ["Hız sınırı (403/429)", "Ağ"]
+solutions = ["İşlem gerekmiyor"]
+
+[error.en]
+title = "Update server limited requests"
+message = "GitHub did not respond for now or limited the request; it will be tried again later."
+causes = ["Rate limit (403/429)", "Network"]
+solutions = ["No action needed"]
+
+[[error]]
+code = "ADNS-INS-001"
+name = "InsElevationRequired"
+area = "INS"
+severity = "info"
+faz = 5
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-ins-001"
+
+[error.tr]
+title = "Yönetici izni gerekli"
+message = "Kurulum için Windows yönetici onayı gerekiyor."
+causes = ["UAC reddedildi"]
+solutions = ["Kurulumu yeniden başlatıp onaylayın"]
+
+[error.en]
+title = "Administrator permission required"
+message = "Setup needs Windows administrator approval."
+causes = ["UAC was declined"]
+solutions = ["Restart setup and approve"]
+
+[[error]]
+code = "ADNS-INS-002"
+name = "InsDownloadFailed"
+area = "INS"
+severity = "error"
+faz = 5
+retryable = true
+user_action_required = true
+params = ["bilesen"]
+docs = "errors#adns-ins-002"
+
+[error.tr]
+title = "Bileşen indirilemedi"
+message = "{bilesen} indirilemedi; hiçbir değişiklik yapılmadı."
+causes = ["Bağlantı", "Sunucu"]
+solutions = ["Yeniden deneyin", "Çevrim dışı kurulum paketini kullanın"]
+
+[error.en]
+title = "Component could not be downloaded"
+message = "{bilesen} could not be downloaded; no changes were made."
+causes = ["Connection", "The server"]
+solutions = ["Try again", "Use the offline installer package"]
+
+[[error]]
+code = "ADNS-INS-003"
+name = "InsDiskSpaceLow"
+area = "INS"
+severity = "error"
+faz = 5
+retryable = true
+user_action_required = true
+params = ["gereken"]
+docs = "errors#adns-ins-003"
+
+[error.tr]
+title = "Yetersiz disk alanı"
+message = "{gereken} boş alan gerekiyor."
+causes = ["Disk dolu"]
+solutions = ["Alan açıp yeniden deneyin"]
+
+[error.en]
+title = "Not enough disk space"
+message = "{gereken} of free space is needed."
+causes = ["The disk is full"]
+solutions = ["Free up space and try again"]
+
+[[error]]
+code = "ADNS-INS-004"
+name = "InsComponentFailed"
+area = "INS"
+severity = "error"
+faz = 5
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-ins-004"
+
+[error.tr]
+title = "Bileşen kurulamadı"
+message = "Kurulum tamamlanamadı; yapılan değişiklikler geri alındı."
+causes = ["Dosya kilidi", "İzin", "AV engeli"]
+solutions = ["Bilgisayarı yeniden başlatıp tekrar deneyin"]
+
+[error.en]
+title = "Component could not be installed"
+message = "Setup could not finish; the changes made were rolled back."
+causes = ["A file lock", "Permissions", "Blocked by security software"]
+solutions = ["Restart your computer and try again"]
+
+[[error]]
+code = "ADNS-INS-005"
+name = "InsLeftoversFound"
+area = "INS"
+severity = "warning"
+faz = 5
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ins-005"
+
+[error.tr]
+title = "Kaldırma kalıntı buldu"
+message = "Bazı öğeler kaldırılamadı (liste aşağıda)."
+causes = ["Kilitli dosya", "Yeniden başlatma gerekli"]
+solutions = ["Yeniden başlatın", "Liste ekrandan kopyalanabilir"]
+
+[error.en]
+title = "Uninstall found leftovers"
+message = "Some items could not be removed (list below)."
+causes = ["A locked file", "A restart is needed"]
+solutions = ["Restart your computer", "The list can be copied from the screen"]
+
+[[error]]
+code = "ADNS-INS-006"
+name = "InsUnsupportedWindows"
+area = "INS"
+severity = "error"
+faz = 5
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ins-006"
+
+[error.tr]
+title = "Desteklenmeyen Windows sürümü"
+message = "Bu Windows sürümü desteklenmiyor."
+causes = ["Eski sürüm / ARM64 (bağlantı modülü)"]
+solutions = ["Desteklenen sürümler listesine bakın"]
+
+[error.en]
+title = "Unsupported Windows version"
+message = "This version of Windows is not supported."
+causes = ["An old version or ARM64 (connection module)"]
+solutions = ["See the list of supported versions"]
+
+[[error]]
+code = "ADNS-INS-007"
+name = "InsSmartAppControlOn"
+area = "INS"
+severity = "warning"
+faz = 5
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ins-007"
+
+[error.tr]
+title = "Akıllı Uygulama Denetimi açık"
+message = "Bu sürüm henüz kod imzası taşımadığı için Windows Akıllı Uygulama Denetimi bazı bileşenleri engelleyebilir."
+causes = ["İmzasız ön sürüm", "SAC açık"]
+solutions = ["İmzalı sürümü bekleyin. SAC'yi kapatmanız önerilmez (Windows sıfırlanmadan geri açılamaz)"]
+
+[error.en]
+title = "Smart App Control is on"
+message = "Because this build is not yet code-signed, Windows Smart App Control may block some components."
+causes = ["An unsigned preview build", "SAC is on"]
+solutions = ["Wait for the signed release. Turning off SAC is not recommended (it cannot be turned back on without resetting Windows)"]
+
+[[error]]
+code = "ADNS-UI-001"
+name = "UiStartFailed"
+area = "UI"
+severity = "error"
+faz = 1
+retryable = true
+user_action_required = true
+params = []
+docs = "errors#adns-ui-001"
+
+[error.tr]
+title = "Arayüz başlatılamadı"
+message = "Pencere oluşturulamadı; korumalar çalışmaya devam ediyor."
+causes = ["Grafik sürücüsü", "Uzak masaüstü"]
+solutions = ["Yeniden deneyin", "Grafik sürücüsünü güncelleyin"]
+
+[error.en]
+title = "Interface could not start"
+message = "The window could not be created; protections keep running."
+causes = ["Graphics driver", "Remote desktop"]
+solutions = ["Try again", "Update your graphics driver"]
+
+[[error]]
+code = "ADNS-UI-002"
+name = "UiNotificationsUnavailable"
+area = "UI"
+severity = "info"
+faz = 1
+retryable = false
+user_action_required = true
+params = []
+docs = "errors#adns-ui-002"
+
+[error.tr]
+title = "Bildirimler gösterilemiyor"
+message = "Windows bildirimleri kapalı; uyarılar yalnızca uygulamada görünecek."
+causes = ["Odak yardımı", "Bildirim ayarı"]
+solutions = ["Windows Ayarları > Bildirimler > AlterDNS"]
+
+[error.en]
+title = "Notifications cannot be shown"
+message = "Windows notifications are off; alerts will appear only in the app."
+causes = ["Focus assist", "Notification settings"]
+solutions = ["Windows Settings > Notifications > AlterDNS"]
