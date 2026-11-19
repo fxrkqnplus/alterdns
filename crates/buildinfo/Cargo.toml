@@ -1,0 +1,15 @@
+[package]
+name = "alterdns-buildinfo"
+description = "AlterDNS exe sürüm bilgisi (build.rs yardımcısı)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["xtask"]
+members = ["xtask", "crates/*"]
 # Spike'lar ürün kodu değildir; kendi Cargo.lock'larıyla ayrı derlenir.
 exclude = ["spikes"]
 
@@ -12,6 +12,21 @@ license = "GPL-3.0-or-later"
 authors = ["Furkan Okan"]
 repository = "https://github.com/fxrkqnplus/alterdns"
 publish = false
+
+# Paylaşılan sürümler: her yeni sürüm eklenmeden önce `cargo info` ile doğrulanır.
+[workspace.dependencies]
+anyhow = "1.0.104"
+proptest = "1.12.0"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.2.1"
+windows = "0.62.2"
+winresource = "0.1.34"
+alterdns-errors = { path = "crates/errors" }
+alterdns-core = { path = "crates/core" }
+alterdns-winsys = { path = "crates/winsys" }
+alterdns-buildinfo = { path = "crates/buildinfo" }
 
 [workspace.lints.rust]
 # FFI crate'leri (winsys) `#[allow(unsafe_code)]` ile açar; diğerleri `#![forbid(unsafe_code)]` kullanır.

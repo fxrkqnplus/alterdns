@@ -12,6 +12,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterdns-buildinfo"
+version = "0.0.0"
+
+[[package]]
+name = "alterdns-core"
+version = "0.0.0"
+
+[[package]]
+name = "alterdns-errors"
+version = "0.0.0"
+
+[[package]]
+name = "alterdns-winsys"
+version = "0.0.0"
+
+[[package]]
 name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
