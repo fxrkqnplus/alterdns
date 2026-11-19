@@ -124,31 +124,59 @@ fn parse(bytes: &[u8]) -> Option<(Table, i64)> {
     (schema >= 1).then_some((table, schema))
 }
 
-pub fn load_user(path: &Path) -> Result<(UserConfig, LoadOutcome), AdnsError> {
-    let bytes = match std::fs::read(path) {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok((
-                UserConfig::default(),
-                LoadOutcome::Defaulted { backup: None },
-            ));
-        }
+/// Okunacak en büyük yapılandırma dosyası; daha büyüğü bozuk sayılır.
+pub const MAX_CONFIG_BYTES: u64 = 64 * 1024;
+
+/// Dosyanın baytları; yoksa `None`. Sınırı aşan dosya boş bayt olarak döner (bozuk sayılır).
+fn read_bounded(path: &Path) -> Result<Option<Vec<u8>>, AdnsError> {
+    match std::fs::metadata(path) {
+        Ok(m) if m.len() > MAX_CONFIG_BYTES => return Ok(Some(Vec::new())),
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(sys_error(e)),
+    }
+    match std::fs::read(path) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(sys_error(e)),
+    }
+}
+
+/// Bozuk dosyayı `.bak` olarak saklar (önceki yedeğin yerine geçer). Yedek alınamazsa
+/// (ör. `.bak` bir dizin) `None` döner; çağıran yine varsayılanla devam eder.
+fn backup_corrupt(path: &Path) -> Option<PathBuf> {
+    let backup = path.with_extension("toml.bak");
+    std::fs::rename(path, &backup).ok().map(|()| backup)
+}
+
+pub fn load_user(path: &Path) -> Result<(UserConfig, LoadOutcome), AdnsError> {
+    let Some(bytes) = read_bounded(path)? else {
+        return Ok((
+            UserConfig::default(),
+            LoadOutcome::Defaulted { backup: None },
+        ));
     };
     match parse(&bytes) {
         Some((t, schema)) if schema == SCHEMA => Ok((from_table(&t), LoadOutcome::Loaded)),
         Some((t, _)) => Ok((from_table(&t), LoadOutcome::NewerSchema)),
-        None => {
-            let backup = path.with_extension("toml.bak");
-            std::fs::rename(path, &backup).map_err(sys_error)?;
-            Ok((
-                UserConfig::default(),
-                LoadOutcome::Defaulted {
-                    backup: Some(backup),
-                },
-            ))
-        }
+        None => Ok((
+            UserConfig::default(),
+            LoadOutcome::Defaulted {
+                backup: backup_corrupt(path),
+            },
+        )),
     }
+}
+
+/// Aynı dizinde benzersiz geçici dosya adı: iki işlem (tepsi ve pencere) aynı anda kaydederse
+/// birbirinin dosyasını kesmez.
+fn temp_path(path: &Path) -> PathBuf {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    path.with_extension(format!("toml.{}-{n}-{nanos}.tmp", std::process::id()))
 }
 
 fn set(t: &mut Table, sec: &str, key: &str, value: Value) {
@@ -164,16 +192,19 @@ fn set(t: &mut Table, sec: &str, key: &str, value: Value) {
 }
 
 pub fn save_user(path: &Path, cfg: &UserConfig) -> Result<(), AdnsError> {
-    let mut table = match std::fs::read(path) {
-        Ok(bytes) => match parse(&bytes) {
+    let mut table = match read_bounded(path)? {
+        Some(bytes) => match parse(&bytes) {
             Some((_, schema)) if schema > SCHEMA => {
                 return Err(AdnsError::new(AdnsErrorCode::SysApplyFailed));
             }
             Some((t, _)) => t,
-            None => Table::new(),
+            // Bozuk dosya ezilmeden önce yedeklenir.
+            None => {
+                let _ = backup_corrupt(path);
+                Table::new()
+            }
         },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Table::new(),
-        Err(e) => return Err(sys_error(e)),
+        None => Table::new(),
     };
     table.insert("schema".into(), Value::Integer(SCHEMA));
     set(
@@ -211,12 +242,20 @@ pub fn save_user(path: &Path, cfg: &UserConfig) -> Result<(), AdnsError> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(sys_error)?;
     }
-    let tmp = path.with_extension("toml.tmp");
+    let tmp = temp_path(path);
     let write = || -> std::io::Result<()> {
-        let mut f = std::fs::File::create(&tmp)?;
+        // `create_new`: önceden yerleştirilmiş bir dosya ya da bağlantı izlenmez.
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
         f.write_all(text.as_bytes())?;
         f.sync_all()?;
+        drop(f);
         std::fs::rename(&tmp, path)
     };
-    write().map_err(sys_error)
+    write().map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        sys_error(e)
+    })
 }

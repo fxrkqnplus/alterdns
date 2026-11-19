@@ -54,6 +54,8 @@ const HEADER_LINES: [&str; 2] = [
 
 /// Kullanıcı adı sayılmayan profil dizinleri.
 const NON_PERSONAL_PROFILES: [&str; 4] = ["public", "default", "default user", "all users"];
+/// `/home/<ad>` için kişisel sayılmayan adlar (CI ve örnek belgeler).
+const NON_PERSONAL_HOMES: [&str; 3] = ["runner", "user", "ubuntu"];
 
 const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
 
@@ -66,24 +68,27 @@ fn compile(pattern: &str) -> Regex {
 static IPV4: LazyLock<Regex> = LazyLock::new(|| compile(r"\d{1,3}(?:\.\d{1,3}){3}"));
 static PROFILE_PATH: LazyLock<Regex> = LazyLock::new(|| {
     compile(
-        r#"(?i)(?:\b[a-z]:[\\/]{1,2}|(?:^|[\s"'(=])/[a-z]/)users[\\/]{1,2}([^\\/\s<>"'%*?|:${}]+)"#,
+        r#"(?i)(?:\b[a-z]:[\\/]{1,2}|\$[\\/]{1,2}|(?:^|[\s"'(=])/[a-z]/|/mnt/[a-z]/)users[\\/]{1,2}([^\\/\s<>"'%*?|:${}]+)"#,
     )
 });
 static TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     compile(concat!(
-        r"\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|AKIA[0-9A-Z]{16}",
+        r"(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|A(?:KIA|SIA)[0-9A-Z]{16}",
         r"|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|npm_[A-Za-z0-9]{36}",
+        r"|sk_live_[0-9A-Za-z]{24,}|glpat-[0-9A-Za-z_-]{20,}",
         r"|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.)",
     ))
 });
 // Kalıp parçalı yazılır: bu dosya kendi kalıbını yakalamasın.
 static PRIVATE_KEY: LazyLock<Regex> = LazyLock::new(|| {
     compile(concat!(
-        r"-----BEGIN [A-Z ]*PRIVATE KEY-----|AGE-SECRET-KEY-1[0-9A-Z]{10,}",
-        r"|untrusted comment: minisign",
-        r" secret key",
+        r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----|AGE-SECRET-KEY-1[0-9A-Z]{10,}",
+        r"|untrusted comment: minisign (?:encrypted )?",
+        r"secret key",
     ))
 });
+static HOME_PATH: LazyLock<Regex> =
+    LazyLock::new(|| compile(r#"(?:^|[\s"'(=])/home/([^/\s<>"'%*?|:${}]+)"#));
 static IPV6_LOCAL: LazyLock<Regex> = LazyLock::new(|| {
     compile(r"(?i)\b(?:fe[89ab][0-9a-f]|f[cd][0-9a-f]{2})(?::[0-9a-f]{0,4}){2,7}")
 });
@@ -93,6 +98,21 @@ static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
 static MAC: LazyLock<Regex> = LazyLock::new(|| {
     compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b|\b[0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5}\b")
 });
+
+/// Büyük/küçük harf duyarsız karşılaştırma için katlama; Türkçe I/İ/ı/i aynı sayılır.
+fn fold(s: &str) -> String {
+    s.to_lowercase().replace('\u{307}', "").replace('ı', "i")
+}
+
+/// Eşleşme daha uzun bir onaltılık dizinin (parmak izi, uzun IPv6) parçası değilse.
+fn hex_standalone(line: &str, start: usize, end: usize) -> bool {
+    let sep = |c: char| c == ':' || c == '-';
+    let before = line[..start].chars().next_back();
+    let mut after = line[end..].chars();
+    let before_ok = !matches!(before, Some(c) if sep(c) || c.is_ascii_hexdigit());
+    let after_ok = !matches!((after.next(), after.next()), (Some(c), Some(d)) if sep(c) && d.is_ascii_hexdigit());
+    before_ok && after_ok
+}
 
 /// Kişisel olmayan e-posta: GitHub noreply, `noreply`/`git` yerel adı, RFC 2606 örnek alanları.
 fn is_impersonal_email(local: &str, domain: &str) -> bool {
@@ -105,7 +125,7 @@ fn is_impersonal_email(local: &str, domain: &str) -> bool {
 
 /// Depoya hiç girmemesi gereken dosya türleri ve yollar (S-4). `.gitignore`'dan bağımsızdır:
 /// `git add -f` ile eklenen dosya da yakalanır.
-const FORBIDDEN_EXTS: [&str; 14] = [
+const FORBIDDEN_EXTS: [&str; 17] = [
     ".pfx",
     ".p12",
     ".key",
@@ -114,21 +134,40 @@ const FORBIDDEN_EXTS: [&str; 14] = [
     ".sec",
     ".keystore",
     ".cer",
-    ".env",
     ".etl",
     ".pcapng",
+    ".pcap",
     ".evtx",
     ".dmp",
     ".har",
+    ".ppk",
+    ".jks",
+    ".p8",
+];
+/// Uzantısız ya da tam adıyla yasak dosyalar; `.env.<ad>` de yasaktır (`.example`, `.sample`,
+/// `.template` hariç).
+const FORBIDDEN_NAMES: [&str; 8] = [
+    ".env",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    ".npmrc",
+    ".netrc",
+    ".pypirc",
 ];
 const FORBIDDEN_DIRS: [&str; 2] = ["lab/results/", "lab/local/"];
 
 pub fn forbidden_file(path: &str) -> bool {
     let p = path.replace('\\', "/").to_ascii_lowercase();
     let name = p.rsplit('/').next().unwrap_or(&p);
-    FORBIDDEN_EXTS
-        .iter()
-        .any(|e| name.ends_with(e) || name == &e[1..])
+    let env_variant = name.starts_with(".env.")
+        && ![".example", ".sample", ".template"]
+            .iter()
+            .any(|s| name.ends_with(s));
+    FORBIDDEN_EXTS.iter().any(|e| name.ends_with(e))
+        || FORBIDDEN_NAMES.contains(&name)
+        || env_variant
         || FORBIDDEN_DIRS.iter().any(|d| p.starts_with(d))
 }
 
@@ -160,7 +199,12 @@ pub fn decode_text(bytes: &[u8]) -> Option<String> {
     if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
         return utf16(rest, false);
     }
-    std::str::from_utf8(bytes).ok().map(str::to_string)
+    let text = std::str::from_utf8(bytes).ok()?;
+    if !text.contains('\0') {
+        return Some(text.to_string());
+    }
+    // NUL içeren "UTF-8" büyük olasılıkla BOM'suz UTF-16 LE'dir; öyle çözülemezse çözülemez.
+    utf16(bytes, true).filter(|t| !t.contains('\0'))
 }
 
 /// EICAR test dizesinin ayırt edici parçası; kaynakta bütün hâlde durmaz.
@@ -242,7 +286,7 @@ pub fn scan_text(path: &str, text: &str, ctx: &ScanContext) -> Vec<Finding> {
     }
 
     let eicar = eicar_marker();
-    let terms: Vec<String> = ctx.local_terms.iter().map(|t| t.to_lowercase()).collect();
+    let terms: Vec<String> = ctx.local_terms.iter().map(|t| fold(t)).collect();
 
     for (idx, line) in text.lines().enumerate() {
         let n = idx + 1;
@@ -258,7 +302,7 @@ pub fn scan_text(path: &str, text: &str, ctx: &ScanContext) -> Vec<Finding> {
             }
         }
         for m in IPV6_LOCAL.find_iter(line) {
-            if !allowed(m.as_str()) {
+            if hex_standalone(line, m.start(), m.end()) && !allowed(m.as_str()) {
                 push(n, Rule::LocalIpv6, m.as_str());
             }
         }
@@ -271,7 +315,7 @@ pub fn scan_text(path: &str, text: &str, ctx: &ScanContext) -> Vec<Finding> {
             }
         }
         for m in MAC.find_iter(line) {
-            if !allowed(m.as_str()) {
+            if hex_standalone(line, m.start(), m.end()) && !allowed(m.as_str()) {
                 push(n, Rule::MacAddress, m.as_str());
             }
         }
@@ -279,6 +323,16 @@ pub fn scan_text(path: &str, text: &str, ctx: &ScanContext) -> Vec<Finding> {
             if let (Some(all), Some(name)) = (c.get(0), c.get(1)) {
                 let lower = name.as_str().to_lowercase();
                 if !NON_PERSONAL_PROFILES.contains(&lower.as_str()) && !allowed(all.as_str()) {
+                    push(n, Rule::UserProfilePath, all.as_str().trim_start());
+                }
+            }
+        }
+        for c in HOME_PATH.captures_iter(line) {
+            if let (Some(all), Some(name)) = (c.get(0), c.get(1)) {
+                let lower = name.as_str().to_lowercase();
+                if !NON_PERSONAL_HOMES.contains(&lower.as_str())
+                    && !allowed(all.as_str().trim_start())
+                {
                     push(n, Rule::UserProfilePath, all.as_str().trim_start());
                 }
             }
@@ -293,7 +347,7 @@ pub fn scan_text(path: &str, text: &str, ctx: &ScanContext) -> Vec<Finding> {
             push(n, Rule::Eicar, &eicar);
         }
         if !terms.is_empty() {
-            let lower = line.to_lowercase();
+            let lower = fold(line);
             for t in &terms {
                 if lower.contains(t.as_str()) {
                     push(n, Rule::LocalTerm, t);
@@ -586,6 +640,16 @@ mod tests {
             "o.evtx",
             "b.dmp",
             "t.har",
+            "z.pcap",
+            "p.ppk",
+            "s.jks",
+            "a.p8",
+            "home/.ssh/id_rsa",
+            "id_ed25519",
+            ".npmrc",
+            ".netrc",
+            ".env.local",
+            "app/.env.production",
             "lab/results/s1/rapor.md",
             "lab/local/notlar.txt",
         ] {
@@ -596,8 +660,74 @@ mod tests {
             "docs/keys.md",
             "src/env.rs",
             "lab/RUNBOOK.md",
+            "tools/key",
+            "env",
+            ".env.example",
         ] {
             assert!(!forbidden_file(p), "{p}");
         }
+    }
+
+    #[test]
+    fn scan_review_fixes_2026_11_20() {
+        // BOM'suz UTF-16 LE.
+        let mut bytes = Vec::new();
+        for u in ["adres 10.1", ".2.3"].concat().encode_utf16() {
+            bytes.extend_from_slice(&u.to_le_bytes());
+        }
+        assert_eq!(scan_one(&decode_text(&bytes).unwrap()), [Rule::PrivateIpv4]);
+        // PGP blok ve şifreli minisign anahtarı.
+        assert_eq!(
+            scan_one(&["-----BEGIN PGP PRIVATE", " KEY BLOCK-----"].concat()),
+            [Rule::PrivateKey]
+        );
+        assert_eq!(
+            scan_one(&["untrusted comment: minisign", " encrypted secret key"].concat()),
+            [Rule::PrivateKey]
+        );
+        // Kelime içindeki token ve yeni biçimler.
+        assert_eq!(
+            scan_one(&["X_gh", "p_", &"a".repeat(36)].concat()),
+            [Rule::Token]
+        );
+        assert_eq!(
+            scan_one(&["sk_li", "ve_", &"a".repeat(24)].concat()),
+            [Rule::Token]
+        );
+        assert_eq!(
+            scan_one(&["glp", "at-", &"a".repeat(20)].concat()),
+            [Rule::Token]
+        );
+        // WSL, UNC ve /home profil yolları.
+        let users = ["Us", "ers"].concat();
+        assert_eq!(
+            scan_one(&format!("/mnt/c/{users}/ali/x")),
+            [Rule::UserProfilePath]
+        );
+        assert_eq!(
+            scan_one(&format!("\\\\pc\\c$\\{users}\\ali")),
+            [Rule::UserProfilePath]
+        );
+        assert_eq!(
+            scan_one(&["cd /ho", "me/ali/proje"].concat()),
+            [Rule::UserProfilePath]
+        );
+        assert!(scan_one(&["cd /ho", "me/runner/work"].concat()).is_empty());
+        // Parmak izi ve uzun IPv6 yanlış pozitif değil.
+        let fp = vec!["aa"; 20].join(":");
+        assert!(scan_one(&fp).is_empty(), "{fp}");
+        assert!(scan_one(&["2001:db8:fe", "80:1::"].concat()).is_empty());
+        // Türkçe I/İ: yerel terim büyük harfle de yakalanır.
+        let ctx = ScanContext {
+            allowlist: vec![],
+            local_terms: vec!["ışık".into()],
+        };
+        assert_eq!(
+            scan_text("ornek.txt", "IŞIK burada", &ctx)
+                .into_iter()
+                .map(|f| f.rule)
+                .collect::<Vec<_>>(),
+            [Rule::LocalTerm]
+        );
     }
 }

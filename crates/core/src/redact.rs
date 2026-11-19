@@ -8,30 +8,47 @@
 const SHARED_PROFILES: [&str; 4] = ["public", "default", "default user", "all users"];
 const MASK: &str = "<kullanıcı>";
 
-/// `…\Users\<ad>\…` ve `…/Users/<ad>/…` biçimlerindeki `<ad>`'ı `<kullanıcı>` yapar. Ad Türkçe
-/// karakter ve boşluk içerebilir; ayraç ya da metin sonuna kadar sürer.
+fn is_sep(b: u8) -> bool {
+    b == b'\\' || b == b'/'
+}
+
+/// `…\Users\<ad>\…` biçimindeki `<ad>`'ı `<kullanıcı>` yapar. Tek geçişlidir ve şunları da
+/// kapsar:
+/// - Büyük/küçük harf farkı (`\USERS\`).
+/// - Kaçışlı ayraçlar (çift ters eğik çizgi; Rust `{:?}` ve JSON çıktısı).
+/// - `/` ayraçlı yollar.
+///
+/// Ad Türkçe karakter ve boşluk içerebilir; ayraç, tırnak ya da metin sonuna kadar sürer.
 pub fn redact_user_paths(text: &str) -> String {
+    let bytes = text.as_bytes();
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    loop {
-        let found = ["\\Users\\", "/Users/", "\\users\\", "/users/"]
+    let mut copied = 0;
+    let mut i = 0;
+    while i + 6 < bytes.len() {
+        let is_marker = is_sep(bytes[i]) && bytes[i + 1..i + 6].eq_ignore_ascii_case(b"users");
+        if !is_marker || !is_sep(bytes[i + 6]) {
+            i += 1;
+            continue;
+        }
+        // Ayraçları atla (kaçışlı `\\` dahil); ad, sonraki ayraç ya da tırnağa kadar sürer.
+        let mut start = i + 6;
+        while start < bytes.len() && is_sep(bytes[start]) {
+            start += 1;
+        }
+        let end = bytes[start..]
             .iter()
-            .filter_map(|m| rest.find(m).map(|i| (i, m.len())))
-            .min_by_key(|(i, _)| *i);
-        let Some((i, len)) = found else {
-            out.push_str(rest);
-            return out;
-        };
-        let start = i + len;
-        out.push_str(&rest[..start]);
-        let tail = &rest[start..];
-        let end = tail.find(['\\', '/', '"', '\'']).unwrap_or(tail.len());
-        let name = &tail[..end];
+            .position(|&b| is_sep(b) || b == b'"' || b == b'\'')
+            .map_or(bytes.len(), |p| start + p);
+        let name = &text[start..end];
+        out.push_str(&text[copied..start]);
         if name.is_empty() || SHARED_PROFILES.contains(&name.to_lowercase().as_str()) {
             out.push_str(name);
         } else {
             out.push_str(MASK);
         }
-        rest = &tail[end..];
+        copied = end;
+        i = end;
     }
+    out.push_str(&text[copied..]);
+    out
 }

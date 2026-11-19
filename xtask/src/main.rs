@@ -14,6 +14,7 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("check") => match match (args.get(1).map(String::as_str), args.get(2)) {
             (Some("--staged"), _) => check::run_scan_only(&check::Source::Index),
+            (Some("--pre-push"), _) => check::run_pre_push(std::io::stdin()),
             (Some("--tree"), Some(rev)) => check::run_scan_only(&check::Source::Tree(rev.clone())),
             (None, _) => check::run(),
             _ => Err(anyhow::anyhow!(

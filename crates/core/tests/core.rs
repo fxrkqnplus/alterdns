@@ -104,10 +104,60 @@ fn failed_save_keeps_original() {
     let path = d.join("config.toml");
     std::fs::write(&path, "schema = 1\n[ui]\nlanguage = \"en\"\n").unwrap();
     let before = std::fs::read(&path).unwrap();
-    // Geçici dosyanın yerinde bir dizin: oluşturma başarısız olur (disk dolu karşılığı).
-    std::fs::create_dir_all(path.with_extension("toml.tmp")).unwrap();
+    // Salt okunur hedef: yeniden adlandırma başarısız olur (yazma hatası karşılığı).
+    let mut perm = std::fs::metadata(&path).unwrap().permissions();
+    perm.set_readonly(true);
+    std::fs::set_permissions(&path, perm.clone()).unwrap();
     assert!(save_user(&path, &UserConfig::default()).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), before);
+    // Geçici dosya geride kalmaz.
+    let leftovers: Vec<_> = std::fs::read_dir(&d)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+    #[allow(clippy::permissions_set_readonly_false)]
+    perm.set_readonly(false);
+    std::fs::set_permissions(&path, perm).unwrap();
+}
+
+#[test]
+fn oversized_config_is_treated_as_corrupt() {
+    let d = temp("oversized");
+    let path = d.join("config.toml");
+    let big = format!("schema = 1\n# {}\n", "x".repeat(70 * 1024));
+    std::fs::write(&path, &big).unwrap();
+    let (cfg, outcome) = load_user(&path).unwrap();
+    assert_eq!(cfg, UserConfig::default());
+    assert!(
+        matches!(outcome, LoadOutcome::Defaulted { backup: Some(_) }),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn save_over_corrupt_file_keeps_a_backup() {
+    let d = temp("savecorrupt");
+    let path = d.join("config.toml");
+    std::fs::write(&path, "[[[").unwrap();
+    save_user(&path, &UserConfig::default()).unwrap();
+    assert_eq!(
+        std::fs::read(path.with_extension("toml.bak")).unwrap(),
+        b"[[["
+    );
+    assert_eq!(load_user(&path).unwrap().1, LoadOutcome::Loaded);
+}
+
+#[test]
+fn unwritable_backup_still_falls_back_to_defaults() {
+    let d = temp("bakdir");
+    let path = d.join("config.toml");
+    std::fs::write(&path, "[[[").unwrap();
+    std::fs::create_dir_all(path.with_extension("toml.bak")).unwrap();
+    let (cfg, outcome) = load_user(&path).unwrap();
+    assert_eq!(cfg, UserConfig::default());
+    assert_eq!(outcome, LoadOutcome::Defaulted { backup: None });
 }
 
 #[test]
@@ -162,4 +212,25 @@ fn redact_masks_turkish_user_name() {
         "C:\\Users\\Default\\z"
     );
     assert_eq!(redact_user_paths("yol yok"), "yol yok");
+    // Kaçışlı ayraçlar ({:?} ve JSON) ve büyük harf.
+    let upper = ["US", "ERS"].concat();
+    assert_eq!(
+        redact_user_paths(&format!("\"C:\\\\{users}\\\\bob\\\\x\"")),
+        format!("\"C:\\\\{users}\\\\<kullanıcı>\\\\x\"")
+    );
+    assert_eq!(
+        redact_user_paths(&format!("C:\\{upper}\\BOB\\x")),
+        format!("C:\\{upper}\\<kullanıcı>\\x")
+    );
+    assert_eq!(
+        redact_user_paths(&format!("/mnt/c/{users}/ali/x")),
+        format!("/mnt/c/{users}/<kullanıcı>/x")
+    );
+    assert_eq!(
+        redact_user_paths(&format!("\\\\sunucu\\c$\\{users}\\veli\\x")),
+        format!("\\\\sunucu\\c$\\{users}\\<kullanıcı>\\x")
+    );
+    // Ad boşluk içerebildiği için ayraç gelene kadar maskelenir (fazla maskeleme güvenli yön).
+    let r = redact_user_paths(&format!("dosya C:\\{users}\\ali okunamadı"));
+    assert!(!r.contains("ali"), "{r}");
 }

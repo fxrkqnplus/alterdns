@@ -145,7 +145,18 @@ fn git(root: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
     Ok(out.stdout)
 }
 
+/// Git'e seçenek olarak yorumlanabilecek revizyonları reddeder (`-` ile başlayan).
+fn safe_rev(rev: &str) -> anyhow::Result<&str> {
+    if rev.is_empty() || rev.starts_with('-') {
+        bail!("geçersiz revizyon: {rev:?}");
+    }
+    Ok(rev)
+}
+
 fn list(root: &Path, source: &Source) -> anyhow::Result<Vec<String>> {
+    if let Source::Tree(rev) = source {
+        safe_rev(rev)?;
+    }
     let raw = match source {
         Source::Worktree => return repo_files(root),
         Source::Index => git(root, &["ls-files", "--cached", "-z"])?,
@@ -181,45 +192,136 @@ fn finding(rel: &str, rule: scan::Rule) -> scan::Finding {
 
 /// Kaynaktaki dosyaları tarar: (taranan dosya sayısı, bulgular).
 pub fn scan_files(root: &Path, source: &Source) -> anyhow::Result<(usize, Vec<scan::Finding>)> {
+    let entries = list(root, source)?
+        .into_iter()
+        .map(|rel| (source.clone(), rel))
+        .collect::<Vec<_>>();
+    scan_entries(root, &entries)
+}
+
+/// (kaynak, yol) çiftlerini tarar.
+fn scan_entries(
+    root: &Path,
+    entries: &[(Source, String)],
+) -> anyhow::Result<(usize, Vec<scan::Finding>)> {
     let ctx = ScanContext {
         allowlist: parse_allowlist(&read_optional(&root.join(ALLOWLIST_FILE))?),
         local_terms: parse_terms(&read_optional(&root.join(LOCAL_TERMS_FILE))?),
     };
     let mut findings = Vec::new();
     let mut scanned = 0usize;
-    for rel in list(root, source)? {
-        if scan::forbidden_file(&rel) {
-            findings.push(finding(&rel, scan::Rule::ForbiddenFile));
+    for (source, rel) in entries {
+        let rel = rel.as_str();
+        if scan::forbidden_file(rel) {
+            findings.push(finding(rel, scan::Rule::ForbiddenFile));
             continue;
         }
         let lower = rel.to_ascii_lowercase();
         if BINARY_EXTS.iter().any(|e| lower.ends_with(e)) {
             continue;
         }
-        let Some(bytes) = read(root, source, &rel)? else {
+        let Some(bytes) = read(root, source, rel)? else {
             continue;
         };
         scanned += 1;
-        findings.extend(scan::scan_bytes_header(&rel, &bytes));
+        findings.extend(scan::scan_bytes_header(rel, &bytes));
         match scan::decode_text(&bytes) {
-            Some(text) => findings.extend(scan::scan_text(&rel, &text, &ctx)),
-            None => findings.push(finding(&rel, scan::Rule::UndecodableText)),
+            Some(text) => findings.extend(scan::scan_text(rel, &text, &ctx)),
+            None => findings.push(finding(rel, scan::Rule::UndecodableText)),
         }
     }
     Ok((scanned, findings))
 }
 
-/// Kişisel veri ve politika taraması; bulgu varsa başarısız olur.
-pub fn scan_repo(root: &Path, source: &Source) -> anyhow::Result<()> {
-    let (scanned, findings) = scan_files(root, source)?;
-    eprintln!("scan ({source:?}): {scanned} dosya");
+fn report(label: &str, scanned: usize, findings: &[scan::Finding]) -> anyhow::Result<()> {
+    eprintln!("scan ({label}): {scanned} dosya");
     if findings.is_empty() {
         return Ok(());
     }
-    for f in &findings {
+    for f in findings {
         eprintln!("{}:{}: {:?} {}", f.path, f.line, f.rule, f.excerpt);
     }
     bail!("{} kişisel veri / politika bulgusu", findings.len())
+}
+
+/// Kişisel veri ve politika taraması; bulgu varsa başarısız olur.
+pub fn scan_repo(root: &Path, source: &Source) -> anyhow::Result<()> {
+    let (scanned, findings) = scan_files(root, source)?;
+    report(&format!("{source:?}"), scanned, &findings)
+}
+
+fn is_sha(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// `pre-push` kancasının stdin satırları: `<yerel ref> <yerel sha> <uzak ref> <uzak sha>`.
+/// Dönen: (yerel sha, uzak sha; uzakta yoksa `None`). Silmeler (yerel sha sıfır) ve onaltılık
+/// olmayan değerler atlanır.
+pub fn parse_push_lines(text: &str) -> Vec<(String, Option<String>)> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            let (local, remote) = (*f.get(1)?, *f.get(3)?);
+            let zero = |s: &str| s.bytes().all(|b| b == b'0');
+            if !is_sha(local) || !is_sha(remote) || zero(local) {
+                return None;
+            }
+            Some((
+                local.to_string(),
+                (!zero(remote)).then(|| remote.to_string()),
+            ))
+        })
+        .collect()
+}
+
+/// Push edilecek her commit'in eklediği ya da değiştirdiği dosyalar, o commit'teki halleriyle.
+/// Böylece bir commit'te eklenip sonrakinde silinen bilgi de yakalanır.
+fn pushed_entries(
+    root: &Path,
+    pushes: &[(String, Option<String>)],
+) -> anyhow::Result<Vec<(Source, String)>> {
+    let mut entries = Vec::new();
+    for (local, remote) in pushes {
+        let range = match remote {
+            Some(r) => git(root, &["rev-list", &format!("{r}..{local}")])?,
+            None => git(root, &["rev-list", local, "--not", "--remotes"])?,
+        };
+        for commit in String::from_utf8_lossy(&range)
+            .lines()
+            .filter(|c| is_sha(c))
+        {
+            let changed = git(
+                root,
+                &[
+                    "diff-tree",
+                    "--no-commit-id",
+                    "-r",
+                    "-z",
+                    "--name-only",
+                    "--diff-filter=d",
+                    "--root",
+                    commit,
+                ],
+            )?;
+            for path in String::from_utf8_lossy(&changed)
+                .split('\0')
+                .filter(|p| !p.is_empty())
+            {
+                entries.push((Source::Tree(commit.to_string()), path.to_string()));
+            }
+        }
+    }
+    Ok(entries)
+}
+
+/// `cargo xtask check --pre-push`: kanca stdin'indeki her push için commit'leri tarar.
+pub fn run_pre_push(mut input: impl std::io::Read) -> anyhow::Result<()> {
+    let mut text = String::new();
+    input.read_to_string(&mut text)?;
+    let root = repo_root()?;
+    let entries = pushed_entries(&root, &parse_push_lines(&text))?;
+    let (scanned, findings) = scan_entries(&root, &entries)?;
+    report("pre-push", scanned, &findings)
 }
 
 /// `cargo xtask check --staged | --tree <rev>`: yalnızca tarama (push öncesi kanca için hızlı).
@@ -392,6 +494,62 @@ mod tests {
         );
         let (_, work) = scan_files(&dir, &Source::Worktree).unwrap();
         assert!(work.is_empty(), "{work:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn push_lines_skip_deletions_and_non_hex() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let z = "0".repeat(40);
+        let text = format!(
+            "refs/heads/x {a} refs/heads/x {b}\nrefs/heads/y {a} refs/heads/y {z}\nrefs/heads/d {z} refs/heads/d {b}\nrefs/heads/k --output=x refs/heads/k {b}\n"
+        );
+        assert_eq!(parse_push_lines(&text), [(a.clone(), Some(b)), (a, None)]);
+        assert!(safe_rev("--output=x").is_err());
+        assert!(safe_rev("HEAD").is_ok());
+    }
+
+    /// Bir commit'te eklenip sonrakinde silinen bilgi de yakalanır (inceleme bulgusu, 2026-11-20).
+    #[test]
+    fn pre_push_scans_every_pushed_commit() {
+        let dir = std::env::temp_dir().join(format!("alterdns-prepush-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let commit = |msg: &str| {
+            git(
+                &dir,
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@example.com",
+                    "commit",
+                    "-q",
+                    "-a",
+                    "-m",
+                    msg,
+                ],
+            )
+            .unwrap();
+        };
+        git(&dir, &["init", "-q"]).unwrap();
+        let file = dir.join("not.txt");
+        std::fs::write(&file, ["adres 192.168", ".7.9\\n"].concat()).unwrap();
+        git(&dir, &["add", "not.txt"]).unwrap();
+        commit("bir");
+        std::fs::write(&file, "temiz\\n").unwrap();
+        commit("iki");
+        let head = String::from_utf8(git(&dir, &["rev-parse", "HEAD"]).unwrap()).unwrap();
+        let entries = pushed_entries(&dir, &[(head.trim().to_string(), None)]).unwrap();
+        let (_, findings) = scan_entries(&dir, &entries).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == scan::Rule::PrivateIpv4),
+            "{findings:?}"
+        );
+        // Son ağaç temiz: yalnızca ağaç taraması bunu kaçırırdı.
+        let (_, tip) = scan_files(&dir, &Source::Tree("HEAD".into())).unwrap();
+        assert!(tip.is_empty(), "{tip:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

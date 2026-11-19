@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
-/// Push edilecek commit'in ağacını tarar.
+/// Push edilecek her commit'in değişen dosyalarını tarar (stdin'deki ref listesi).
 pub fn script() -> &'static str {
-    "#!/bin/sh\n# AlterDNS: push öncesi kişisel veri ve politika taraması (yerel kanca).\nexec cargo xtask check --tree HEAD\n"
+    "#!/bin/sh\n# AlterDNS: push öncesi kişisel veri ve politika taraması (yerel kanca).\nexec cargo xtask check --pre-push\n"
 }
 
 /// `.git/hooks/pre-push`'u yazar. Başka bir kanca varsa üzerine yazmaz.
@@ -35,7 +35,13 @@ pub fn install(root: &Path) -> anyhow::Result<PathBuf> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
-    std::fs::write(&path, script())?;
+    // `create_new`: arada oluşturulan dosya ya da bağlantı izlenmez.
+    use std::io::Write as _;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?
+        .write_all(script().as_bytes())?;
     Ok(path)
 }
 
@@ -46,7 +52,7 @@ mod tests {
     #[test]
     fn hook_script_runs_tree_scan() {
         assert!(script().starts_with("#!/bin/sh\n"));
-        assert!(script().contains("cargo xtask check --tree HEAD"));
+        assert!(script().contains("cargo xtask check --pre-push"));
         assert!(!script().contains("--no-verify"));
     }
 }
