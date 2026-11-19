@@ -21,7 +21,9 @@ Referans deneyim: Cloudflare WARP'ın tepsi menüsü. Hedef: modern, sade, hızl
 - **Yazı tipi:** Segoe UI Variable (Windows 11 sistem yazı tipi), Windows 10'da Segoe UI. Segoe dağıtılmaz. Ek bir marka yazı tipi istenirse yalnızca OFL lisanslı ve alt kümelenmiş olarak eklenir (boyut bütçesi).
 - **Ölçek:** başlık 20/28, alt başlık 14/20 semibold, gövde 14/20, ikincil 12/16.
 - **Renk:**
-  - Marka tek renklidir (siyah/beyaz). Vurgu rengi için Windows vurgu rengi veya nötr bir marka mavisi kullanılır; spike'ta seçilir.
+  - Marka tek renklidir (siyah/beyaz).
+  - Vurgu rengi Windows vurgu rengidir: `HKCU\Software\Microsoft\Windows\DWM\AccentColor`, salt okunur. Değişimi `WM_DWMCOLORIZATIONCOLORCHANGED` ile izlenir.
+  - Vurgu rengi okunamazsa nötr marka mavisi `#2563EB` kullanılır.
   - Durum renkleri: başarı, uyarı, hata. Her ikisi de WCAG AA kontrastını sağlar.
   - Açık ve koyu tema sistemle senkron.
 - **Hareket:**
@@ -75,7 +77,7 @@ Referans deneyim: Cloudflare WARP'ın tepsi menüsü. Hedef: modern, sade, hızl
   - 960×640 mantıksal px; en küçük 800×560.
   - Büyütme düğmesi devre dışı; tam ekran yok.
   - Pencere taşınabilir (normal pencere).
-- **İşlem:** Ayrı işlemdir (`alterdns-ui.exe`). Kapanınca sonlanır. Zaten açıksa öne getirilir; tek örnek kuralı adlandırılmış mutex ile sağlanır.
+- **İşlem:** Ayrı bir işlemdir (`alterdns-ui.exe`; tepsi kipiyle aynı ikili). Kapanınca sonlanır. Zaten açıksa öne getirilir; tek örnek kuralı `Local\` ad alanında bir mutex ile sağlanır.
 - **Sol gezinme:**
   1. **Genel Bakış:** üç modülün durumu, son olaylar, uyarılar.
   2. **Dosya Güvenliği:** Tara (sürükle-bırak alanı + dosya seç), Raporlar (liste, filtre, HTML dışa aktarma), Karantina (geri yükle / kalıcı sil).

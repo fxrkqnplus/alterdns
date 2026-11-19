@@ -75,7 +75,10 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
    - Oturum açılışında otomatik başlatma (journal'lı).
 8. Ana pencere kabuğu: gezinme, Hakkında ekranı (Furkan Okan, telif, GPL-3.0-or-later, kaynak kod bağlantısı, üçüncü taraf lisansları, imza politikası), Ayarlar iskeleti.
 9. Logolardan türetilmiş varlıklar: kare ana görsel, saydam varyantlar, 16/20/24/32 px tepsi glifleri (açık ve koyu tema, 4 durum), uygulama ICO'su.
-10. `xtask`: `check`, `test`, `perf`, `dev-install`, `dev-uninstall`.
+10. `xtask`: `check`, `test`, `perf`, `dev-install`, `dev-uninstall`, `docs-errors`.
+    - `dev-install` yönetici ister. İkilileri `%ProgramFiles%\AlterDNS\<sürüm>\` altına kopyalar, servisi ve başlangıç kaydını kurar; hepsi `Persistent` bir journal txn'ine yazılır.
+    - `dev-uninstall` bu txn'i geri alır ve kalıntı taraması yapar.
+    - Ağ ayarlarına dokunulmaz.
 
 **Bağımlılık:** Faz 0. (D2 verildi: GPL-3.0-or-later.)
 
@@ -101,7 +104,7 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
    - UDP/QUIC teknikleri: Faz 0 bulgularına göre
    - Toplu G/Ç
    - Sayaçlar
-3. `dns`: alan sınırlı DoH aktarıcı (önerilen) ve journal'lı sistem DoH modu (onaylı).
+3. `dns`: motor içi, alan adına sınırlı DoH aktarıcısı (ADR-008). Kullanıcının DNS ve DoH ayarları yazılmaz (ADR-014). Ev ağında engel DNS tabanlı olduğu için (S6) gereklidir.
 4. `probe`: hedef listeleri (`data/probes`), sınıflandırıcı (DNS, SNI, IP, yok), zaman sınırları, tekrar sayısı.
 5. `tuner`: aday üretimi, deneme txn'leri, bekçi, puanlama, commit, izleme, geri çekilme, profil belleği.
 6. `data/strategies/*.toml`: başlangıç kataloğu, Faz 0 ölçümlerinden türetilir.

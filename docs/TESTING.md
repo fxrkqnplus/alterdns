@@ -33,11 +33,14 @@
 - **T-IPC-002** Pipe squatting: servisten önce aynı adla pipe açan işlem varsa servis başlamaz ve `ADNS-IPC-005` verir.
 - **T-IPC-003** 1 MB üstü mesaj reddedilir; bozuk JSON servisi çökertmez (fuzz).
 - **T-IPC-004** Sürüm uyuşmazlığında `ADNS-IPC-004` döner.
-- **T-JRN-001** Uygula → geri al sonrası kayıt defteri, servis ve DNS değerleri `before` ile aynı.
+- **T-JRN-001** Uygula → geri al sonrası AlterDNS'in kendi kayıt defteri değerleri, servisi ve başlangıç kaydı `before` ile aynı. Kullanıcıya ait değerlere dokunulmaz.
 - **T-JRN-002** `Pending` kayıtla işlem öldürülür; açılışta kurtarma geri alır.
 - **T-JRN-003** Sahiplik: kullanıcı değeri arada değiştirdiyse geri alma bu değeri ezmez ve kullanıcıya sorar.
 - **T-JRN-004** Bekçi: ana işlem öldürülünce süre dolduğunda txn geri alınır.
-- **T-SVC-001…004** Kur, başlat, durdur, kurtarma ayarları, kaldır.
+- **T-SVC-001** Kur ve başlat.
+- **T-SVC-002** Durdur.
+- **T-SVC-003** Kurtarma ayarları (`FAILURE_ACTIONS_FLAG` dahil) ve gereken ayrıcalıklar.
+- **T-SVC-004** Kaldır; kalıntı taraması temiz.
 - **T-UI-001** Flyout odak kaybında kapanır (başka pencereye tıklama, masaüstüne tıklama, Win tuşu).
 - **T-UI-002** Flyout sürüklenemez: `WM_NCHITTEST`, Alt+Space menüsü ve `SC_MOVE` denemeleri.
 - **T-UI-003** Görev çubuğu dört kenardayken ve otomatik gizliyken flyout simgeye hizalı ve çalışma alanı içinde.
@@ -59,7 +62,7 @@
 - **T-NET-002** Parmak izi kişisel veri sızdırmıyor (yalnız hash'ler).
 - **T-NET-003** Hop limit okunuyor ve **hiçbir kod yolu yazmıyor** (lab modu hariç; statik denetim + test).
 - **T-DNS-001** DoH aktarıcı yalnızca listedeki alan adlarına yanıt enjekte ediyor; diğer DNS trafiğine dokunmuyor.
-- **T-DNS-002** Sistem DoH modu journal'lı; geri alma eski sunuculara ve şablonlara dönüyor.
+- **T-DNS-002** Motor içi DoH aktarıcısı çalışırken kullanıcının DNS sunucuları, DoH tablosu ve NRPT'si değişmiyor (ADR-014; korunan değerler denetimi).
 - **T-REC-001** Servis `TerminateProcess` ile öldürülünce trafik ≤ 1 sn içinde normale dönüyor.
 - **T-LAB-001…006** Faz 0 araştırma senaryoları (`CONNECTIVITY_RESEARCH.md` §5).
 - **T-LAB-010…015** Gerçek istemciler: Discord masaüstü (giriş, metin, ses), Roblox (oyuna katılım), engelli web siteleri, kontrol siteleri. El ile adımları yazılı.
@@ -184,7 +187,10 @@ Bütün kombinasyonlar denenmez; çift yönlü (pairwise) kapsama ile seçilen a
 ## 7. Güvenlik testleri
 
 - IPC yetkilendirme, pipe squatting, mesaj fuzz.
-- DLL arama sırası: bütün exe'ler `SetDefaultDllDirectories` kullanır; kurulum dizini yazılabilir değildir. Uygulama dizinine kötü amaçlı DLL bırakma testi yapılır.
+- DLL arama sırası:
+  - Bütün exe'ler `SetDefaultDllDirectories` kullanır ve `/DEPENDENTLOADFLAG:0x800` ile bağlanır.
+  - Kurulum dizini yazılabilir değildir.
+  - Uygulama dizinine kötü amaçlı DLL bırakma testi yapılır. Test, statik içe aktarımları da kapsar (ör. `version.dll`).
 - Servis yolu tırnaklı; servis ve kurulum dizini ACL denetimi.
 - Güncelleme: imza atlatma, sürüm düşürme, dondurma (eski manifest), kısmi indirme, MITM (geçersiz sertifika).
 - Arşiv: yol aşımı, mutlak yol, NTFS ADS adları, cihaz adları (`CON`, `NUL`), çok uzun yollar.

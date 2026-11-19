@@ -20,7 +20,7 @@ Bu nedenle her bağımlılık şu kurallardan geçer:
 
 | Durum | Lisanslar |
 |---|---|
-| ✅ Kabul | MIT, Apache-2.0, BSD-2/3-Clause, 0BSD (2026-11-09, smoltcp için), ISC, Zlib, Unicode-3.0, MPL-2.0, LGPL-2.1+/3.0, GPL-3.0(-or-later), CC0 (veri için) |
+| ✅ Kabul | Crate'ler için `deny.toml` listesi (`CONTRIBUTING.md` kural 8 ile aynı): MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, ISC, Zlib, BSL-1.0, MPL-2.0, LGPL-3.0, GPL-3.0 (`-only` ve `-or-later`), Unicode-3.0. CC0-1.0 yalnızca veri dosyaları için (crate için değil) |
 | 🚫 svc ağacında yasak | GPL-3.0-only (ör. Slint): `wintun.dll`'i yükleyen `alterdns-svc` işleminde bulunamaz. `deny-svc.toml` + `cargo xtask check` ile zorunlu (ADR-003) |
 | ⚠️ Dikkat | GPL-2.0-only bağlanamaz; yalnızca ayrı işlem olarak toplu dağıtılabilir (ClamAV gibi). LGPL kütüphaneler dinamik bağlanır ve değiştirilebilirlik korunur |
 | ❌ Ret | Kapalı veya özgür olmayan lisanslar (UnRAR lisansı, Slint Royalty-free 2.0, Elastic License 2.0, "ticari olmayan kullanım" lisanslı kod), lisanssız kod |

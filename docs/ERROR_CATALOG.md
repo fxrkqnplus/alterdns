@@ -25,7 +25,16 @@ ADNS-<ALAN>-<NNN>
 | `INS` | Kurulum, bileşenler, kaldırma |
 | `UI` | Arayüz |
 
-**Numaralandırma:** `001–099` kullanıcıya gösterilen hatalar, `100–199` uyarı ve bilgi durumları, `900–999` iç hatalardır (kullanıcıya genel mesajla gösterilir). Bir kod yayımlandıktan sonra anlamı değiştirilmez. Kullanılmayan kod silinmez, `deprecated = true` olarak işaretlenir.
+**Numaralandırma:**
+- `001–899` kullanıcıya gösterilen durumlardır. Önem (bilgi, uyarı, hata, kritik) ayrı bir alandır.
+- `900–999` iç hatalardır ve kullanıcıya genel bir mesajla gösterilir.
+- Bir kod yayımlandıktan sonra anlamı değiştirilmez.
+- Kullanılmayan kod silinmez, `deprecated = true` olarak işaretlenir.
+
+**Ek alanlar:**
+- `name`: Rust'taki varyant adı, PascalCase ve benzersiz.
+- `faz`: kodun ilk üretildiği faz. "Her kod en az bir testte üretilir" kuralı (T-ERR-003) yalnızca geçerli faza kadarki kodlara uygulanır.
+- `params`: metinlerde `{ad}` biçiminde geçen yer tutucuların listesi. Doğrulayıcı ikisinin eşleştiğini denetler.
 
 **Önem düzeyleri:** `Bilgi`, `Uyarı`, `Hata`, `Kritik`. Kritik hatalarda bildirim her zaman gösterilir ve ilgili modül güvenli duruma geçer.
 
@@ -34,8 +43,11 @@ ADNS-<ALAN>-<NNN>
 ```toml
 [[error]]
 code = "ADNS-DPI-001"
+name = "DpiDriverOpenFailed"
 severity = "error"            # info | warning | error | critical
 area = "DPI"
+faz = 2
+params = []
 retryable = true
 user_action_required = true
 docs = "errors#adns-dpi-001"
