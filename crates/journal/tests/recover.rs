@@ -34,11 +34,10 @@ impl SystemOps for FakeOps {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alterdns-rec-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+mod common;
+
+fn temp(name: &str) -> common::TempDir {
+    common::temp("rec", name)
 }
 
 fn targets() -> Targets {

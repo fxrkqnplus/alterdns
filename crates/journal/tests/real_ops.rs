@@ -52,11 +52,10 @@ fn targets(registry_root: &str) -> Targets {
     }
 }
 
-fn journal_dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alterdns-real-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+mod common;
+
+fn journal_dir(name: &str) -> common::TempDir {
+    common::temp("real", name)
 }
 
 #[test]
@@ -67,13 +66,8 @@ fn t_jrn_001_registry_apply_revert_restores_before() {
         RealOps.read(Kind::RegistryValue, &target).unwrap(),
         Snapshot::Absent
     );
-    let mut txn = Txn::begin(
-        &journal_dir("t001"),
-        "test",
-        Lifetime::Session,
-        targets(&root),
-    )
-    .unwrap();
+    let d = journal_dir("t001");
+    let mut txn = Txn::begin(&d, "test", Lifetime::Session, targets(&root)).unwrap();
     txn.apply(
         &RealOps,
         Kind::RegistryValue,
@@ -103,13 +97,8 @@ fn registry_revert_restores_previous_string() {
             &Snapshot::Present("eski".into()),
         )
         .unwrap();
-    let mut txn = Txn::begin(
-        &journal_dir("eski"),
-        "test",
-        Lifetime::Session,
-        targets(&root),
-    )
-    .unwrap();
+    let d = journal_dir("eski");
+    let mut txn = Txn::begin(&d, "test", Lifetime::Session, targets(&root)).unwrap();
     txn.apply(
         &RealOps,
         Kind::RegistryValue,
@@ -135,13 +124,8 @@ fn non_string_value_is_an_error_not_absent() {
     let target = format!(r"{root}\Deger");
     // Başka türdeki bir değer "yok" sayılsaydı geri alma onu silebilirdi.
     assert!(RealOps.read(Kind::RegistryValue, &target).is_err());
-    let mut txn = Txn::begin(
-        &journal_dir("dword"),
-        "test",
-        Lifetime::Session,
-        targets(&root),
-    )
-    .unwrap();
+    let d = journal_dir("dword");
+    let mut txn = Txn::begin(&d, "test", Lifetime::Session, targets(&root)).unwrap();
     let err = txn
         .apply(
             &RealOps,

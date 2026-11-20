@@ -13,11 +13,33 @@ use alterdns_core::{
 };
 use alterdns_winsys::{KnownFolder, known_folder};
 
-fn temp(name: &str) -> PathBuf {
+/// Test bitince (panikte de) silinen geçici dizin.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for TempDir {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for TempDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+fn temp(name: &str) -> TempDir {
     let d = std::env::temp_dir().join(format!("alterdns-core-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    TempDir(d)
 }
 
 #[test]
@@ -162,10 +184,8 @@ fn unwritable_backup_still_falls_back_to_defaults() {
 
 #[test]
 fn paths_keep_non_ascii_user_dirs() {
-    let root = temp("unicode")
-        .join("Çağrı Öz")
-        .join("AppData")
-        .join("Local");
+    let base = temp("unicode");
+    let root = base.join("Çağrı Öz").join("AppData").join("Local");
     let p = Paths::rooted(root.join("pd"), root.join("AlterDNS"), root.join("pf"));
     let cfg = p.user_config();
     assert!(cfg.starts_with(&root), "{}", cfg.display());

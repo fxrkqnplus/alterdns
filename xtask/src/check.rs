@@ -379,12 +379,8 @@ pub fn svc_deny_args(root: &Path) -> Option<Vec<String>> {
 mod tests {
     use super::*;
 
-    fn temp_root(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("alterdns-xtask-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_root(name: &str) -> crate::testutil::TempDir {
+        crate::testutil::temp("xtask", name).unwrap()
     }
 
     fn repo_file(name: &str) -> toml::Table {

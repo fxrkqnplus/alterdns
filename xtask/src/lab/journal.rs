@@ -570,11 +570,8 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn temp_dir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("alterdns-lab-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
+    pub fn temp_dir(name: &str) -> crate::testutil::TempDir {
+        crate::testutil::temp("lab", name).unwrap()
     }
 
     fn adapter() -> OpKind {

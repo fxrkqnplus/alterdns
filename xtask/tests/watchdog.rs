@@ -19,12 +19,12 @@ struct Fixture {
     file: PathBuf,
     journal: PathBuf,
     results: PathBuf,
+    /// Test bitince dizin silinir.
+    _dir: xtask::testutil::TempDir,
 }
 
 fn fixture(name: &str) -> Fixture {
-    let dir = std::env::temp_dir().join(format!("alterdns-wd-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = xtask::testutil::temp("wd", name).unwrap();
     let file = dir.join("value.txt");
     std::fs::write(&file, "before").unwrap();
     let mut j = Journal::create(&dir.join("journal"), "run1").unwrap();
@@ -35,6 +35,7 @@ fn fixture(name: &str) -> Fixture {
         file,
         journal: j.path().to_path_buf(),
         results: dir.join("results"),
+        _dir: dir,
     }
 }
 

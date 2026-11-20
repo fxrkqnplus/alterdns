@@ -6,7 +6,6 @@
 // Yalnızca test kodu: yardımcı işlevler de unwrap/panic kullanabilir.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use alterdns_journal::{
@@ -14,11 +13,10 @@ use alterdns_journal::{
     new_txn_id, valid_txn_id,
 };
 
-fn temp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alterdns-jf-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+mod common;
+
+fn temp(name: &str) -> common::TempDir {
+    common::temp("jf", name)
 }
 
 fn record(id: u32, kind: Kind, state: State) -> ChangeRecord {
