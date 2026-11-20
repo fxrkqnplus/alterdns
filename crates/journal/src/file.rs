@@ -55,6 +55,10 @@ impl JournalFile {
             .create_new(true)
             .open(&path)
             .map_err(apply_err)?;
+        // Txn yaşadığı sürece dosya özel kilitlidir: açılıştaki kurtarma ya da başka bir işlem
+        // canlı bir txn'i geri alamaz. Sahip işlem ölünce kilit işletim sistemince bırakılır.
+        file.try_lock()
+            .map_err(|e| apply_err(std::io::Error::other(e.to_string())))?;
         let mut j = JournalFile {
             path,
             txn_id: txn_id.to_string(),
@@ -92,30 +96,42 @@ impl JournalFile {
         Ok(())
     }
 
-    /// Var olan dosyayı açar (geri alma ve kurtarma için ekleme kipinde).
-    pub fn open(path: &Path) -> Result<JournalFile, AdnsError> {
+    /// Var olan dosyayı geri alma ve kurtarma için açar. Dosya canlı bir txn'e aitse (kilitli)
+    /// `None` döner: o txn'e dokunulmaz. Kilit alınırsa içerik aynı tutamaçtan okunur.
+    pub fn open(path: &Path) -> Result<Option<JournalFile>, AdnsError> {
         let txn_id = path
             .file_stem()
             .and_then(|s| s.to_str())
             .filter(|s| valid_txn_id(s))
             .ok_or_else(|| revert_err(format!("geçersiz journal adı: {}", path.display())))?
             .to_string();
-        let meta = std::fs::metadata(path).map_err(|e| revert_err(e.to_string()))?;
-        if meta.len() > MAX_FILE_BYTES {
-            return Err(revert_err("journal dosyası çok büyük".into()));
-        }
-        let text = std::fs::read_to_string(path).map_err(|e| revert_err(e.to_string()))?;
-        let lines = parse_lines(&text)?;
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
+            .read(true)
             .append(true)
             .open(path)
             .map_err(|e| revert_err(e.to_string()))?;
-        Ok(JournalFile {
+        match file.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => return Err(revert_err(e.to_string())),
+        }
+        let len = file
+            .metadata()
+            .map_err(|e| revert_err(e.to_string()))?
+            .len();
+        if len > MAX_FILE_BYTES {
+            return Err(revert_err("journal dosyası çok büyük".into()));
+        }
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut file, &mut text)
+            .map_err(|e| revert_err(e.to_string()))?;
+        let lines = parse_lines(&text)?;
+        Ok(Some(JournalFile {
             path: path.to_path_buf(),
             txn_id,
             lines,
             file,
-        })
+        }))
     }
 
     pub fn path(&self) -> &Path {

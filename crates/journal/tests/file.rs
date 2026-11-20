@@ -89,13 +89,16 @@ fn txn_ids_are_validated() {
 fn create_writes_schema_and_begin() {
     let d = temp("create");
     let j = JournalFile::create(&d, "t-1", "test", Lifetime::Persistent).unwrap();
-    let text = std::fs::read_to_string(j.path()).unwrap();
-    let first = text.lines().next().unwrap();
-    assert_eq!(first, r#"{"t":"Schema","schema":1}"#);
     assert_eq!(j.lifetime(), Some(Lifetime::Persistent));
     assert!(!j.committed());
     assert!(JournalFile::create(&d, "t-1", "test", Lifetime::Persistent).is_err());
     assert!(JournalFile::create(&d, "../kaç", "test", Lifetime::Persistent).is_err());
+    // Canlı txn dosyası kilitlidir; içerik txn kapandıktan sonra okunur.
+    let path = j.path().to_path_buf();
+    drop(j);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let first = text.lines().next().unwrap();
+    assert_eq!(first, r#"{"t":"Schema","schema":1}"#);
 }
 
 #[test]
@@ -114,8 +117,9 @@ fn torn_tail_ignored_middle_corruption_stops() {
     let mut text = std::fs::read_to_string(&path).unwrap();
     text.push_str(r#"{"t":"Record","id":2,"#);
     std::fs::write(&path, &text).unwrap();
-    let j = JournalFile::open(&path).unwrap();
+    let j = JournalFile::open(&path).unwrap().unwrap();
     assert_eq!(j.records().len(), 1);
+    drop(j);
     // Ortadaki bozuk satır: hata.
     let broken = text.replacen(r#"{"t":"TxnBegin""#, r#"{"t":"Bozuk""#, 1);
     std::fs::write(&path, broken + "\n").unwrap();
@@ -147,7 +151,7 @@ fn unknown_kind_is_left_open() {
         .unwrap()
         .replace("RegistryValue", "TunAdapter");
     std::fs::write(&path, text).unwrap();
-    let j = JournalFile::open(&path).unwrap();
+    let j = JournalFile::open(&path).unwrap().unwrap();
     let r = &j.records()[0];
     assert_eq!(r.kind, Kind::Unknown);
     assert!(r.state.is_open());
@@ -174,10 +178,22 @@ fn records_keep_latest_state_per_id() {
         ts: 1,
     })
     .unwrap();
-    let reopened = JournalFile::open(j.path()).unwrap();
+    let path = j.path().to_path_buf();
+    drop(j);
+    let reopened = JournalFile::open(&path).unwrap().unwrap();
     assert_eq!(reopened.records().len(), 1);
     assert_eq!(reopened.records()[0].state, State::Applied);
     assert!(reopened.committed());
+}
+
+#[test]
+fn live_txn_file_is_in_use() {
+    let d = temp("inuse");
+    let j = JournalFile::create(&d, "t-8", "test", Lifetime::Session).unwrap();
+    assert!(JournalFile::open(j.path()).unwrap().is_none());
+    let path = j.path().to_path_buf();
+    drop(j);
+    assert!(JournalFile::open(&path).unwrap().is_some());
 }
 
 #[test]
