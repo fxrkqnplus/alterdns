@@ -23,7 +23,9 @@ const SVC_DENY_CONFIG: &str = "deny-svc.toml";
 pub fn run() -> anyhow::Result<()> {
     let root = repo_root()?;
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let steps: [(&str, &[&str]); 4] = [
+    // `test-ops`: journal ve bekçi testleri yalnızca AlterDNS'in kendi test nesneleriyle
+    // (`HKCU\Software\AlterDNS-Test`, `%TEMP%\alterdns-*`) gerçek sistem işlemi yapar.
+    let steps: [(&str, &[&str]); 6] = [
         ("fmt", &["fmt", "--all", "--check"]),
         (
             "clippy",
@@ -38,6 +40,36 @@ pub fn run() -> anyhow::Result<()> {
             ],
         ),
         ("test", &["test", "--workspace", "--locked"]),
+        (
+            "clippy-test-ops",
+            &[
+                "clippy",
+                "-p",
+                "alterdns-journal",
+                "-p",
+                "alterdns-maint",
+                "--all-targets",
+                "--locked",
+                "--features",
+                "alterdns-maint/test-ops",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        ),
+        (
+            "test-ops",
+            &[
+                "test",
+                "-p",
+                "alterdns-journal",
+                "-p",
+                "alterdns-maint",
+                "--locked",
+                "--features",
+                "alterdns-maint/test-ops",
+            ],
+        ),
         ("deny", &["deny", "check"]),
     ];
     for (name, args) in steps {

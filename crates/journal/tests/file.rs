@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use alterdns_errors::AdnsErrorCode;
 use alterdns_journal::{
     ChangeRecord, JournalFile, Kind, Lifetime, Line, Snapshot, State, list, lock_dir_with,
     new_txn_id, valid_txn_id,
@@ -122,7 +123,7 @@ fn torn_tail_ignored_middle_corruption_stops() {
     let broken = text.replacen(r#"{"t":"TxnBegin""#, r#"{"t":"Bozuk""#, 1);
     std::fs::write(&path, broken + "\n").unwrap();
     let err = JournalFile::open(&path).err().unwrap();
-    assert_eq!(err.code().as_str(), "ADNS-SYS-002");
+    assert_eq!(err.code(), AdnsErrorCode::SysRevertFailed);
 }
 
 #[test]
@@ -201,7 +202,7 @@ fn oversized_value_is_refused() {
     let mut r = record(1, Kind::RegistryValue, State::Pending);
     r.after = Snapshot::Present("x".repeat(5000));
     let err = j.append(&Line::Record(r)).err().unwrap();
-    assert_eq!(err.code().as_str(), "ADNS-SYS-001");
+    assert_eq!(err.code(), AdnsErrorCode::SysApplyFailed);
 }
 
 #[test]

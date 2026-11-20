@@ -24,6 +24,27 @@ impl RevertReport {
     pub fn clean(&self) -> bool {
         self.conflicts.is_empty() && self.failed.is_empty()
     }
+
+    /// Kullanıcıya gösterilecek hata: geri alınamayan kayıt varsa `SysRevertFailed`, yalnızca
+    /// çakışma varsa `SysChangedByOther` (değer ezilmedi); temizse `None`.
+    pub fn error(&self) -> Option<AdnsError> {
+        if !self.failed.is_empty() {
+            let ids: Vec<u32> = self.failed.iter().map(|(id, _)| *id).collect();
+            Some(
+                AdnsError::new(AdnsErrorCode::SysRevertFailed).with_source(std::io::Error::other(
+                    format!("geri alınamayan kayıtlar: {ids:?}"),
+                )),
+            )
+        } else if !self.conflicts.is_empty() {
+            Some(
+                AdnsError::new(AdnsErrorCode::SysChangedByOther).with_source(
+                    std::io::Error::other(format!("çakışan kayıtlar: {:?}", self.conflicts)),
+                ),
+            )
+        } else {
+            None
+        }
+    }
 }
 
 fn apply_err(msg: impl Into<String>) -> AdnsError {

@@ -10,6 +10,7 @@
 
 use std::path::PathBuf;
 
+use alterdns_errors::AdnsErrorCode;
 use alterdns_journal::{
     Kind, Lifetime, RealOps, Snapshot, SystemOps, TEST_REGISTRY_ROOT, Targets, Txn,
 };
@@ -135,7 +136,7 @@ fn non_string_value_is_an_error_not_absent() {
         )
         .err()
         .unwrap();
-    assert_eq!(err.code().as_str(), "ADNS-SYS-001");
+    assert_eq!(err.code(), AdnsErrorCode::SysApplyFailed);
     let key = CURRENT_USER.open(&hkcu_path).unwrap();
     assert_eq!(key.get_u32("Deger").unwrap(), 7);
 }

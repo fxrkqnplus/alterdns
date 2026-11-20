@@ -6,10 +6,11 @@
 // Yalnızca test kodu: yardımcı işlevler de unwrap/panic kullanabilir.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use alterdns_errors::AdnsErrorCode;
 use alterdns_journal::{
     JournalFile, Kind, Lifetime, Snapshot, State, SystemOps, Targets, Txn, target_allowed,
 };
@@ -18,7 +19,7 @@ use alterdns_journal::{
 struct FakeOps {
     values: RefCell<BTreeMap<String, Snapshot>>,
     writes: RefCell<u32>,
-    fail_write: bool,
+    fail_write: Cell<bool>,
 }
 
 impl SystemOps for FakeOps {
@@ -32,7 +33,7 @@ impl SystemOps for FakeOps {
     }
     fn write(&self, _kind: Kind, target: &str, value: &Snapshot) -> Result<(), String> {
         *self.writes.borrow_mut() += 1;
-        if self.fail_write {
+        if self.fail_write.get() {
             return Err("yazma reddedildi".into());
         }
         self.values
@@ -75,6 +76,7 @@ fn apply_then_rollback_restores_before() {
     );
     let report = txn.rollback(&ops).unwrap();
     assert!(report.clean(), "{report:?}");
+    assert!(report.error().is_none());
     assert_eq!(report.reverted, [1]);
     assert_eq!(
         ops.read(Kind::RegistryValue, KEY).unwrap(),
@@ -97,7 +99,7 @@ fn journal_write_failure_means_no_apply() {
         )
         .err()
         .unwrap();
-    assert_eq!(err.code().as_str(), "ADNS-SYS-001");
+    assert_eq!(err.code(), AdnsErrorCode::SysApplyFailed);
     assert_eq!(*ops.writes.borrow(), 0);
 }
 
@@ -120,6 +122,10 @@ fn conflict_is_not_overwritten() {
     let path = txn.journal_path();
     let report = txn.rollback(&ops).unwrap();
     assert_eq!(report.conflicts, [1]);
+    assert_eq!(
+        report.error().unwrap().code(),
+        AdnsErrorCode::SysChangedByOther
+    );
     assert_eq!(
         ops.read(Kind::RegistryValue, KEY).unwrap(),
         Snapshot::Present("kullanici".into())
@@ -196,7 +202,7 @@ fn disallowed_target_is_rejected_before_any_write() {
 fn failed_write_closes_record_when_value_unchanged() {
     let d = temp("failwrite");
     let ops = FakeOps {
-        fail_write: true,
+        fail_write: Cell::new(true),
         ..FakeOps::default()
     };
     let mut txn = Txn::begin(&d, "test", Lifetime::Session, targets()).unwrap();
@@ -209,11 +215,36 @@ fn failed_write_closes_record_when_value_unchanged() {
         )
         .err()
         .unwrap();
-    assert_eq!(err.code().as_str(), "ADNS-SYS-001");
+    assert_eq!(err.code(), AdnsErrorCode::SysApplyFailed);
     let path = txn.journal_path();
     drop(txn);
     let j = JournalFile::open(&path).unwrap().unwrap();
     assert_eq!(j.records()[0].state, State::Failed);
+}
+
+#[test]
+fn revert_write_failure_keeps_record_open() {
+    let d = temp("revertfail");
+    let ops = FakeOps::default();
+    let mut txn = Txn::begin(&d, "test", Lifetime::Session, targets()).unwrap();
+    txn.apply(
+        &ops,
+        Kind::RegistryValue,
+        KEY,
+        Snapshot::Present("yeni".into()),
+    )
+    .unwrap();
+    let path = txn.journal_path();
+    ops.fail_write.set(true);
+    let report = txn.rollback(&ops).unwrap();
+    assert_eq!(report.failed.len(), 1, "{report:?}");
+    assert_eq!(
+        report.error().unwrap().code(),
+        AdnsErrorCode::SysRevertFailed
+    );
+    // Kayıt açık kalır: bir sonraki kurtarma yeniden dener.
+    let j = JournalFile::open(&path).unwrap().unwrap();
+    assert_eq!(j.records()[0].state, State::Applied);
 }
 
 #[test]

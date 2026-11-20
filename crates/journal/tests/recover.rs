@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use alterdns_errors::AdnsErrorCode;
 use alterdns_journal::{Kind, Lifetime, Snapshot, SystemOps, Targets, Txn, recover_at_startup};
 
 #[derive(Default)]
@@ -133,7 +134,7 @@ fn corrupt_file_does_not_block_others() {
     txn(&d, &ops, Lifetime::Session, 5, false);
     let r = recover_at_startup(&d, &ops, &targets());
     assert_eq!(r.errors.len(), 1, "{r:?}");
-    assert_eq!(r.errors[0].1.code().as_str(), "ADNS-SYS-002");
+    assert_eq!(r.errors[0].1.code(), AdnsErrorCode::SysRevertFailed);
     assert_eq!(r.txns.len(), 1);
     assert_eq!(
         ops.read(Kind::RegistryValue, &key(5)).unwrap(),
