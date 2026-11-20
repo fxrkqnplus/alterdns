@@ -179,28 +179,32 @@ pub fn revert_file(
                 continue;
             }
         };
+        let own_existed = is_own_object(rec.kind) && rec.before != Snapshot::Absent;
         if current == rec.before {
-            set_state(file, &rec, State::Reverted)?;
-            report.reverted.push(rec.id);
-        } else if is_own_object(rec.kind) && rec.before != Snapshot::Absent {
-            if rec.state != State::Conflict {
-                set_state(file, &rec, State::Conflict)?;
-            }
+            mark(file, &rec, State::Reverted, &mut report);
+        } else if own_existed || current != rec.after {
             report.conflicts.push(rec.id);
-        } else if current == rec.after {
-            match ops.write(rec.kind, &rec.target, &rec.before) {
-                Ok(()) => {
-                    set_state(file, &rec, State::Reverted)?;
-                    report.reverted.push(rec.id);
-                }
-                Err(e) => report.failed.push((rec.id, e)),
+            if rec.state != State::Conflict {
+                mark(file, &rec, State::Conflict, &mut report);
             }
         } else {
-            if rec.state != State::Conflict {
-                set_state(file, &rec, State::Conflict)?;
+            match ops.write(rec.kind, &rec.target, &rec.before) {
+                Ok(()) => mark(file, &rec, State::Reverted, &mut report),
+                Err(e) => report.failed.push((rec.id, e)),
             }
-            report.conflicts.push(rec.id);
         }
     }
     Ok(report)
+}
+
+/// Durumu journal'a yazar. Yazılamazsa geri alma diğer kayıtlarla sürer; kayıt açık kalır ve bir
+/// sonraki kurtarma onu yeniden değerlendirir (değer zaten `before` ise yalnızca kapatılır).
+fn mark(file: &mut JournalFile, rec: &ChangeRecord, state: State, report: &mut RevertReport) {
+    match set_state(file, rec, state) {
+        Ok(()) if state == State::Reverted => report.reverted.push(rec.id),
+        Ok(()) => {}
+        Err(e) => report
+            .failed
+            .push((rec.id, format!("durum journal'a yazılamadı: {e}"))),
+    }
 }

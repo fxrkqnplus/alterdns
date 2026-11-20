@@ -74,7 +74,7 @@ Faz 0 kapanış incelemesi (2026-11-15). Kapsam: `xtask lab` (journal, bekçi, i
 | S-6 | Spike'lar workspace dışında; `fmt`, `clippy`, `test` ve `deny` kapılarına girmiyor. `cargo xtask` takma adı `--locked` kullanmıyordu | Orta | **Kısmen düzeltildi.** Takma ad `--locked`. Spike'lar ürüne taşınana kadar workspace dışında ve derlenmeden durur. `spikes/ui` Faz 1 arayüzü bitince, `wintun` Faz 2'de, `sandbox` Faz 3'te taşınıp silinir. Ürün kodu workspace'te ve kapıların içindedir | Faz 1–3 |
 | S-7 | Kaynak taraması testi atlatılabiliyordu: parçalı argümanlar, eksik komut ve Win32 adları, sabit dizin ve uzantı listesi | Düşük | **Düzeltildi.** Bütün depo taranır (yerel ve üretilmiş dizinler hariç). Ek komut ve Win32 adları ile ek uzantılar var; parçalı argümanlar düzleştirilmiş metinde aranır (yerleştirilmiş örnekle denendi). Test bir uyarı düzeneğidir, güvenlik sınırı değildir | Faz 0 |
 | S-8 | Nesne durumu okuması geçici bir CIM hatasını "yok" sayıyordu. Kaldırılmamış bir rota journal'da geri alınmış görünebilirdi | Düşük | **Düzeltildi.** Yalnızca `ObjectNotFound` "yok" sayılır, diğer hatalar okuma hatasıdır. Bu makinede beş "bulunamadı" durumunda ölçüldü; ayrıca testle doğrulandı | Faz 0 |
-| S-9 | Yükseltilmiş yazma ve kilit yüzeyleri: journal dosyası önce denetlenip sonra oluşturuluyordu; kilit süresiz bekliyordu; test amaçlı `FileValue` işlemi üretim journal'ından erişilebilir; bekçi raporu yolunda bağlantı denetimi yok | Düşük | **Kısmen düzeltildi.** Journal `create_new` ile oluşturulur; kilit en çok 10 sn beklenir. Açık: `FileValue` `%TEMP%\alterdns-*` ve 4 KB ile sınırlı; bekçi raporu yolu | Faz 1 (journal crate'i) |
+| S-9 | Yükseltilmiş yazma ve kilit yüzeyleri: journal dosyası önce denetlenip sonra oluşturuluyordu; kilit süresiz bekliyordu; test amaçlı `FileValue` işlemi üretim journal'ından erişilebilir; bekçi raporu yolunda bağlantı denetimi yok | Düşük | **Düzeltildi** (ürün journal'ı, 1B). Journal `create_new` ile oluşturulur; kilit en çok 10 sn beklenir. `FileValue` yalnızca `test-ops` özelliğiyle derlenen kodda vardır; ürün ikilisi onu bilinmeyen tür olarak okur ve dokunmaz. Journal ve bekçi raporu yolları txn kimliğinden türetilir, komut satırından yol alınmaz. `AlterDNS` → `journal` zincirindeki dizinlerden biri korumalı değilse bekçi hiçbir şeye dokunmaz. Lab journal'ı Faz 2'ye kadar eski kopyasıyla çalışır | Faz 1B |
 | S-10 | Motor PID ile sonlandırılıyor; başlangıç zamanı doğrulamasıyla sonlandırma arasında küçük bir pencere var. "Kira ≤ 60 sn" geri almanın başlamasını sınırlıyor, bitmesini değil | Düşük | **Açık** | Faz 2: tutamaçla sonlandırma veya iş nesnesi |
 | S-11 | `deny.toml` izin listesi `CONTRIBUTING.md` kural 8'den farklıydı: kullanılmayan ve OSI onaylı olmayan `CC0-1.0` vardı; Slint'in pano bağımlılığının lisansı `BSL-1.0` iki listede de yoktu; `wildcards = "deny"` yoktu. svc denetimi `apps/svc` yokken atlanıyor | Bilgi | **Düzeltildi.** `CC0-1.0` çıkarıldı. `BSL-1.0` (OSI onaylı, GPL-3.0 ile uyumlu) eklendi; arayüz spike'ının lisans denetimi geçiyor. `wildcards = "deny"` eklendi. Kural 8 ve iki `deny` dosyası aynı listeyi kullanıyor. svc denetimi Faz 1'de etkinleşir | Faz 0; svc Faz 1 |
 
@@ -106,6 +106,36 @@ Kapsam: `winsys` (`unsafe` Win32 çağrıları), `core` (yapılandırma ve log m
 - **Kancayı atlamak:** Kanca `--no-verify` ile atlanabilir ve push edilen dalın kendi `xtask` kodunu çalıştırır. CI son ağacı yine tarar.
 - **`SHGetKnownFolderPath`:** Belgeler hata yolunda da belleğin serbest bırakılmasını ister, ancak `windows` crate'i bu yolda işaretçiyi döndürmez. Pratikte işaretçi NULL'dur; sızıntı olasılığı çok düşüktür.
 - **Makine yapılandırma dizini:** ACL'i Faz 1B/1C'de veri dizini sertleştirmesiyle (K20) ayarlanır. O zamana kadar servis bu dosyayı yazmaz.
+
+### Faz 1B incelemesi (2026-11-21)
+
+Kapsam: `winsys` (korumalı dizin, sahip ve DACL denetimi, belirteç yükseltmesi), `journal` (dosya, txn, hedef izin listesi, kurtarma, gerçek kayıt defteri işlemleri, bekçi) ve `alterdns-maint`. Bulgular kod okumasıyla bulundu; düzeltilenler testle doğrulandı.
+
+**Düzeltilenler:**
+- **Journal dizini yalnızca yaprakta denetleniyordu (orta):**
+  - Standart bir kullanıcı `%ProgramData%\AlterDNS`'i kurulumdan önce oluşturup sahibi olabilir. Bu durumda `journal`'ı denetimden sonra kendi dizinine giden bir bağlantıyla değiştirebilirdi.
+  - SYSTEM bekçisi o journal'ı okuyup bekçi raporunu oraya yazardı.
+  - Artık `AlterDNS` → `journal` zincirinin her halkası denetlenir (`verify_protected_chain`): reparse noktası olmamalı, sahibi güvenilir olmalı, başkasına yazma hakkı olmamalı.
+  - `create_protected_dir` var olan bir dizini artık ancak bu denetimden geçerse kabul eder.
+- **Kesilmiş son satır dosyada kalıyordu:** Sonraki satır ona eklenince dosya bir daha okunamıyordu. Artık açılışta satır sonu olmayan son parça kesilip atılır. Boş dosya (oluşturma yarıda kalmış) kayıtsız bir txn sayılır.
+- **4 MiB sınırı geri almayı da durduruyordu:**
+  - Sınıra yakın bir txn'de durum satırı yazılamıyordu ve bu, kalan bütün kayıtların geri alınmasını kesiyordu.
+  - Artık sınır yalnızca yeni kayıtlara uygulanır; durum satırları ve commit 16 MiB'a kadar yazılabilir.
+  - Durum satırı yine de yazılamazsa kayıt "başarısız" sayılır, açık kalır ve geri alma sürer.
+- **Txn'ler ad sırasıyla geri alınıyordu:** Aynı değeri art arda değiştiren iki txn'de eskisi önce geri alınırsa çakışma görür, AlterDNS'in yazdığı değer yerinde kalırdı. Artık en yeni txn önce geri alınır.
+- **ACE türleri:** DACL'de izin veren nesne ya da geri çağırmalı bir ACE varsa artık atlanmaz; dizin reddedilir.
+- **SID işaretçisi:** SID işaretçisi artık ACE'nin başından türetilir; bütün SID'i kapsar.
+- **Yükleme zamanı DLL'leri (K18):** `/DEPENDENTLOADFLAG:0x800` bayrağının exe'de bulunduğu PE yükleme yapılandırmasından okunarak test edilir.
+
+**Açık ve sonraki fazlara kalanlar:**
+- **Journal dizininin tutamaçla sabitlenmesi (1C):** Dizin, bekçi ve servis çalıştığı sürece paylaşımsız bir tutamaçla açık tutulur ve denetimler bu tutamaç üzerinden yapılır. Zincir denetimi tek başına yeterli: korumalı dizinleri yalnızca yöneticiler taşıyabilir. Tutamaç ek bir katmandır.
+- **`FileInstall` hedef denetimi (1C):** `FileInstall` hedefi şimdilik yalnızca sözcüksel olarak denetleniyor. Gerçek işlem eklenince dosya tutamaçla açılır, reparse noktası reddedilir ve göreli yolda `:` (alternatif veri akışı) kabul edilmez.
+- **Askıdaki ebeveyn (Faz 2):** Kira dolduğunda dosyayı tutan ebeveyn sonlandırılmaz. Bekçi 10 sn bekler ve geri almayı açılış kurtarmasına bırakır (raporda `InUse`). S-10 ile birlikte tutamaçla izlenecek.
+- **Paketleme (Faz 5):** Ürün paketi, `test-ops` olmadan ayrı bir derlemeyle üretilir. İkilide `ALTERDNS_TEST_JOURNAL_DIR` dizesinin bulunmadığı doğrulanır, çünkü `xtask check` test derlemesini aynı `target` dizinine yazar.
+
+**Kabul edilen sınırlar:**
+- **Bekçi stdin satır uzunluğu sınırsız:** Boruyu yalnızca bekçiyi başlatan işlem tutar ve o işlem güvenilirdir.
+- **Yeni satır türü şema artışı ister:** Eski bir ikili bilinmeyen bir satır türünü, durumu ya da ömrü ayrıştıramaz ve o dosyayı kurtaramaz. Diğer dosyalar etkilenmez. Bilinmeyen değişiklik türü ise zaten "açık, dokunulmadı" sayılır.
 
 Temiz bulunan alanlar:
 - **Komut enjeksiyonu:** PowerShell'e giden değerler ASCII izin listesinden geçiyor.

@@ -143,6 +143,29 @@ fn corrupt_file_does_not_block_others() {
     assert!(!r.clean());
 }
 
+/// Aynı değeri art arda değiştiren iki txn: yeni olan önce geri alınır, değer en baştaki haline
+/// döner. Ad sırası (alfa < zeta) eskiyi öne alırdı (inceleme bulgusu, 2026-11-21).
+#[test]
+fn newer_txn_is_reverted_first() {
+    let d = temp("order");
+    let ops = FakeOps::default();
+    let k = key(7);
+    let mut older = Txn::begin(&d, "alfa", Lifetime::Session, targets()).unwrap();
+    older
+        .apply(&ops, Kind::RegistryValue, &k, Snapshot::Present("a".into()))
+        .unwrap();
+    drop(older);
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let mut newer = Txn::begin(&d, "zeta", Lifetime::Session, targets()).unwrap();
+    newer
+        .apply(&ops, Kind::RegistryValue, &k, Snapshot::Present("b".into()))
+        .unwrap();
+    drop(newer);
+    let r = recover_at_startup(&d, &ops, &targets());
+    assert!(r.clean(), "{r:?}");
+    assert_eq!(ops.read(Kind::RegistryValue, &k).unwrap(), Snapshot::Absent);
+}
+
 #[test]
 fn recovery_twice_is_idempotent() {
     let d = temp("twice");

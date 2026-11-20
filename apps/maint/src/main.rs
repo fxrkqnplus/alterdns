@@ -49,15 +49,17 @@ fn watchdog(txn_id: &str) -> ExitCode {
     }
 }
 
-/// Ürün: `%ProgramData%\AlterDNS\journal`, korumalı olmalı (K20). Kullanıcının yazabildiği bir
-/// dizindeki journal'a göre SYSTEM yetkisiyle geri alma yapılmaz.
+/// Ürün: `%ProgramData%\AlterDNS\journal`; `AlterDNS` ve `journal` korumalı olmalı (K20).
+/// Kullanıcının yazabildiği bir dizindeki journal'a göre SYSTEM yetkisiyle geri alma yapılmaz.
 fn journal_dir(paths: &Paths) -> Result<PathBuf, AdnsError> {
     #[cfg(feature = "test-ops")]
     if let Some(d) = std::env::var_os("ALTERDNS_TEST_JOURNAL_DIR") {
         return Ok(PathBuf::from(d));
     }
+    // `%ProgramData%\AlterDNS`'ten başlayarak her halka: üst dizin bir kullanıcınınsa yaprak
+    // denetimden sonra bir bağlantıyla değiştirilebilirdi.
     let dir = paths.journal_dir();
-    alterdns_winsys::verify_protected_dir(&dir).map_err(|p| {
+    alterdns_winsys::verify_protected_chain(&paths.machine, &dir).map_err(|p| {
         AdnsError::new(AdnsErrorCode::SysRevertFailed).with_source(std::io::Error::other(format!(
             "journal dizini korumalı değil: {p:?}"
         )))

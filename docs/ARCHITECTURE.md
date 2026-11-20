@@ -141,7 +141,7 @@ Yapılandırma TOML biçimindedir ve şeması sürümlüdür (`schema = N`).
 
 ## 6. Journal — sistem değişiklikleri
 
-Journal dosyası JSON Lines biçimindedir ve ilk satırı `{"schema":1}`'dir. Her sistem değişikliği bir `ChangeRecord` olarak önce diske yazılır (fsync), sonra uygulanır. Yazma başarısız olursa değişiklik uygulanmaz.
+Journal, txn başına bir JSON Lines dosyasıdır (`%ProgramData%\AlterDNS\journal\<txn>.jsonl`); ilk satırı `{"t":"Schema","schema":1}`'dir. Her sistem değişikliği bir `ChangeRecord` olarak önce diske yazılır (fsync), sonra uygulanır. Yazma başarısız olursa değişiklik uygulanmaz. Canlı bir txn'in dosyası, sahibi olan işlem tarafından kilitli tutulur; başka bir işlem onu okuyamaz ve geri alamaz.
 
 ```
 ChangeRecord { id, txn_id, component, kind, target, before, after,
@@ -158,26 +158,30 @@ ChangeRecord { id, txn_id, component, kind, target, before, after,
   - Faz 2: `TunAdapter`, `UnicastAddress`, `Route`. Hedefleri ad yerine GUID/LUID taşır.
   - Sonraki fazlar: `DriverService` (yalnızca AlterDNS oluşturduysa), `ScheduledTask`, `NativeHostRegistration`, `FirewallRule` (gerekirse), `ExternalExtensionHint`.
   - Kullanıcıya ait değerler için tür yoktur. Hop limit, DNS sunucuları ve DoH tablosu yazılmaz (ADR-010, ADR-014).
+  - Gerçek işlemler aşamalı gelir: `RegistryValue` 1B'de (yalnızca REG_SZ; başka türde bir değer hata sayılır, "yok" sayılıp silinmez), servis, kaldırma kaydı ve kurulum dosyaları 1C'de, başlangıç kaydı 1D'de.
 - **Hedef izin listesi:**
   - Her türün hedefi yüklemede sınırlanır: servis adı `AlterDNS`, `HKLM\SOFTWARE\AlterDNS\…`, kendi Run değeri, kurulum dizini, kendi adaptörü.
-  - Listenin dışındaki bir hedefe dokunulmaz.
+  - Listenin dışındaki bir hedefe dokunulmaz. Kayıt defteri kökleri sabittir; gerçek sistem işlemleri bunu txn'in hedeflerinden bağımsız olarak bir kez daha denetler.
   - AlterDNS'in oluşturduğu nesneler geri almada yalnızca kaldırılır, yeniden eklenmez.
 - **Açılışta kurtarma:**
   - Commit edilmemiş txn'ler ve `Session` txn'leri geri alınır. Commit edilmiş `Persistent` txn'lere yalnızca kaldırmada dokunulur.
   - `Pending` bir kayıt uygulanmışsa geri alınır, uygulanmamışsa kapatılır.
-  - Yarım kalmış son satır yok sayılır. Ortadaki bozuk bir satır kurtarmayı durdurur (`ADNS-SYS-002`).
+  - Txn'ler en yeniden en eskiye geri alınır.
+  - Yarım kalmış son satır dosyadan kesilip atılır. Ortadaki bozuk bir satır kurtarmayı durdurur (`ADNS-SYS-002`).
   - Bilinmeyen tür "açık, dokunulmadı" sayılır; böylece eski bir ikili yeni bir journal'da kilitlenmez.
+  - Canlı bir işlemin tuttuğu (kilitli) dosya atlanır. Bir dosyanın hatası diğerlerini durdurmaz.
   - Sonuç loglanır.
 - **Sahiplik kuralı:**
   - Journal'da `created_by = alterdns` kaydı bulunmayan hiçbir sistem öğesine kaldırma sırasında dokunulmaz. Örnekler: kullanıcının hop limiti, başka uygulamaların kurduğu WinDivert servisi, kullanıcının DNS ayarları.
   - Kurulum öncesi değerler `before` alanında saklanır.
   - Geri yüklemeden önce mevcut değerin hâlâ AlterDNS'in yazdığı değer olduğu kontrol edilir. Kullanıcı arada değiştirdiyse değer ezilmez: kayıt `Conflict` olur ve kullanıcıya `ADNS-SYS-003` gösterilir. Kullanıcı onaylayınca kayıt `Acknowledged` olur.
 - **Bekçi:** Ayrı bir işlemdir: `alterdns-maint watchdog --txn <id>`.
-  - **Yollar:** Journal ve rapor yolu `%ProgramData%\AlterDNS\journal\` altından türetilir; komut satırından keyfi yol alınmaz.
-  - **Kira protokolü (stdin):** Ebeveyn kirayı `RENEW <sn>` ile yeniler (en çok 60 sn), izlenecek motoru `ENGINE` ile bildirir ve txn'i `DONE` ile kapatır.
-  - **Geri alma:** Stdin kapanırsa ya da kira dolarsa bekçi motoru sonlandırır ve commit edilmemiş txn'i geri alır. İzlenen işlem PID ile değil, devralınan tutamaçla tutulur. Bekçi yalnızca Win32 API kullanır.
+  - **Yollar:** Journal ve rapor yolu (`<txn>.watchdog.json`) `%ProgramData%\AlterDNS\journal\` altından türetilir; komut satırından keyfi yol alınmaz. Dizin korumalı değilse (K20) bekçi hiçbir şeye dokunmadan çıkar.
+  - **Kira protokolü (stdin):** Ebeveyn kirayı `RENEW <sn>` ile yeniler (1–60 sn; ilk kira 60 sn) ve işi bitince `DONE` gönderir. İzlenecek motoru bildiren `ENGINE` Faz 2'de gelir.
+  - **Geri alma:** Stdin kapanırsa ya da kira dolarsa bekçi txn'i açılış kurtarmasıyla aynı kuralla geri alır: commit edilmiş `Persistent` txn'e dokunulmaz. Ebeveyn dosyayı hâlâ tutuyorsa (askıda) bekçi en çok 10 sn bekler; bırakılmazsa geri alma açılış kurtarmasına kalır ve raporda `InUse` yazar. Faz 2'de motor ve askıdaki ebeveyn PID ile değil, devralınan tutamaçla izlenir ve sonlandırılır. Bekçi yalnızca Win32 API kullanır.
   - **Başlatma:** Bekçi, onu başlatan işlemin kardeş ikilisidir. Başlatan yükseltilmişse ikilinin dizini kullanıcıya yazılamaz olmalıdır.
-  - **Servisle ilişkisi:** Servis kendi txn'leri için bekçiyi kendi çocuğu olarak başlatır. Servis çökerse bekçi geri alır, SCM servisi yeniden başlatır. Servis açılışta journal kilidini bekçi tutuyorsa bekler, ardından kurtarmayı çalıştırır.
+  - **Servisle ilişkisi:** Servis kendi txn'leri için bekçiyi kendi çocuğu olarak başlatır. Servis çökerse bekçi geri alır, SCM servisi yeniden başlatır. Servis açılışta kurtarmayı çalıştırır; o sırada bekçinin geri aldığı (kilitli) dosya atlanır ve sonucu bekçi raporunda görünür.
+- **Lab journal'ı:** Faz 0 bağlantı lab'ının journal'ı ve bekçisi (`xtask/src/lab/`) bu crate'e taşınmadı. Lab, Faz 2'ye kadar kendi kopyasıyla çalışır.
 
 ## 7. Modüller
 

@@ -19,12 +19,32 @@ use windows_registry::CURRENT_USER;
 /// `TEST_REGISTRY_ROOT`'un HKCU altındaki yolu.
 const TEST_KEY: &str = r"Software\AlterDNS-Test";
 
-/// Test anahtarlarını sonda (panikte de) siler; `AlterDNS-Test` boş kalırsa onu da.
-struct Cleanup(Vec<String>);
+/// Kayıt defteri testleri sırayla çalışır: biri `AlterDNS-Test`'i boş görüp silerken diğeri
+/// altına anahtar oluşturabilirdi.
+static REGISTRY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Test anahtarlarını sonda (panikte de) siler; `AlterDNS-Test` boş kalırsa onu da. Kilit
+/// alan olarak tutulur: temizlik kilit altında yapılır, kilit en son bırakılır.
+struct Cleanup {
+    keys: Vec<String>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Cleanup {
+    fn new(keys: Vec<String>) -> Cleanup {
+        let lock = REGISTRY
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for k in &keys {
+            let _ = CURRENT_USER.remove_tree(k);
+        }
+        Cleanup { keys, _lock: lock }
+    }
+}
 
 impl Drop for Cleanup {
     fn drop(&mut self) {
-        for k in &self.0 {
+        for k in &self.keys {
             let _ = CURRENT_USER.remove_tree(k);
         }
         let empty = CURRENT_USER
@@ -42,8 +62,7 @@ fn test_root(name: &str) -> (String, String, Cleanup) {
     let sub = format!("{}-{name}", std::process::id());
     let hkcu_path = format!(r"{TEST_KEY}\{sub}");
     let root = format!(r"{TEST_REGISTRY_ROOT}\{sub}");
-    let _ = CURRENT_USER.remove_tree(&hkcu_path);
-    (root, hkcu_path.clone(), Cleanup(vec![hkcu_path]))
+    (root, hkcu_path.clone(), Cleanup::new(vec![hkcu_path]))
 }
 
 fn targets(registry_root: &str) -> Targets {
@@ -145,7 +164,7 @@ fn non_string_value_is_an_error_not_absent() {
 fn real_ops_rejects_targets_outside_fixed_roots() {
     // Hata olsa bile yalnızca AlterDNS-Test adlı kendi anahtarlarımıza yazılabilirdi.
     let sibling = format!(r"Software\AlterDNS-Test-Baska-{}", std::process::id());
-    let _c = Cleanup(vec![sibling.clone()]);
+    let _c = Cleanup::new(vec![sibling.clone()]);
     for target in [
         format!(r"HKCU\{sibling}\Deger"),
         format!(r"{TEST_REGISTRY_ROOT}\..\Deger"),

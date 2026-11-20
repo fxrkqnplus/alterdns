@@ -7,8 +7,23 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use alterdns_winsys::{
-    DirAccess, DirProblem, evaluate_security, is_reparse_point, verify_protected_dir,
+    DirAccess, DirProblem, create_protected_dir, evaluate_security, is_reparse_point,
+    verify_protected_chain, verify_protected_dir,
 };
+
+#[test]
+fn evaluate_security_fails_closed_on_object_aces_and_skips_deny() {
+    // İzin veren nesne ACE'si (OA) değerlendirilmez: dizin reddedilir.
+    let r = evaluate_security(
+        "O:SYD:P(A;OICI;FA;;;SY)(OA;;CC;bf967aba-0de6-11d0-a285-00aa003049e2;;BU)",
+    );
+    assert!(matches!(r, Err(DirProblem::Unreadable(_))), "{r:?}");
+    // Reddetme ACE'si yazma hakkı vermez.
+    assert_eq!(
+        evaluate_security("O:SYD:P(D;OICI;FA;;;BU)(A;OICI;FA;;;SY)"),
+        Ok(())
+    );
+}
 
 #[test]
 fn evaluate_security_accepts_admin_only_and_users_read() {
@@ -101,5 +116,26 @@ fn user_created_dir_is_untrusted() {
         verify_protected_dir(&d.join("yok")),
         Err(DirProblem::Missing)
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Zincirin her halkası denetlenir; kökün altında olmayan yaprak reddedilir. Var olan ama
+/// güvenilmeyen dizin "oluşturuldu" sayılmaz.
+#[test]
+fn chain_and_existing_dirs_are_verified() {
+    let d = temp("chain");
+    std::fs::create_dir_all(d.join("journal")).unwrap();
+    let r = verify_protected_chain(&d, &d.join("journal"));
+    assert!(
+        matches!(
+            r,
+            Err(DirProblem::UntrustedOwner | DirProblem::WritableByOthers)
+        ),
+        "{r:?}"
+    );
+    let r = verify_protected_chain(&d, std::path::Path::new(r"C:\baska\journal"));
+    assert!(matches!(r, Err(DirProblem::Unreadable(_))), "{r:?}");
+    let e = create_protected_dir(&d.join("journal"), DirAccess::AdminOnly).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
     let _ = std::fs::remove_dir_all(&d);
 }

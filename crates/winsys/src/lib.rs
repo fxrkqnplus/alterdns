@@ -15,7 +15,7 @@ mod token;
 
 pub use acl::{
     DirAccess, DirProblem, create_protected_dir, evaluate_security, is_reparse_point,
-    verify_protected_dir,
+    verify_protected_chain, verify_protected_dir,
 };
 pub use dirs::{KnownFolder, known_folder, system_dir, windows_dir};
 pub use dll::harden_dll_search;

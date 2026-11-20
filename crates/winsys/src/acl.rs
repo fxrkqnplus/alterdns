@@ -25,8 +25,10 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::core::{BOOL, PCWSTR};
 
-/// `ACCESS_ALLOWED_ACE_TYPE` (winnt.h).
+/// `ACCESS_ALLOWED_ACE_TYPE` ve `ACCESS_DENIED_ACE_TYPE` (winnt.h). Diğer türler (nesne,
+/// geri çağırmalı ACE'ler) değerlendirilmez; DACL'de bulunurlarsa dizin reddedilir.
 const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+const ACCESS_DENIED_ACE_TYPE: u8 = 1;
 /// Yazma sayılan haklar: veri yazma/ekleme, EA ve öznitelik yazma, alt öğe silme, silme,
 /// DACL ve sahip değiştirme, genel yazma ve genel tüm haklar.
 const WRITE_RIGHTS: u32 = 0x0000_0002
@@ -139,12 +141,24 @@ fn evaluate_sd(sd: PSECURITY_DESCRIPTOR) -> Result<(), DirProblem> {
         unsafe { GetAce(dacl, i, &mut ace) }.map_err(|e| DirProblem::Unreadable(e.to_string()))?;
         // SAFETY: Her ACE bir `ACE_HEADER` ile başlar.
         let header = unsafe { &*(ace as *const ACE_HEADER) };
-        if header.AceType != ACCESS_ALLOWED_ACE_TYPE {
-            continue;
+        match header.AceType {
+            ACCESS_ALLOWED_ACE_TYPE => {}
+            ACCESS_DENIED_ACE_TYPE => continue,
+            other => {
+                return Err(DirProblem::Unreadable(format!(
+                    "desteklenmeyen ACE türü: {other}"
+                )));
+            }
         }
-        // SAFETY: Tür izin ACE'sidir; düzeni `ACCESS_ALLOWED_ACE`'dir ve SID `SidStart`'ta başlar.
+        // SAFETY: Tür izin ACE'sidir; düzeni `ACCESS_ALLOWED_ACE`'dir.
         let allowed = unsafe { &*(ace as *const ACCESS_ALLOWED_ACE) };
-        let sid = PSID(std::ptr::from_ref(&allowed.SidStart) as *mut c_void);
+        // SAFETY: SID, ACE içinde `SidStart` konumunda başlar ve ACE'nin sonuna kadar uzanır;
+        // işaretçi ACE'nin başından türetilir ki bütün SID'i kapsasın.
+        let sid = PSID(unsafe {
+            ace.cast::<u8>()
+                .add(std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart))
+                .cast::<c_void>()
+        });
         if allowed.Mask & WRITE_RIGHTS != 0 && !trusted(sid) {
             return Err(DirProblem::WritableByOthers);
         }
@@ -168,11 +182,16 @@ pub fn is_reparse_point(path: &Path) -> std::io::Result<bool> {
     Ok(attrs & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0)
 }
 
-/// Dizin yoksa korumalı DACL ile oluşturur (üst dizin var olmalı). Varsa dokunmaz; güvenilir
-/// olup olmadığını `verify_protected_dir` söyler.
+/// Dizin yoksa korumalı DACL ile oluşturur (üst dizin var olmalı). Varsa dokunmaz ama
+/// güvenilir olmasını ister: değilse `PermissionDenied` döner.
 pub fn create_protected_dir(path: &Path, access: DirAccess) -> std::io::Result<()> {
     if path.exists() {
-        return Ok(());
+        return verify_protected_dir(path).map_err(|p| {
+            std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("dizin korumalı değil ({p:?}): {}", path.display()),
+            )
+        });
     }
     let sd = sd_from_sddl(access.sddl())?;
     let sa = SECURITY_ATTRIBUTES {
@@ -214,4 +233,31 @@ pub fn verify_protected_dir(path: &Path) -> Result<(), DirProblem> {
         return Err(DirProblem::Unreadable(format!("Win32 hata {}", err.0)));
     }
     evaluate_sd(sd.0)
+}
+
+/// `root`'tan `leaf`'e kadar her dizini denetler (ikisi dahil). Yalnızca yaprağı denetlemek
+/// yetmez: üst dizinin sahibi bir kullanıcıysa yaprağı denetimden sonra bir bağlantıyla
+/// değiştirebilir. `root`'un üstü (ör. `%ProgramData%`) denetlenmez; orada kullanıcılar dizin
+/// oluşturabilir ama başkasının dizinini taşıyamaz.
+pub fn verify_protected_chain(root: &Path, leaf: &Path) -> Result<(), DirProblem> {
+    let rest = leaf
+        .strip_prefix(root)
+        .map_err(|_| DirProblem::Unreadable(format!("{} kökün altında değil", leaf.display())))?;
+    let mut dir = root.to_path_buf();
+    verify_protected_dir(&dir)?;
+    for c in rest.components() {
+        match c {
+            std::path::Component::Normal(name) => {
+                dir.push(name);
+                verify_protected_dir(&dir)?;
+            }
+            _ => {
+                return Err(DirProblem::Unreadable(format!(
+                    "geçersiz yol bileşeni: {}",
+                    leaf.display()
+                )));
+            }
+        }
+    }
+    Ok(())
 }

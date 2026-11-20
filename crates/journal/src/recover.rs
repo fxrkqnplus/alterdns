@@ -59,15 +59,27 @@ pub(crate) fn recover_file(path: &Path, ops: &dyn SystemOps, targets: &Targets) 
     }
 }
 
+/// Txn kimliğindeki (`<bileşen>-<unix_ms>-<pid>`) başlangıç zamanı; okunamazsa 0.
+fn started_ms(path: &Path) -> u64 {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.rsplit('-').nth(1))
+        .and_then(|ms| ms.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Txn'ler en yeniden en eskiye geri alınır: aynı değeri art arda değiştiren iki txn'de yeni olan
+/// önce geri alınmazsa eskisi çakışma görür ve AlterDNS'in yazdığı değer yerinde kalır.
 pub fn recover_at_startup(dir: &Path, ops: &dyn SystemOps, targets: &Targets) -> RecoveryReport {
     let mut report = RecoveryReport::default();
-    let paths = match list(dir) {
+    let mut paths = match list(dir) {
         Ok(p) => p,
         Err(e) => {
             report.errors.push((dir.display().to_string(), e));
             return report;
         }
     };
+    paths.sort_by(|a, b| started_ms(b).cmp(&started_ms(a)).then_with(|| b.cmp(a)));
     for path in paths {
         let name = path
             .file_stem()

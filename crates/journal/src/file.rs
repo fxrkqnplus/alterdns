@@ -3,18 +3,25 @@
 
 //! Journal dosyası: txn başına bir JSON Lines dosyası. Her satır yazıldıktan sonra `sync_all`
 //! yapılır; satır diske yazılamazsa çağıran değişikliği uygulamaz. Yarım kalan son satır
-//! (elektrik kesintisi) yok sayılır; ortadaki bozuk satır kurtarmayı durdurur.
+//! (elektrik kesintisi) açılışta kesilip atılır; ortadaki bozuk satır kurtarmayı durdurur.
+//!
+//! Yeni bir satır türü, durum ya da ömür eklemek şema sürümünü artırmayı gerektirir: eski ikili
+//! bilinmeyen satırı ayrıştıramaz ve dosyayı (yalnızca onu) kurtaramaz.
 
 use std::fs::{File, OpenOptions};
-use std::io::Write as _;
+use std::io::{Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use alterdns_errors::{AdnsError, AdnsErrorCode};
 
-use crate::model::{ChangeRecord, Lifetime, Line, SCHEMA, Snapshot, now_ms, valid_txn_id};
+use crate::model::{ChangeRecord, Lifetime, Line, SCHEMA, Snapshot, State, now_ms, valid_txn_id};
 
+/// Yeni kayıtlar ve txn başlangıcı için dosya boyutu sınırı.
 pub const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+/// Durum geçişleri ve commit için sınır. Her kayıt en çok dört satır yazar (`Pending`, `Applied`,
+/// `Conflict`, `Reverted`/`Acknowledged`); böylece sınıra yakın bir txn de geri alınabilir.
+pub const MAX_READ_BYTES: u64 = 4 * MAX_FILE_BYTES;
 pub const MAX_VALUE_BYTES: usize = 4 * 1024;
 pub const LOCK_WAIT: Duration = Duration::from_secs(10);
 const LOCK_FILE: &str = ".journal.lock";
@@ -89,8 +96,13 @@ impl JournalFile {
         }
         let mut text = serde_json::to_string(line).map_err(apply_err)?;
         text.push('\n');
+        let limit = match line {
+            Line::Record(r) if r.state != State::Pending => MAX_READ_BYTES,
+            Line::TxnCommit { .. } => MAX_READ_BYTES,
+            _ => MAX_FILE_BYTES,
+        };
         let len = self.file.metadata().map_err(apply_err)?.len();
-        if len + text.len() as u64 > MAX_FILE_BYTES {
+        if len + text.len() as u64 > limit {
             return Err(apply_err(std::io::Error::other(
                 "journal dosyası çok büyük",
             )));
@@ -103,6 +115,11 @@ impl JournalFile {
 
     /// Var olan dosyayı geri alma ve kurtarma için açar. Dosya canlı bir txn'e aitse (kilitli)
     /// `None` döner: o txn'e dokunulmaz. Kilit alınırsa içerik aynı tutamaçtan okunur.
+    ///
+    /// Satır sonu olmayan son parça (yazılırken kesilmiş satır) dosyadan kesilir; yoksa sonraki
+    /// satırlar ona eklenir ve dosya bir daha okunamaz. Kesilen satır güvenle atılabilir: kayıt
+    /// diske tam yazılmadan sistem değiştirilmez, durum satırı kaybolursa kayıt yeniden
+    /// değerlendirilir.
     pub fn open(path: &Path) -> Result<Option<JournalFile>, AdnsError> {
         let txn_id = path
             .file_stem()
@@ -112,7 +129,7 @@ impl JournalFile {
             .to_string();
         let mut file = OpenOptions::new()
             .read(true)
-            .append(true)
+            .write(true)
             .open(path)
             .map_err(|e| revert_err(e.to_string()))?;
         match file.try_lock() {
@@ -124,12 +141,21 @@ impl JournalFile {
             .metadata()
             .map_err(|e| revert_err(e.to_string()))?
             .len();
-        if len > MAX_FILE_BYTES {
+        if len > MAX_READ_BYTES {
             return Err(revert_err("journal dosyası çok büyük".into()));
         }
-        let mut text = String::new();
-        std::io::Read::read_to_string(&mut file, &mut text)
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut file, &mut bytes).map_err(|e| revert_err(e.to_string()))?;
+        if bytes.last().is_some_and(|b| *b != b'\n') {
+            let keep = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+            bytes.truncate(keep);
+            file.set_len(keep as u64)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| revert_err(format!("yarım satır kesilemedi: {e}")))?;
+        }
+        file.seek(SeekFrom::End(0))
             .map_err(|e| revert_err(e.to_string()))?;
+        let text = String::from_utf8(bytes).map_err(|e| revert_err(e.to_string()))?;
         let lines = parse_lines(&text)?;
         Ok(Some(JournalFile {
             path: path.to_path_buf(),
@@ -205,6 +231,8 @@ fn parse_lines(text: &str) -> Result<Vec<Line>, AdnsError> {
         }
     }
     match lines.first() {
+        // Boş dosya: oluşturma, şema satırı diske yazılmadan kesildi; kayıt yok.
+        None if text.trim().is_empty() => Ok(lines),
         Some(Line::Schema { schema }) if *schema <= SCHEMA => Ok(lines),
         Some(Line::Schema { schema }) => {
             Err(revert_err(format!("daha yeni journal şeması: {schema}")))
