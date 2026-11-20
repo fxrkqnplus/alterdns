@@ -17,6 +17,7 @@ test-ops = []
 alterdns-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+windows-registry.workspace = true
 
 [lints]
 workspace = true

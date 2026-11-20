@@ -69,9 +69,29 @@ fn under_dir(target: &str, root: &Path) -> bool {
         && p.starts_with(root)
 }
 
+/// Kayıt defteri yolu sabit ürün kökü (ya da `test-ops` ile kullanıcının test anahtarı) ya da
+/// onun altı mı?
+fn registry_fixed_root(path: &str) -> bool {
+    let fixed = lower(path) == lower(REGISTRY_ROOT) || under_registry(path, REGISTRY_ROOT);
+    #[cfg(any(test, feature = "test-ops"))]
+    let fixed = fixed
+        || lower(path) == lower(TEST_REGISTRY_ROOT)
+        || under_registry(path, TEST_REGISTRY_ROOT);
+    fixed
+}
+
+/// Hedef sabit köklerden birinin altında mı? Gerçek sistem işlemleri `Targets`'tan bağımsız olarak
+/// bunu bir kez daha denetler.
+pub(crate) fn registry_target_fixed(target: &str) -> bool {
+    let ok = under_registry(target, REGISTRY_ROOT);
+    #[cfg(any(test, feature = "test-ops"))]
+    let ok = ok || under_registry(target, TEST_REGISTRY_ROOT);
+    ok
+}
+
 /// Geçici dizindeki `alterdns-*` alt dizini (yalnızca testler).
 #[cfg(any(test, feature = "test-ops"))]
-fn test_temp(target: &str) -> bool {
+pub(crate) fn test_temp(target: &str) -> bool {
     let p = Path::new(target);
     let temp = std::env::temp_dir();
     p.is_absolute()
@@ -90,14 +110,7 @@ fn test_temp(target: &str) -> bool {
 /// `test-ops` ile kullanıcının test anahtarıyla) sınırlıdır; `Targets` yanlış kurulsa bile
 /// başka bir anahtara dokunulmaz.
 pub fn target_allowed(kind: Kind, target: &str, t: &Targets) -> bool {
-    let registry_ok = |root: &str| {
-        let fixed = under_registry(root, REGISTRY_ROOT) || lower(root) == lower(REGISTRY_ROOT);
-        #[cfg(any(test, feature = "test-ops"))]
-        let fixed = fixed
-            || under_registry(root, TEST_REGISTRY_ROOT)
-            || lower(root) == lower(TEST_REGISTRY_ROOT);
-        fixed && under_registry(target, root)
-    };
+    let registry_ok = |root: &str| registry_fixed_root(root) && under_registry(target, root);
     match kind {
         Kind::ServiceCreate | Kind::ServiceConfig => {
             t.service == SERVICE_NAME && target.eq_ignore_ascii_case(SERVICE_NAME)
