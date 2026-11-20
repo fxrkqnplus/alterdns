@@ -36,6 +36,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterdns-journal"
+version = "0.0.0"
+dependencies = [
+ "alterdns-errors",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "alterdns-winsys"
 version = "0.0.0"
 dependencies = [

@@ -27,6 +27,7 @@ alterdns-errors = { path = "crates/errors" }
 alterdns-core = { path = "crates/core" }
 alterdns-winsys = { path = "crates/winsys" }
 alterdns-buildinfo = { path = "crates/buildinfo" }
+alterdns-journal = { path = "crates/journal" }
 
 [workspace.lints.rust]
 # FFI crate'leri (winsys) `#[allow(unsafe_code)]` ile açar; diğerleri `#![forbid(unsafe_code)]` kullanır.

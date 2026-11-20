@@ -1,0 +1,22 @@
+[package]
+name = "alterdns-journal"
+description = "AlterDNS journal: kaydet, uygula, geri al; bekçi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Testlerde kullanılan kendi nesnelerimiz (geçici dosya, HKCU test anahtarı).
+test-ops = []
+
+[dependencies]
+alterdns-errors.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
