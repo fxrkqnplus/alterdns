@@ -67,16 +67,45 @@ Faz 0 kapanış incelemesi (2026-11-15). Kapsam: `xtask lab` (journal, bekçi, i
 | Kimlik | Bulgu | Önem | Durum | Faz |
 |---|---|---|---|---|
 | S-1 | Yükseltilmiş spike, bekçi olarak ayrı bir `xtask.exe` çalıştırıyordu. Bu ikili kullanıcının yazabildiği `target/` altında ve yalnızca tarihine bakılarak denetleniyordu | Yüksek | **Düzeltildi.** Bekçi spike'ın kendi ikilisidir (`lab watchdog`); yükseltilmiş işlem kendisi dışında bir ikili çalıştırmaz. Kalan risk: yönetici terminalinde çalıştırılan her geliştirme ikilisi kullanıcının yazabildiği bir dizindedir. Ürün ikilileri Program Files'ta ve imzalı olur | Faz 0; ürün Faz 5 |
-| S-2 | PowerShell çağrıları devralınan `PSModulePath` ile modül yüklüyordu; ilk girdisi kullanıcının modül dizini. `system32()` yolu `SystemRoot` ortam değişkeninden geliyor | Orta | **Kısmen düzeltildi.** Modüller yalnızca `System32\WindowsPowerShell\v1.0\Modules`'dan yüklenir (test). `SystemRoot` xtask'ta doğrulanmıyor; spike'ın yükseltilmiş komutları doğruluyor | Faz 1: Windows dizini Win32 API'sinden alınır |
+| S-2 | PowerShell çağrıları devralınan `PSModulePath` ile modül yüklüyordu; ilk girdisi kullanıcının modül dizini. `system32()` yolu `SystemRoot` ortam değişkeninden geliyordu | Orta | **Düzeltildi.** Modüller yalnızca System32'den yüklenir. Sistem dizinleri Win32 API'sinden alınır (`winsys`); sahte `SystemRoot` ile alt işlem testi var | Faz 0–1 |
 | S-3 | Korunan değerler: `xtask lab` senaryosu baştaki okuma başarısızken de sürüyor, sondaki okuma başarısızsa başarılı dönüyordu. Betik bölüm hatalarını yutuyordu; boş kalan bir bölüm sahte bir "değişmedi" verebilirdi | Orta | **Düzeltildi.** Baştaki okuma başarısızsa senaryo başlamaz, sondaki başarısızsa koşu başarısız sayılır (lab ve spike). Her bölüm ayrı okunur; okunamayan ya da eksik bölüm okumayı başarısız yapar (test) | Faz 0 |
-| S-4 | `scan` UTF-8 olmayan dosyaları atlıyor: ikili anahtar dosyaları ve UTF-16 metin taranmıyor | Orta | **Açık.** `.gitignore`'a ek hassas uzantılar eklendi. Yasaklı uzantı ve yol listesi, UTF-16 çözümü `xtask check`'in tam sürümünde | Faz 1 |
-| S-5 | `scan` kalıp boşlukları: CGNAT ve link-local IPv4, IPv6, e-posta, MAC, ek anahtar biçimleri. Çalışma ağacını tarıyor, hazırlanan içeriği değil. Yerel terim listesi CI'da yok; push öncesi denetim yok | Orta | **Açık** | Faz 1 |
+| S-4 | `scan` UTF-8 olmayan dosyaları atlıyordu: ikili anahtar dosyaları ve UTF-16 metin taranmıyordu | Orta | **Düzeltildi.** UTF-8 ve UTF-16 (BOM'lu ve BOM'suz) çözülür; çözülemeyen metin bulgudur. Anahtar, sertifika, döküm ve iz dosyaları ile `lab/results/` ve `lab/local/` `.gitignore`'dan bağımsız bulgudur | Faz 1 |
+| S-5 | `scan` kalıp boşlukları: CGNAT ve link-local IPv4, IPv6, e-posta, MAC, ek anahtar biçimleri. Çalışma ağacını tarıyordu; push öncesi denetim yoktu | Orta | **Düzeltildi.** Yeni kalıplar eklendi. Tarama kaynakları: çalışma ağacı, indeks (`--staged`) ve push edilen her commit (`pre-push` kancası, `cargo xtask hooks install`). Kalan sınırlar aşağıda | Faz 1 |
 | S-6 | Spike'lar workspace dışında; `fmt`, `clippy`, `test` ve `deny` kapılarına girmiyor. `cargo xtask` takma adı `--locked` kullanmıyordu | Orta | **Kısmen düzeltildi.** Takma ad `--locked`. Spike'lar ürüne taşınana kadar workspace dışında ve derlenmeden durur. `spikes/ui` Faz 1 arayüzü bitince, `wintun` Faz 2'de, `sandbox` Faz 3'te taşınıp silinir. Ürün kodu workspace'te ve kapıların içindedir | Faz 1–3 |
 | S-7 | Kaynak taraması testi atlatılabiliyordu: parçalı argümanlar, eksik komut ve Win32 adları, sabit dizin ve uzantı listesi | Düşük | **Düzeltildi.** Bütün depo taranır (yerel ve üretilmiş dizinler hariç). Ek komut ve Win32 adları ile ek uzantılar var; parçalı argümanlar düzleştirilmiş metinde aranır (yerleştirilmiş örnekle denendi). Test bir uyarı düzeneğidir, güvenlik sınırı değildir | Faz 0 |
 | S-8 | Nesne durumu okuması geçici bir CIM hatasını "yok" sayıyordu. Kaldırılmamış bir rota journal'da geri alınmış görünebilirdi | Düşük | **Düzeltildi.** Yalnızca `ObjectNotFound` "yok" sayılır, diğer hatalar okuma hatasıdır. Bu makinede beş "bulunamadı" durumunda ölçüldü; ayrıca testle doğrulandı | Faz 0 |
 | S-9 | Yükseltilmiş yazma ve kilit yüzeyleri: journal dosyası önce denetlenip sonra oluşturuluyordu; kilit süresiz bekliyordu; test amaçlı `FileValue` işlemi üretim journal'ından erişilebilir; bekçi raporu yolunda bağlantı denetimi yok | Düşük | **Kısmen düzeltildi.** Journal `create_new` ile oluşturulur; kilit en çok 10 sn beklenir. Açık: `FileValue` `%TEMP%\alterdns-*` ve 4 KB ile sınırlı; bekçi raporu yolu | Faz 1 (journal crate'i) |
 | S-10 | Motor PID ile sonlandırılıyor; başlangıç zamanı doğrulamasıyla sonlandırma arasında küçük bir pencere var. "Kira ≤ 60 sn" geri almanın başlamasını sınırlıyor, bitmesini değil | Düşük | **Açık** | Faz 2: tutamaçla sonlandırma veya iş nesnesi |
 | S-11 | `deny.toml` izin listesi `CONTRIBUTING.md` kural 8'den farklıydı: kullanılmayan ve OSI onaylı olmayan `CC0-1.0` vardı; Slint'in pano bağımlılığının lisansı `BSL-1.0` iki listede de yoktu; `wildcards = "deny"` yoktu. svc denetimi `apps/svc` yokken atlanıyor | Bilgi | **Düzeltildi.** `CC0-1.0` çıkarıldı. `BSL-1.0` (OSI onaylı, GPL-3.0 ile uyumlu) eklendi; arayüz spike'ının lisans denetimi geçiyor. `wildcards = "deny"` eklendi. Kural 8 ve iki `deny` dosyası aynı listeyi kullanıyor. svc denetimi Faz 1'de etkinleşir | Faz 0; svc Faz 1 |
+
+### Faz 1A incelemesi (2026-11-20)
+
+Kapsam: `winsys` (`unsafe` Win32 çağrıları), `core` (yapılandırma ve log maskeleme), `scan` / `check` ve push kancası. Bulgular kod okumasıyla bulundu; düzeltilenler testle doğrulandı.
+
+**Düzeltilenler:**
+- **Log maskeleme (yüksek):** Kaçışlı ters eğik çizgili yollarda kullanıcı adı maskelenmiyordu. Artık maskeleniyor: kaçışlı ayraçlar (Rust `{:?}`, JSON), büyük harf, WSL ve UNC yolları kapsanıyor. Ad boşluk içerebildiği için bir ayraç gelene kadar maskelenir; fazla maskeleme güvenli yöndür.
+- **Push kancası:** Yalnızca son ağaca bakıyordu. Artık push edilen her commit'in eklediği ya da değiştirdiği dosyaları o commit'teki haliyle tarıyor; kanca girdisindeki commit kimlikleri yalnızca onaltılık olarak kabul ediliyor.
+- **Tarama:** Şunlar artık yakalanıyor:
+  - BOM'suz UTF-16 metin.
+  - PGP ve şifreli minisign anahtarları.
+  - Kelime içindeki token'lar; yeni token biçimleri.
+  - SSH anahtarları, `.env.*`, `.npmrc` ve benzeri dosyalar.
+  - Türkçe I/İ farkıyla yazılmış yerel terimler.
+
+  Sertifika parmak izleri ve uzun IPv6 adresleri artık yanlış pozitif vermiyor. `--tree` revizyonu `-` ile başlayamaz.
+- **Yapılandırma:**
+  - Geçici dosya benzersiz adla ve `create_new` ile açılır.
+  - Yedek alınamazsa uygulama varsayılanla devam eder.
+  - Bozuk dosya ezilmeden önce yedeklenir.
+  - Okunan dosya 64 KiB ile sınırlıdır.
+- **`winsys`:** Yol arabelleği büyütmesi 32 768 birimle sınırlıdır.
+
+**Kabul edilen sınırlar:**
+- **İkili içerik:** Resim, arşiv ve PDF içeriği taranmaz. Bunlar inceleme sırasında elle kontrol edilir.
+- **Yerel terimler:** Yerel terim listesi git dışındadır, bu yüzden CI'da çalışmaz. Kanca ve `cargo xtask check` yalnızca geliştirici makinesinde bu denetimi yapar.
+- **Kancayı atlamak:** Kanca `--no-verify` ile atlanabilir ve push edilen dalın kendi `xtask` kodunu çalıştırır. CI son ağacı yine tarar.
+- **`SHGetKnownFolderPath`:** Belgeler hata yolunda da belleğin serbest bırakılmasını ister, ancak `windows` crate'i bu yolda işaretçiyi döndürmez. Pratikte işaretçi NULL'dur; sızıntı olasılığı çok düşüktür.
+- **Makine yapılandırma dizini:** ACL'i Faz 1B/1C'de veri dizini sertleştirmesiyle (K20) ayarlanır. O zamana kadar servis bu dosyayı yazmaz.
 
 Temiz bulunan alanlar:
 - **Komut enjeksiyonu:** PowerShell'e giden değerler ASCII izin listesinden geçiyor.

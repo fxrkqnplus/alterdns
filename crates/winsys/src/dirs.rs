@@ -15,7 +15,11 @@ use windows::Win32::UI::Shell::{
     SHGetKnownFolderPath,
 };
 
+/// Windows yol uzunluğunun üst sınırı (UTF-16 birimi); bunu aşan değer hata sayılır.
+const MAX_PATH_UNITS: usize = 32_768;
+
 /// Uzunluk döndüren Win32 yol işlevleri için: arabellek yetmezse büyütüp yeniden çağırır.
+/// Sınır, beklenmedik bir API davranışında sonsuz büyümeyi önler.
 fn read_path(call: impl Fn(&mut [u16]) -> u32) -> std::io::Result<PathBuf> {
     let mut buf = vec![0u16; 260];
     loop {
@@ -28,7 +32,35 @@ fn read_path(call: impl Fn(&mut [u16]) -> u32) -> std::io::Result<PathBuf> {
             return Ok(PathBuf::from(OsString::from_wide(&buf)));
         }
         // Dönen değer gereken boyuttur (sondaki NUL dahil).
+        if n > MAX_PATH_UNITS {
+            return Err(std::io::Error::other(format!(
+                "yol çok uzun: {n} birim (en çok {MAX_PATH_UNITS})"
+            )));
+        }
         buf.resize(n + 1, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_path_grows_buffer_then_stops_at_limit() {
+        // Önce 300 birim ister, sonra sığar.
+        let p = read_path(|buf| {
+            if buf.len() < 300 {
+                300
+            } else {
+                buf[..3].copy_from_slice(&[u16::from(b'C'), u16::from(b':'), u16::from(b'\\')]);
+                3
+            }
+        })
+        .unwrap();
+        assert_eq!(p, PathBuf::from("C:\\"));
+        // Hep daha büyüğünü isteyen API sınırda durur.
+        let err = read_path(|buf| u32::try_from(buf.len() + 10).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("çok uzun"), "{err}");
     }
 }
 
