@@ -40,6 +40,7 @@ name = "alterdns-journal"
 version = "0.0.0"
 dependencies = [
  "alterdns-errors",
+ "alterdns-winsys",
  "serde",
  "serde_json",
  "windows-registry",

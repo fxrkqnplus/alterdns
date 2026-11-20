@@ -32,6 +32,33 @@ impl RecoveryReport {
     }
 }
 
+/// Tek bir journal dosyasının kurtarma sonucu.
+#[derive(Debug)]
+pub(crate) enum FileRecovery {
+    Reverted(RevertReport),
+    /// Commit edilmiş `Persistent` txn; dokunulmadı.
+    Kept,
+    /// Canlı bir işlem dosyayı tutuyor; dokunulmadı.
+    InUse,
+    Error(AdnsError),
+}
+
+/// Açılış kurtarması ve bekçi aynı kuralı kullanır.
+pub(crate) fn recover_file(path: &Path, ops: &dyn SystemOps, targets: &Targets) -> FileRecovery {
+    let mut file = match JournalFile::open(path) {
+        Ok(Some(f)) => f,
+        Ok(None) => return FileRecovery::InUse,
+        Err(e) => return FileRecovery::Error(e),
+    };
+    if file.committed() && file.lifetime() == Some(Lifetime::Persistent) {
+        return FileRecovery::Kept;
+    }
+    match revert_file(&mut file, ops, targets) {
+        Ok(r) => FileRecovery::Reverted(r),
+        Err(e) => FileRecovery::Error(e),
+    }
+}
+
 pub fn recover_at_startup(dir: &Path, ops: &dyn SystemOps, targets: &Targets) -> RecoveryReport {
     let mut report = RecoveryReport::default();
     let paths = match list(dir) {
@@ -46,24 +73,11 @@ pub fn recover_at_startup(dir: &Path, ops: &dyn SystemOps, targets: &Targets) ->
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut file = match JournalFile::open(&path) {
-            Ok(Some(f)) => f,
-            Ok(None) => {
-                report.in_use.push(name);
-                continue;
-            }
-            Err(e) => {
-                report.errors.push((name, e));
-                continue;
-            }
-        };
-        if file.committed() && file.lifetime() == Some(Lifetime::Persistent) {
-            report.kept.push(name);
-            continue;
-        }
-        match revert_file(&mut file, ops, targets) {
-            Ok(r) => report.txns.push((name, r)),
-            Err(e) => report.errors.push((name, e)),
+        match recover_file(&path, ops, targets) {
+            FileRecovery::Reverted(r) => report.txns.push((name, r)),
+            FileRecovery::Kept => report.kept.push(name),
+            FileRecovery::InUse => report.in_use.push(name),
+            FileRecovery::Error(e) => report.errors.push((name, e)),
         }
     }
     report

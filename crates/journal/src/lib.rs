@@ -12,6 +12,7 @@ pub mod ops;
 pub mod real;
 pub mod recover;
 pub mod txn;
+pub mod watchdog;
 
 pub use file::{DirLock, JournalFile, list, lock_dir, lock_dir_with};
 pub use model::{
@@ -24,3 +25,7 @@ pub use ops::{
 pub use real::RealOps;
 pub use recover::{RecoveryReport, recover_at_startup};
 pub use txn::{RevertReport, Txn, revert_file};
+pub use watchdog::{
+    LeaseMsg, MAINT_EXE, MAX_LEASE_SECS, WatchdogHandle, WatchdogOutcome, WatchdogReport,
+    WatchdogStatus, parse_line, report_path, run_watchdog,
+};

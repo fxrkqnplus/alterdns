@@ -38,6 +38,11 @@ pub struct JournalFile {
     file: File,
 }
 
+/// Txn dosyasının yolu: `<dizin>\<txn>.jsonl`. Kimlik önceden doğrulanmış olmalıdır.
+pub(crate) fn txn_path(dir: &Path, txn_id: &str) -> PathBuf {
+    dir.join(format!("{txn_id}.jsonl"))
+}
+
 impl JournalFile {
     /// Yeni txn dosyası (`create_new`): şema ve `TxnBegin` satırları yazılır.
     pub fn create(
@@ -49,7 +54,7 @@ impl JournalFile {
         if !valid_txn_id(txn_id) {
             return Err(revert_err(format!("geçersiz txn kimliği: {txn_id:?}")));
         }
-        let path = dir.join(format!("{txn_id}.jsonl"));
+        let path = txn_path(dir, txn_id);
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
