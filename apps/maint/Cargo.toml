@@ -1,0 +1,29 @@
+[package]
+name = "alterdns-maint"
+description = "AlterDNS bakım ikilisi: geri alma bekçisi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Testler: journal dizini ALTERDNS_TEST_JOURNAL_DIR'den, geçici dosya değerleri.
+test-ops = ["alterdns-journal/test-ops"]
+
+[dependencies]
+alterdns-core.workspace = true
+alterdns-errors.workspace = true
+alterdns-journal.workspace = true
+alterdns-winsys.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[build-dependencies]
+alterdns-buildinfo.workspace = true
+
+[lints]
+workspace = true

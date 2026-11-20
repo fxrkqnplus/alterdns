@@ -47,6 +47,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterdns-maint"
+version = "0.0.0"
+dependencies = [
+ "alterdns-buildinfo",
+ "alterdns-core",
+ "alterdns-errors",
+ "alterdns-journal",
+ "alterdns-winsys",
+ "serde_json",
+]
+
+[[package]]
 name = "alterdns-winsys"
 version = "0.0.0"
 dependencies = [

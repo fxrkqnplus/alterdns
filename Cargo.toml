@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["xtask", "crates/*"]
+members = ["xtask", "crates/*", "apps/*"]
 # Spike'lar ürün kodu değildir; kendi Cargo.lock'larıyla ayrı derlenir.
 exclude = ["spikes"]
 
