@@ -10,7 +10,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+alterdns-core.workspace = true
 alterdns-errors.workspace = true
+alterdns-ipc.workspace = true
+alterdns-journal.workspace = true
 alterdns-winsys.workspace = true
 anyhow.workspace = true
 hickory-proto = "0.26.3"
@@ -21,6 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 socket2 = "0.6.5"
 toml.workspace = true
+windows-registry.workspace = true
 
 [lints]
 workspace = true

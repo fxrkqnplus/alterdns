@@ -6,8 +6,10 @@
 #![forbid(unsafe_code)]
 
 pub mod check;
+pub mod devinstall;
 pub mod docs_errors;
 pub mod hooks;
 pub mod lab;
+pub mod residue;
 pub mod scan;
 pub mod testutil;

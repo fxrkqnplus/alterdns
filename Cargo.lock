@@ -1617,7 +1617,10 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 name = "xtask"
 version = "0.0.0"
 dependencies = [
+ "alterdns-core",
  "alterdns-errors",
+ "alterdns-ipc",
+ "alterdns-journal",
  "alterdns-winsys",
  "anyhow",
  "hickory-proto",
@@ -1628,6 +1631,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "toml",
+ "windows-registry",
 ]
 
 [[package]]

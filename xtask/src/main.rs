@@ -7,7 +7,17 @@
 
 use std::process::ExitCode;
 
-use xtask::{check, docs_errors, hooks, lab};
+use xtask::{check, devinstall, docs_errors, hooks, lab};
+
+fn report(name: &str, r: anyhow::Result<()>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("xtask {name} başarısız: {e:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -46,6 +56,16 @@ fn main() -> ExitCode {
                 }
             }
         }
+        // Sistem değiştirir: yalnızca kullanıcının yönetici terminalinde, onayıyla.
+        Some("dev-install") => {
+            let profile = if args.get(1).map(String::as_str) == Some("--debug") {
+                "debug"
+            } else {
+                "release"
+            };
+            report("dev-install", devinstall::dev_install(profile))
+        }
+        Some("dev-uninstall") => report("dev-uninstall", devinstall::dev_uninstall()),
         Some("lab") => match lab::run(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -55,7 +75,7 @@ fn main() -> ExitCode {
         },
         _ => {
             eprintln!(
-                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | hooks install | lab <komut>"
+                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
             );
             ExitCode::from(2)
         }
