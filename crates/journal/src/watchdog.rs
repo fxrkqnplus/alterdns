@@ -240,7 +240,9 @@ impl WatchdogHandle {
                 format!("bekçi ikilisi yok: {}", exe.display()),
             ));
         }
-        if alterdns_winsys::is_elevated()? {
+        // Test derlemeleri (CI yönetici belirteciyle koşar, ikililer target\ altında) bu denetimi
+        // atlar; ürün derlemesinde aynen kalır.
+        if !cfg!(any(test, feature = "test-ops")) && alterdns_winsys::is_elevated()? {
             let dir = exe.parent().ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::NotFound, "bekçi dizini yok")
             })?;

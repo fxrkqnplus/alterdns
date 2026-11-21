@@ -193,7 +193,9 @@ pub fn create_protected_dir(path: &Path, access: DirAccess) -> std::io::Result<(
             )
         });
     }
-    let sd = sd_from_sddl(access.sddl())?;
+    // Sahip açıkça Administrators: yükseltilmemiş bir işlem bunu veremez ve oluşturma başarısız
+    // olur (kapalı yönde hata).
+    let sd = sd_from_sddl(&format!("O:BA{}", access.sddl()))?;
     let sa = SECURITY_ATTRIBUTES {
         nLength: u32::try_from(std::mem::size_of::<SECURITY_ATTRIBUTES>()).unwrap_or(0),
         lpSecurityDescriptor: sd.0.0,
@@ -233,6 +235,34 @@ pub fn verify_protected_dir(path: &Path) -> Result<(), DirProblem> {
         return Err(DirProblem::Unreadable(format!("Win32 hata {}", err.0)));
     }
     evaluate_sd(sd.0)
+}
+
+/// Açık tutulduğu sürece dizini sabitler: tutamaç `FILE_SHARE_DELETE` olmadan açılır, bu yüzden
+/// dizin taşınamaz ya da silinemez. Reparse noktası ve dizin olmayan yol reddedilir.
+pub struct DirPin {
+    _handle: std::fs::File,
+}
+
+pub fn pin_dir(path: &Path) -> std::io::Result<DirPin> {
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    /// `FILE_SHARE_READ | FILE_SHARE_WRITE` (silme paylaşımı yok).
+    const SHARE: u32 = 0x1 | 0x2;
+    /// `FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`.
+    const FLAGS: u32 = 0x0200_0000 | 0x0020_0000;
+    let handle = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(SHARE)
+        .custom_flags(FLAGS)
+        .open(path)?;
+    let meta = handle.metadata()?;
+    if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 || !meta.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("sabitlenecek yol düz bir dizin değil: {}", path.display()),
+        ));
+    }
+    Ok(DirPin { _handle: handle })
 }
 
 /// `root`'tan `leaf`'e kadar her dizini denetler (ikisi dahil). Yalnızca yaprağı denetlemek

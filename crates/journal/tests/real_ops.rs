@@ -192,11 +192,11 @@ fn real_ops_rejects_targets_outside_fixed_roots() {
 
 #[test]
 fn kinds_of_later_phases_are_not_supported_yet() {
+    // `ServiceCreate` ve `FileInstall` burada sınanmaz: gerçek işlemleri vardır ve kurulu bir
+    // makinede `AlterDNS` servisini silebilirlerdi. Onların doğrulaması `tests/install.rs`'te.
     for kind in [
-        Kind::ServiceCreate,
         Kind::ServiceConfig,
         Kind::StartupEntry,
-        Kind::FileInstall,
         Kind::UninstallEntry,
         Kind::Unknown,
     ] {

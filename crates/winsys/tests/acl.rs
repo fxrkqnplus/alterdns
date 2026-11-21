@@ -7,9 +7,24 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use alterdns_winsys::{
-    DirAccess, DirProblem, create_protected_dir, evaluate_security, is_reparse_point,
+    DirAccess, DirProblem, create_protected_dir, evaluate_security, is_reparse_point, pin_dir,
     verify_protected_chain, verify_protected_dir,
 };
+
+#[test]
+fn pinned_dir_cannot_be_renamed() {
+    let d = temp("pin");
+    let dir = d.join("journal");
+    std::fs::create_dir_all(&dir).unwrap();
+    let pin = pin_dir(&dir).unwrap();
+    assert!(std::fs::rename(&dir, d.join("baska")).is_err());
+    // Sabitlenmiş dizinde dosya oluşturmak serbesttir.
+    std::fs::write(dir.join("x.jsonl"), "").unwrap();
+    drop(pin);
+    std::fs::rename(&dir, d.join("baska")).unwrap();
+    assert!(pin_dir(&d.join("baska").join("x.jsonl")).is_err());
+    let _ = std::fs::remove_dir_all(&d);
+}
 
 #[test]
 fn evaluate_security_fails_closed_on_object_aces_and_skips_deny() {

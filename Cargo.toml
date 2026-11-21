@@ -26,6 +26,8 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 windows = "0.62.2"
 # 0.6.x, `windows` 0.62 ile aynı alt crate'leri (link/result/strings) kullanır; 0.100 bunları çoğaltır.
 windows-registry = "0.6.1"
+windows-service = "0.8.1"
+sha2 = "0.11.1"
 winresource = "0.1.34"
 alterdns-errors = { path = "crates/errors" }
 alterdns-core = { path = "crates/core" }
