@@ -173,13 +173,17 @@ Kapsam: `winsys` (named pipe, çağıran belirteci, SCM, dizin sabitleme), `ipc`
 - **`vcruntime140.dll` bağımlılığı:** Yalnızca System32'den yükleme bayrağıyla birlikte, VC++ Redistributable olmayan makinede ikililer açılmazdı. C çalışma zamanı statik bağlanır; testler statik içe aktarmaların hepsinin KnownDLL, `ntdll` ya da API kümesi olduğunu PE'den doğrular. Uygulama dizinine bırakılan DLL'i yükleyecek bir içe aktarma kalmadığından DLL bırakma testinin yerini bu denetim alır.
 - **Eski bir test kurulu servisi silebilirdi:** `ServiceCreate` yazımını `Absent` ile çağırıyordu. Kaldırıldı; servis ikilisi doğrulaması saf bir işlevle sınanır.
 
+- **Servis oluşturma tutamacında `SERVICE_START` yoktu (gerçek koşuda bulundu):** `SC_ACTION_RESTART` başarısızlık eylemleri bu hakkı ister. İlk yönetici koşusu "Access is denied" ile geri alındı; kopyalanan iki dosya geri alındı ve kalıntı kalmadı. Hak eklendi; her ayar adımı hatasında adını taşır. Servis silinirken işlemin bitmesi de beklenir: "durdu" bildiriminden sonra işlem ikilisini bir süre kilitli tutabilir.
+
+**Gerçek koşu (2026-11-22, kullanıcının yönetici terminali):** `dev-install` → T-SVC-001 ve T-SVC-003 (tırnaklı yol, otomatik başlangıç, LocalSystem, hizmet SID'i, 5/30/60 sn, 86 400 sn, hata kodunda kurtarma, ayrıcalıklar) → canlı IPC (sahibi SYSTEM, durum, yetkisiz yöntem reddi) → `dev-uninstall` (üç kayıt geri alındı, kalıntı taraması temiz). Hop limit, DNS ve DoH önce ve sonra aynı.
+
 **İnceleme bulguları (düzeltildi):**
 - **Pipe sahibi (orta, işlevsel):** İstemci sahibin SYSTEM olmasını ister. Ancak DACL'de sahip yoktu ve servis belirtecinin varsayılan sahibi Administrators olabilirdi; sağlık denetimi ve tepsi bağlanamazdı. Güvenlik tanımlayıcısı artık `O:SY` ile başlar. Kullanıcı kendi açtığı pipe'a bu sahibi veremez.
 - **`dev-install --debug` test derlemesini kurabilirdi (düşük):** `cargo xtask check` `test-ops` derlemelerini `target\debug`'a yazar. Artık `dev-install` test dizelerini taşıyan ikiliyi reddeder; ürün derlemesinde bu dizelerin olmadığı test edilir.
 - **Kimlik doğrulama öncesi bellek büyütme (düşük):** İlk mesaj 4 KiB, sonraki istekler 64 KiB ile sınırlı; aşan gövde okunmadan bağlantı kapanır.
 
 **Sertleştirmeler (düzeltildi):**
-- `SeImpersonatePrivilege` servisin ayrıcalıklarından çıkarıldı; tanımlama düzeyi kimlik okumaya yeter. Gerçek serviste Görev 9'da doğrulanır.
+- `SeImpersonatePrivilege` servisin ayrıcalıklarından çıkarıldı; tanımlama düzeyi kimlik okumaya yeter. Gerçek serviste doğrulandı: ayrıcalık listesi yalnızca `SeChangeNotifyPrivilege`, normal kullanıcı bağlanıp durum alabiliyor, ayrıcalıklı yöntem reddediliyor.
 - `OVERLAPPED`, işlem sürerken yalnızca ham işaretçiyle kullanılır; çekirdeğin yazdığı yapıya Rust referansı tutulmaz.
 - `logs` dizini de servis boyunca sabitlenir.
 - Gereken ayrıcalık listesinin okunması arabellek sonuyla sınırlıdır.
