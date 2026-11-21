@@ -12,6 +12,7 @@ mod acl;
 mod dirs;
 mod dll;
 mod pipe;
+mod screen;
 mod service;
 mod token;
 
@@ -23,6 +24,10 @@ pub use dirs::{KnownFolder, known_folder, system_dir, windows_dir};
 pub use dll::harden_dll_search;
 pub use pipe::{
     CallerToken, PipeConn, PipeListener, PipeOwner, Stopper, connect_pipe, current_session_id,
+};
+pub use screen::{
+    Edge, Placement, Rect, center_in, centered_on_cursor_monitor, cursor_pos, monitor_at,
+    place_flyout, taskbar_edge,
 };
 pub use service::{
     REQUIRED_PRIVILEGES, RESET_PERIOD_SECS, RESTART_DELAYS_SECS, ServiceConfigReport, ServiceSpec,

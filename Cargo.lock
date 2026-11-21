@@ -99,6 +99,7 @@ dependencies = [
 name = "alterdns-winsys"
 version = "0.0.0"
 dependencies = [
+ "proptest",
  "windows",
  "windows-service",
 ]
