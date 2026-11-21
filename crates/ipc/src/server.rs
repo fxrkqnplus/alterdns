@@ -29,7 +29,16 @@ use crate::version::version_compatible;
 /// Ürün DACL'i: SYSTEM ve Administrators tam; etkileşimli kullanıcı yalnızca okur ve yazar
 /// (`FILE_GENERIC_READ | FILE_WRITE_DATA`). `FILE_APPEND_DATA` pipe'larda
 /// `FILE_CREATE_PIPE_INSTANCE` demektir ve verilmez: kullanıcı aynı ada sunucu örneği açamaz.
-pub const PRODUCT_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12008b;;;IU)";
+///
+/// Sahip açıkça SYSTEM'dir (`O:SY`): istemci sahibin SYSTEM olmasını ister (K21) ve servis
+/// belirtecinin varsayılan sahibi Administrators olabilir. Sahibi SYSTEM olan bir pipe'ı
+/// yalnızca SYSTEM açabilir; kullanıcı kendi açtığı pipe'a bu sahibi veremez.
+pub const PRODUCT_SDDL: &str = "O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12008b;;;IU)";
+/// İlk mesaj (`svc.hello`, kimlik doğrulanmadan önce) en çok 4 KiB.
+pub const MAX_HELLO: usize = 4 * 1024;
+/// İstemciden gelen istek en çok 64 KiB (Faz 1 yöntemlerinin parametreleri küçüktür).
+/// Yanıt ve olaylar `MAX_MESSAGE`'a (1 MiB) kadar olabilir.
+pub const MAX_REQUEST: usize = 64 * 1024;
 /// Testler: sahibi (test işlemi) kendi örneklerini de açabilir.
 #[cfg(feature = "test-ops")]
 pub const TEST_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12008b;;;IU)(A;;GA;;;OW)";
@@ -212,14 +221,16 @@ fn accept_loop(listener: &PipeListener, sh: &Arc<Shared>) {
 }
 
 /// Bir mesaj okur: önek `prefix_timeout` içinde, gövde `body_timeout` içinde gelmelidir.
+/// `max`'tan uzun gövde okunmadan reddedilir (JSON ayrıştırması belleği büyütebilir).
 fn read_message(
     pipe: &PipeConn,
     prefix_timeout: Option<Duration>,
     body_timeout: Duration,
+    max: usize,
 ) -> Option<Message> {
     let mut prefix = [0u8; 4];
     pipe.read_exact_timeout(&mut prefix, prefix_timeout).ok()?;
-    let n = decode_len(prefix).ok()?;
+    let n = decode_len(prefix).ok().filter(|n| *n <= max)?;
     let mut body = vec![0u8; n];
     pipe.read_exact_timeout(&mut body, Some(body_timeout))
         .ok()?;
@@ -249,7 +260,7 @@ fn hello(params: &Value, cfg: &ServerConfig) -> Result<Value, AdnsError> {
 fn serve(conn: &Arc<Conn>, sh: &Arc<Shared>) {
     let t = sh.cfg.io_timeout;
     // El sıkışma: ilk çerçeve süresinde gelmeli. Kimlik ancak bir okuma sonrası alınabilir.
-    let Some(Message::Request(first)) = read_message(&conn.pipe, Some(t), t) else {
+    let Some(Message::Request(first)) = read_message(&conn.pipe, Some(t), t, MAX_HELLO) else {
         conn.pipe.close();
         return;
     };
@@ -276,7 +287,7 @@ fn serve(conn: &Arc<Conn>, sh: &Arc<Shared>) {
         return;
     }
     let mut subscription: Option<u64> = None;
-    while let Some(Message::Request(req)) = read_message(&conn.pipe, None, t) {
+    while let Some(Message::Request(req)) = read_message(&conn.pipe, None, t, MAX_REQUEST) {
         let resp = handle(&req, &caller, conn, sh, &mut subscription);
         if conn.send(&Message::Response(resp), t).is_err() {
             break;

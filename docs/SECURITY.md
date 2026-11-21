@@ -133,7 +133,7 @@ Kapsam: `winsys` (korumalı dizin, sahip ve DACL denetimi, belirteç yükseltmes
 - **Askıdaki ebeveyn (Faz 2):** Kira dolduğunda dosyayı tutan ebeveyn sonlandırılmaz. Bekçi 10 sn bekler ve geri almayı açılış kurtarmasına bırakır (raporda `InUse`). S-10 ile birlikte tutamaçla izlenecek.
 - **Paketleme (Faz 5):** Ürün paketi, `test-ops` olmadan ayrı bir derlemeyle üretilir. İkilide `ALTERDNS_TEST_JOURNAL_DIR` dizesinin bulunmadığı doğrulanır, çünkü `xtask check` test derlemesini aynı `target` dizinine yazar.
 
-**Kabul edilen sınırlar:**
+**Kabul edilen sınırlar (1B):**
 - **Bekçi stdin satır uzunluğu sınırsız:** Boruyu yalnızca bekçiyi başlatan işlem tutar ve o işlem güvenilirdir.
 - **Yeni satır türü şema artışı ister:** Eski bir ikili bilinmeyen bir satır türünü, durumu ya da ömrü ayrıştıramaz ve o dosyayı kurtaramaz. Diğer dosyalar etkilenmez. Bilinmeyen değişiklik türü ise zaten "açık, dokunulmadı" sayılır.
 
@@ -153,3 +153,39 @@ Temiz bulunan alanlar:
 ## 7. Güvenlik açığı bildirimi
 
 Yayın öncesinde depoya `SECURITY.md` (GitHub biçiminde) eklenir. İçeriği: bildirim yolu (e-posta veya GitHub Security Advisories) ve yanıt süresi hedefi.
+
+### Faz 1C incelemesi (2026-11-21)
+
+Kapsam: `winsys` (named pipe, çağıran belirteci, SCM, dizin sabitleme), `ipc` (çerçeve, yetki, sunucu, istemci, olaylar), `alterdns-svc`, `journal` kurulum işlemleri ve `xtask dev-install`. Plan aşamasında tasarım ayrıca incelendi; bulgular kod okumasıyla ve ölçümle bulundu, düzeltilenler testle doğrulandı.
+
+**Tasarım aşamasında düzeltilenler:**
+- **Pipe DACL'i (yüksek):**
+  - Belgelerdeki "INTERACTIVE oku/yaz" (`GRGW`), `FILE_APPEND_DATA` = `FILE_CREATE_PIPE_INSTANCE` verir.
+  - Bu makinede ölçüldü: normal kullanıcı, servis çalışırken aynı ada ikinci bir sunucu örneği açabiliyordu. Örnekler aynı güvenlik tanımlayıcısını paylaştığından istemcinin sahip denetimi bunu ayırt edemezdi.
+  - Artık IU yalnızca `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`) alır; test, kullanıcının yeni örnek açamadığını doğrular.
+- **Kimliğe bürünme:** Yalnızca pipe'tan veri okunduktan sonra çalışır. Tanımlama düzeyindeki belirteç ancak `OpenAsSelf = TRUE` ile açılır.
+- **Örtüşmeli G/Ç:** İptalden sonra tamamlanma her zaman beklenir; arabellek ve `OVERLAPPED` o ana kadar yaşar.
+- **Ad boşa çıkmaz:** Bir istemci bağlanınca sonraki dinleyen örnek hemen açılır.
+- **CI yönetici belirteciyle koşar:** Testler `dev-install`'ı hiçbir zaman çağırmaz; yönetici terminalinde ya da CI'da gerçek kuruluma dönüşürdü.
+
+**Uygulamada bulunanlar:**
+- **Hata kodu kayboluyordu:** Hata yanıtından hemen sonra `DisconnectNamedPipe` okunmamış veriyi siliyordu. Artık istemcinin kapatması beklenir.
+- **`vcruntime140.dll` bağımlılığı:** Yalnızca System32'den yükleme bayrağıyla birlikte, VC++ Redistributable olmayan makinede ikililer açılmazdı. C çalışma zamanı statik bağlanır; testler statik içe aktarmaların hepsinin KnownDLL, `ntdll` ya da API kümesi olduğunu PE'den doğrular. Uygulama dizinine bırakılan DLL'i yükleyecek bir içe aktarma kalmadığından DLL bırakma testinin yerini bu denetim alır.
+- **Eski bir test kurulu servisi silebilirdi:** `ServiceCreate` yazımını `Absent` ile çağırıyordu. Kaldırıldı; servis ikilisi doğrulaması saf bir işlevle sınanır.
+
+**İnceleme bulguları (düzeltildi):**
+- **Pipe sahibi (orta, işlevsel):** İstemci sahibin SYSTEM olmasını ister. Ancak DACL'de sahip yoktu ve servis belirtecinin varsayılan sahibi Administrators olabilirdi; sağlık denetimi ve tepsi bağlanamazdı. Güvenlik tanımlayıcısı artık `O:SY` ile başlar. Kullanıcı kendi açtığı pipe'a bu sahibi veremez.
+- **`dev-install --debug` test derlemesini kurabilirdi (düşük):** `cargo xtask check` `test-ops` derlemelerini `target\debug`'a yazar. Artık `dev-install` test dizelerini taşıyan ikiliyi reddeder; ürün derlemesinde bu dizelerin olmadığı test edilir.
+- **Kimlik doğrulama öncesi bellek büyütme (düşük):** İlk mesaj 4 KiB, sonraki istekler 64 KiB ile sınırlı; aşan gövde okunmadan bağlantı kapanır.
+
+**Sertleştirmeler (düzeltildi):**
+- `SeImpersonatePrivilege` servisin ayrıcalıklarından çıkarıldı; tanımlama düzeyi kimlik okumaya yeter. Gerçek serviste Görev 9'da doğrulanır.
+- `OVERLAPPED`, işlem sürerken yalnızca ham işaretçiyle kullanılır; çekirdeğin yazdığı yapıya Rust referansı tutulmaz.
+- `logs` dizini de servis boyunca sabitlenir.
+- Gereken ayrıcalık listesinin okunması arabellek sonuyla sınırlıdır.
+
+**Açık ve kabul edilenler:**
+- **Olay yönlendirme oturuma göredir:** Aynı oturumdaki iki kullanıcı (ör. `runas`) kullanıcıya özgü olayları paylaşır. Faz 1'de kullanıcıya özgü olay yok. Gelince yönlendirmeye SID de eklenir.
+- **Boşta bağlantılar:** El sıkışmadan sonra boşta kalma süresi sınırı yok; bir kullanıcı 16 örneğin hepsini tutabilir. Yerel hizmet engelleme olarak kabul edildi; oturum başına sınır Faz 6'da değerlendirilir.
+- **`verify_protected_dir` yol üzerinden denetler:** Reparse ve güvenlik okuması arasında küçük bir pencere var. Üst dizinler yalnızca yöneticilerin yazabildiği dizinlerdir ve servis dizinleri sabitler. Tutamaçla denetim Faz 6'da.
+- **Doğrulanmadı:** RDP oturumunun belirtecinde `INTERACTIVE` grubunun bulunduğu (K10) bu makinede ölçülmedi.

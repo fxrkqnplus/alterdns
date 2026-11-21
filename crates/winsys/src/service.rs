@@ -32,7 +32,10 @@ use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 /// Servis işleminin belirtecinde kalan ayrıcalıklar. Faz 1 işleri (pipe, tanımlama düzeyinde
 /// belirteç okuma, kendi kayıt defteri anahtarı ve dosyaları) başka ayrıcalık istemez; servisin
 /// başlattığı `alterdns-maint` de bu belirteci devralır. Faz 2'de motorla genişler.
-pub const REQUIRED_PRIVILEGES: [&str; 2] = ["SeChangeNotifyPrivilege", "SeImpersonatePrivilege"];
+///
+/// `SeImpersonatePrivilege` bilerek yoktur: istemci tanımlama düzeyinde bağlanır, kimlik okumak
+/// için yeterlidir. Bu ayrıcalık yerel yetki yükseltme saldırılarında sık kullanılır.
+pub const REQUIRED_PRIVILEGES: [&str; 1] = ["SeChangeNotifyPrivilege"];
 pub const RESTART_DELAYS_SECS: [u64; 3] = [5, 30, 60];
 pub const RESET_PERIOD_SECS: u64 = 86_400;
 
@@ -139,22 +142,27 @@ fn required_privileges(svc: &Service) -> io::Result<Vec<String>> {
     let list = unsafe {
         (*buf.as_ptr().cast::<SERVICE_REQUIRED_PRIVILEGES_INFOW>()).pmszRequiredPrivileges
     };
-    let mut out = Vec::new();
     if list.0.is_null() {
-        return Ok(out);
+        return Ok(Vec::new());
     }
-    let mut p = list.0;
-    loop {
-        // SAFETY: `p` listenin içindedir; her öğe NUL ile biter, liste boş öğeyle biter.
-        let s = unsafe { PWSTR(p).to_string() }.map_err(io::Error::other)?;
-        if s.is_empty() {
-            break;
-        }
-        // SAFETY: Öğenin uzunluğu + NUL kadar ilerlemek bir sonraki öğeye götürür.
-        p = unsafe { p.add(s.encode_utf16().count() + 1) };
-        out.push(s);
-    }
-    Ok(out)
+    // Liste arabelleğin içinde olmalı; okuma arabelleğin sonuyla sınırlıdır.
+    let base = buf.as_ptr() as usize;
+    let start = (list.0 as usize)
+        .checked_sub(base)
+        .filter(|s| *s < needed as usize && s % 2 == 0)
+        .ok_or_else(|| io::Error::other("ayrıcalık listesi arabellek dışında"))?;
+    // SAFETY: `start` arabelleğin içinde ve 2'ye hizalıdır; uzunluk arabelleğin sonunu aşmaz.
+    let words = unsafe {
+        std::slice::from_raw_parts(
+            buf.as_ptr().cast::<u8>().add(start).cast::<u16>(),
+            (needed as usize - start) / 2,
+        )
+    };
+    Ok(words
+        .split(|w| *w == 0)
+        .take_while(|s| !s.is_empty())
+        .map(String::from_utf16_lossy)
+        .collect())
 }
 
 /// Servisi K11 ayarlarıyla oluşturur. Ayarlardan biri uygulanamazsa servis silinir.

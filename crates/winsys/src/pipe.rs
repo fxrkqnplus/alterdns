@@ -106,13 +106,17 @@ fn millis(d: Duration) -> u32 {
 
 /// Bekleyen bir G/Ç işlemini bitirir. Zaman aşımı ya da durdurmada işlem iptal edilir ve
 /// iptalin tamamlanması beklenir; `ov` ve arabellek ancak bundan sonra serbest kalabilir.
+///
+/// `ov` ham işaretçidir: işlem sürerken çekirdek yapıya yazar, bu yüzden ona Rust referansı
+/// tutulmaz. `event` aynı yapının olayıdır (işlem başlamadan önce okunmuş).
 fn wait_io(
     h: HANDLE,
-    ov: &OVERLAPPED,
+    ov: *mut OVERLAPPED,
+    event: HANDLE,
     timeout: Option<Duration>,
     stop: Option<HANDLE>,
 ) -> io::Result<u32> {
-    let mut handles = vec![ov.hEvent];
+    let mut handles = vec![event];
     if let Some(s) = stop {
         handles.push(s);
     }
@@ -123,12 +127,12 @@ fn wait_io(
     if !completed {
         // SAFETY: `ov` bu tutamaçta bekleyen işlemindir.
         unsafe {
-            let _ = CancelIoEx(h, Some(ov));
+            let _ = CancelIoEx(h, Some(ov.cast_const()));
         }
     }
     let mut n = 0u32;
     // SAFETY: `ov` bu tutamaçtaki işlemindir; `bWait = true` iptal dahil tamamlanmayı bekler.
-    let r = unsafe { GetOverlappedResult(h, ov, &mut n, true) };
+    let r = unsafe { GetOverlappedResult(h, ov.cast_const(), &mut n, true) };
     match (completed, r) {
         (_, Ok(())) => Ok(n),
         (true, Err(e)) => Err(os_error(e)),
@@ -260,17 +264,18 @@ impl PipeListener {
                 },
             };
             let ev = new_event()?;
-            let ov = OVERLAPPED {
+            let mut ov = OVERLAPPED {
                 hEvent: ev.0,
                 ..Default::default()
             };
+            let ovp: *mut OVERLAPPED = &raw mut ov;
             // SAFETY: `ov` ve olayı, bekleme tamamlanana kadar bu çerçevede yaşar.
-            let r = unsafe { ConnectNamedPipe(h.0, Some(std::ptr::from_ref(&ov).cast_mut())) };
+            let r = unsafe { ConnectNamedPipe(h.0, Some(ovp)) };
             let connected = match r {
                 Ok(()) => true,
                 Err(e) if is(&e, ERROR_PIPE_CONNECTED) => true,
                 Err(e) if is(&e, ERROR_IO_PENDING) => {
-                    match wait_io(h.0, &ov, None, Some(self.stop.0)) {
+                    match wait_io(h.0, ovp, ev.0, None, Some(self.stop.0)) {
                         Ok(_) => true,
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(None),
                         // İstemci bağlanıp hemen ayrıldı: yeni örnekle sürdür.
@@ -387,24 +392,19 @@ fn image_path(process: HANDLE) -> Option<PathBuf> {
 impl PipeConn {
     fn read_some(&self, buf: &mut [u8], deadline: Option<Instant>) -> io::Result<usize> {
         let ev = new_event()?;
-        let ov = OVERLAPPED {
+        let mut ov = OVERLAPPED {
             hEvent: ev.0,
             ..Default::default()
         };
+        let ovp: *mut OVERLAPPED = &raw mut ov;
         // SAFETY: `buf` ve `ov`, `wait_io` tamamlanmayı (iptal dahil) bekleyene kadar yaşar.
-        let r = unsafe {
-            ReadFile(
-                self.h.0,
-                Some(&mut *buf),
-                None,
-                Some(std::ptr::from_ref(&ov).cast_mut()),
-            )
-        };
+        let r = unsafe { ReadFile(self.h.0, Some(&mut *buf), None, Some(ovp)) };
         let res = match r {
-            Ok(()) => wait_io(self.h.0, &ov, Some(Duration::ZERO), None),
+            Ok(()) => wait_io(self.h.0, ovp, ev.0, Some(Duration::ZERO), None),
             Err(e) if is(&e, ERROR_IO_PENDING) => wait_io(
                 self.h.0,
-                &ov,
+                ovp,
+                ev.0,
                 deadline.map(|d| d.saturating_duration_since(Instant::now())),
                 None,
             ),
@@ -444,24 +444,19 @@ impl PipeConn {
         let mut off = 0;
         while off < buf.len() {
             let ev = new_event()?;
-            let ov = OVERLAPPED {
+            let mut ov = OVERLAPPED {
                 hEvent: ev.0,
                 ..Default::default()
             };
+            let ovp: *mut OVERLAPPED = &raw mut ov;
             // SAFETY: `buf` ve `ov`, `wait_io` tamamlanmayı bekleyene kadar yaşar.
-            let r = unsafe {
-                WriteFile(
-                    self.h.0,
-                    Some(&buf[off..]),
-                    None,
-                    Some(std::ptr::from_ref(&ov).cast_mut()),
-                )
-            };
+            let r = unsafe { WriteFile(self.h.0, Some(&buf[off..]), None, Some(ovp)) };
             let n = match r {
-                Ok(()) => wait_io(self.h.0, &ov, Some(Duration::ZERO), None)?,
+                Ok(()) => wait_io(self.h.0, ovp, ev.0, Some(Duration::ZERO), None)?,
                 Err(e) if is(&e, ERROR_IO_PENDING) => wait_io(
                     self.h.0,
-                    &ov,
+                    ovp,
+                    ev.0,
                     Some(deadline.saturating_duration_since(Instant::now())),
                     None,
                 )?,

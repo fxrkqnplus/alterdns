@@ -132,6 +132,29 @@ fn garbage_does_not_kill_server() {
     assert!(c.call("svc.ping", json!({})).is_ok());
 }
 
+/// Kimlik doğrulanmadan önceki ilk mesaj 4 KiB, sonraki istekler 64 KiB ile sınırlı: büyük bir
+/// JSON gövdesi SYSTEM işleminde belleği büyütemez.
+#[test]
+fn oversized_hello_and_request_close_connection() {
+    let _s = start(config("caps"));
+    let big_hello = raw("caps");
+    let body = format!(
+        r#"{{"v":1,"id":"1","method":"svc.hello","params":{{"pad":"{}"}}}}"#,
+        "x".repeat(alterdns_ipc::MAX_HELLO)
+    );
+    let mut frame = u32::try_from(body.len()).unwrap().to_le_bytes().to_vec();
+    frame.extend_from_slice(body.as_bytes());
+    big_hello
+        .write_all_timeout(&frame, Duration::from_secs(5))
+        .unwrap_or(());
+    assert!(closed_by_server(&big_hello));
+    let mut c = connect("caps");
+    let pad = "x".repeat(alterdns_ipc::MAX_REQUEST);
+    let e = c.call("svc.ping", json!({ "pad": pad })).unwrap_err();
+    assert_eq!(e.code(), AdnsErrorCode::IpcConnect);
+    assert!(connect("caps").call("svc.ping", json!({})).is_ok());
+}
+
 /// T-IPC-004: sürüm uyuşmazlığı iki yönde de `IpcVersionMismatch`.
 #[test]
 fn version_mismatch() {

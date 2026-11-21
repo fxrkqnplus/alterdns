@@ -34,6 +34,17 @@ use crate::residue;
 pub const COMPONENT: &str = "dev-install";
 pub const BINARIES: [&str; 2] = ["alterdns-svc.exe", "alterdns-maint.exe"];
 
+/// Yalnızca `test-ops` derlemelerinde bulunan dizeler. `cargo xtask check` test derlemelerini
+/// aynı `target\debug`'a yazar; onların kuruluma girmesi engellenir.
+const TEST_BUILD_MARKERS: [&[u8]; 2] = [b"ALTERDNS_TEST_JOURNAL_DIR", b"(A;;GA;;;OW)"];
+
+/// İkili bir `test-ops` derlemesi mi?
+pub fn is_test_build(binary: &[u8]) -> bool {
+    TEST_BUILD_MARKERS
+        .iter()
+        .any(|m| binary.windows(m.len()).any(|w| w == *m))
+}
+
 /// Yönetici değilse `SysElevationDenied` (`ADNS-SYS-004`).
 pub fn require_elevated(elevated: bool) -> Result<(), AdnsError> {
     if elevated {
@@ -60,6 +71,13 @@ pub fn plan(paths: &Paths, version: &str, target_dir: &Path) -> anyhow::Result<V
         if !source.is_file() {
             bail!(
                 "derlenmiş ikili yok: {} (önce: cargo build --release -p alterdns-svc -p alterdns-maint)",
+                source.display()
+            );
+        }
+        let bytes = std::fs::read(&source).with_context(|| source.display().to_string())?;
+        if is_test_build(&bytes) {
+            bail!(
+                "{} bir test derlemesi (test-ops); kurulmaz. Önce: cargo build --release -p alterdns-svc -p alterdns-maint",
                 source.display()
             );
         }

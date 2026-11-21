@@ -22,7 +22,9 @@ pub use method::Method;
 pub use policy::{Caller, CallerPolicy, authorize};
 #[cfg(feature = "test-ops")]
 pub use server::TEST_SDDL;
-pub use server::{Handler, IO_TIMEOUT, MAX_INSTANCES, PRODUCT_SDDL, Server, ServerConfig};
+pub use server::{
+    Handler, IO_TIMEOUT, MAX_HELLO, MAX_INSTANCES, MAX_REQUEST, PRODUCT_SDDL, Server, ServerConfig,
+};
 pub use version::version_compatible;
 
 /// Servisin pipe'ı.

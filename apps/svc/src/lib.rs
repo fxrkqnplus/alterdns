@@ -61,6 +61,7 @@ impl SvcConfig {
 pub struct Running {
     server: Server,
     _journal_pin: DirPin,
+    _logs_pin: DirPin,
 }
 
 impl Running {
@@ -95,7 +96,9 @@ pub fn start(cfg: SvcConfig) -> Result<Running, AdnsError> {
             std::fs::create_dir_all(dir).map_err(|e| start_failed(e.to_string()))?;
         }
     }
+    // Denetimden hemen sonra sabitlenir: servis çalıştığı sürece dizinler taşınamaz.
     let journal_pin = pin_dir(&journal).map_err(|e| start_failed(e.to_string()))?;
+    let logs_pin = pin_dir(&logs).map_err(|e| start_failed(e.to_string()))?;
     if cfg.log {
         // Log açılamazsa servis yine çalışır; hata servis çıkışına değil, olmayan loga düşer.
         let _ = alterdns_core::init_log(&logs, "svc");
@@ -146,6 +149,7 @@ pub fn start(cfg: SvcConfig) -> Result<Running, AdnsError> {
     Ok(Running {
         server,
         _journal_pin: journal_pin,
+        _logs_pin: logs_pin,
     })
 }
 

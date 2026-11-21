@@ -90,14 +90,22 @@ Platformdan bağımsız crate'ler (`scan-engine`, `reputation` ayrıştırıcıl
 ## 4. IPC
 
 - **Taşıma:** Named pipe `\\.\pipe\AlterDNS.Svc.v1`.
-  - DACL: SYSTEM ve Administrators tam erişim; `INTERACTIVE` bağlan/oku/yaz.
+  - Güvenlik tanımlayıcısı `O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12008b;;;IU)`: sahibi açıkça SYSTEM (istemci bunu ister; servis belirtecinin varsayılan sahibi Administrators olabilir), SYSTEM ve Administrators tam erişim; `INTERACTIVE` yalnızca okur ve yazar (`FILE_GENERIC_READ | FILE_WRITE_DATA`).
+    - `GENERIC_WRITE` verilmez: içindeki `FILE_APPEND_DATA` pipe'larda `FILE_CREATE_PIPE_INSTANCE`'tır. Verilseydi etkileşimli bir kullanıcı servis çalışırken aynı ada kendi sunucu örneğini açabilirdi. Bu makinede ölçüldü (Faz 1C).
+    - İstemci `GENERIC_READ | FILE_WRITE_DATA` ile açar.
   - Sunucu, pipe squatting'e karşı `FILE_FLAG_FIRST_PIPE_INSTANCE` ve `PIPE_REJECT_REMOTE_CLIENTS` kullanır.
-  - Örnek sayısı ve okuma zaman aşımı sınırlıdır.
+  - Bir istemci bağlanınca sonraki dinleyen örnek hemen açılır; böylece servis çalıştığı sürece ad boşa çıkmaz.
+  - En çok 16 örnek. `svc.hello` 5 sn içinde gelmelidir; başlamış bir mesaj ve bir yazma da 5 sn içinde bitmelidir. Okumayan istemci düşürülür.
+  - Hata yanıtından sonra sunucu, bağlantıyı kesmeden önce istemcinin kapatmasını bekler (en çok 5 sn). `DisconnectNamedPipe` okunmamış veriyi siler; hemen kesilseydi istemci hata kodunu göremezdi.
 - **İstemcinin sunucuyu doğrulaması:**
   - İstemci pipe'ı `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION` ile açar.
   - Pipe nesnesinin sahibinin SYSTEM olduğunu `GetSecurityInfo` ile doğrular. Servis yeniden başlarken aynı adla pipe açan bir işlem böylece reddedilir.
   - İmaj yolu denetimi ek bir katmandır.
-- **Çağıran yetkisi:** Yetki çağıranın belirtecinden gelir (`ImpersonateNamedPipeClient`: SID, oturum, yükseltme). Yöntemler üç sınıftadır:
+- **Çağıran yetkisi:** Yetki çağıranın belirtecinden gelir (`ImpersonateNamedPipeClient`: SID, oturum, yükseltme, `INTERACTIVE` grubu).
+  - Kimliğe bürünme ancak pipe'tan veri okunduktan sonra çalışır. Bu yüzden ilk çerçevenin öneki okunduktan sonra yapılır.
+  - İstemci tanımlama düzeyinde bağlandığı için belirteç `OpenThreadToken(…, OpenAsSelf = TRUE)` ile açılır.
+
+  Yöntemler üç sınıftadır:
   - `Open`: `svc.hello`, `svc.ping`.
   - `InteractiveUser`: `svc.status`, `events.subscribe`.
   - `Elevated`: yönetici belirteci ve kurulum dizinindeki AlterDNS ikilisi. Faz 1'de `svc.reload_config`; sonraki fazlarda motor yapılandırması, sistem değişikliği ve güncelleme uygulama.
@@ -113,12 +121,13 @@ Platformdan bağımsız crate'ler (`scan-engine`, `reputation` ayrıştırıcıl
   {"v":1,"id":"…","ok":false,"error":{"code":"ADNS-IPC-002","params":{…}}}
   ```
 - **El sıkışma ve sürümleme:**
-  - İlk çağrı `svc.hello {client_version, min_server}` olur; yanıt `{server_version, min_client}`.
+  - İlk çağrı `svc.hello {client_version, min_server}` olur; yanıt `{server_version, min_client, instance}`. `min_client` servisin kendi sürümüdür; `instance` servisin başlangıç zamanıdır ve tepsi yeniden başlamayı buradan anlar (`ADNS-SVC-002`).
   - Sürümler uyuşmazsa ya da `v` alanı farklıysa `ADNS-IPC-004` döner ve UI güncelleme önerir.
   - Bilinmeyen yöntem `ADNS-IPC-002` döner; bilinmeyen alan ve olay yok sayılır.
 - **Olaylar:**
   - İstemci `events.subscribe` çağırır; servis durum değişikliklerini iter (bağlantı durumu, engelleme sayacı, güncelleme, hata).
   - Abonelik, çağıranın belirtecindeki oturum kimliğiyle etiketlenir. Kullanıcıya özgü bir olay yalnızca o oturuma gider (Hızlı Kullanıcı Değiştirme, RDP).
+  - Yayıncı beklemez: her abonenin 64 olaylık kuyruğu vardır, dolarsa olay o abone için düşer. Olayları okumayan abone yazma zaman aşımında düşürülür.
 - **Dil:** Servis kullanıcıya metin üretmez, yalnızca hata kodu ve parametre gönderir. Metni istemci kendi dilinde gösterir.
 
 ## 5. Veri ve yapılandırma yolları

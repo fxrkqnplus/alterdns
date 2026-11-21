@@ -54,9 +54,32 @@ fn plan_lists_files_then_service() {
         svc.after,
         Snapshot::Present(dir.join("alterdns-svc.exe").to_string_lossy().into_owned())
     );
+    // Test derlemesi (test-ops) kurulmaz.
+    std::fs::write(
+        target.join("alterdns-maint.exe"),
+        [b"MZ...".as_slice(), b"ALTERDNS_TEST_", b"JOURNAL_DIR"].concat(),
+    )
+    .unwrap();
+    assert!(plan(&p, "1.2.3", &target).is_err());
     // Derlenmemiş ikili: plan kurulmaz.
     std::fs::remove_file(target.join("alterdns-maint.exe")).unwrap();
     assert!(plan(&p, "1.2.3", &target).is_err());
+}
+
+/// Ürün derlemesinde test dizeleri yoktur; `test-ops` derlemesinde vardır. `target\release`'teki
+/// ikililer varsa onlarla da sınanır.
+#[test]
+fn product_build_has_no_test_markers() {
+    use xtask::devinstall::is_test_build;
+    assert!(is_test_build(b"..ALTERDNS_TEST_JOURNAL_DIR.."));
+    assert!(is_test_build(b"..(A;;GA;;;OW).."));
+    assert!(!is_test_build(b"O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)"));
+    let release = xtask::check::repo_root().unwrap().join(r"target\release");
+    for b in BINARIES {
+        if let Ok(bytes) = std::fs::read(release.join(b)) {
+            assert!(!is_test_build(&bytes), "{b}");
+        }
+    }
 }
 
 #[test]
