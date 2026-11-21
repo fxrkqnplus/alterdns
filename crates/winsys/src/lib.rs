@@ -11,10 +11,12 @@
 mod acl;
 mod dirs;
 mod dll;
+mod instance;
 mod pipe;
 mod screen;
 mod service;
 mod token;
+mod tray;
 
 pub use acl::{
     DirAccess, DirPin, DirProblem, create_protected_dir, evaluate_security, is_reparse_point,
@@ -22,6 +24,7 @@ pub use acl::{
 };
 pub use dirs::{KnownFolder, known_folder, system_dir, windows_dir};
 pub use dll::harden_dll_search;
+pub use instance::{SingleInstance, single_instance};
 pub use pipe::{
     CallerToken, PipeConn, PipeListener, PipeOwner, Stopper, connect_pipe, current_session_id,
 };
@@ -35,3 +38,4 @@ pub use service::{
     register_stop_handler, service_config_report, service_create_access, start_service,
 };
 pub use token::is_elevated;
+pub use tray::{MessageWindow, ShellEvent, TrayIcon, icon_count, post_broadcast, taskbar_present};

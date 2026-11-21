@@ -84,7 +84,7 @@ fn is(e: &windows::core::Error, code: WIN32_ERROR) -> bool {
     e.code() == code.to_hresult()
 }
 
-fn os_error(e: windows::core::Error) -> io::Error {
+pub(crate) fn os_error(e: windows::core::Error) -> io::Error {
     // HRESULT_FROM_WIN32 ise özgün Win32 kodu korunur (ErrorKind eşlemesi için).
     let hr = e.code().0.cast_unsigned();
     if hr & 0xFFFF_0000 == 0x8007_0000 {
