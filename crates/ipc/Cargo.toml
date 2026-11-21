@@ -15,6 +15,7 @@ test-ops = []
 
 [dependencies]
 alterdns-errors.workspace = true
+alterdns-winsys.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

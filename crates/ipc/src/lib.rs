@@ -7,9 +7,15 @@
 
 pub mod envelope;
 pub mod frame;
+pub mod method;
+pub mod policy;
+pub mod version;
 
 pub use envelope::{Event, Message, PROTOCOL, Request, Response, WireError, valid_id};
 pub use frame::{MAX_MESSAGE, decode, decode_len, encode};
+pub use method::Method;
+pub use policy::{Caller, CallerPolicy, authorize};
+pub use version::version_compatible;
 
 /// Servisin pipe'ı.
 pub const PIPE_NAME: &str = r"\\.\pipe\AlterDNS.Svc.v1";
