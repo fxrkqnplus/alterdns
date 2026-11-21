@@ -74,6 +74,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterdns-svc"
+version = "0.0.0"
+dependencies = [
+ "alterdns-buildinfo",
+ "alterdns-core",
+ "alterdns-errors",
+ "alterdns-ipc",
+ "alterdns-journal",
+ "alterdns-winsys",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "alterdns-winsys"
 version = "0.0.0"
 dependencies = [

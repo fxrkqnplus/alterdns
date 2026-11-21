@@ -20,6 +20,7 @@ alterdns-journal.workspace = true
 alterdns-winsys.workspace = true
 
 [dev-dependencies]
+alterdns-buildinfo.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]

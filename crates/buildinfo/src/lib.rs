@@ -51,6 +51,55 @@ pub fn embed(info: &ExeInfo) -> std::io::Result<()> {
     Ok(())
 }
 
+fn u16_at(pe: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_le_bytes([*pe.get(o)?, *pe.get(o + 1)?]))
+}
+
+fn u32_at(pe: &[u8], o: usize) -> Option<u32> {
+    Some(u32::from_le_bytes([
+        *pe.get(o)?,
+        *pe.get(o + 1)?,
+        *pe.get(o + 2)?,
+        *pe.get(o + 3)?,
+    ]))
+}
+
+/// PE32+ yükleme yapılandırmasındaki `DependentLoadFlags` alanının dosyadaki konumu
+/// (`IMAGE_LOAD_CONFIG_DIRECTORY64` + 0x4E). Testler ve DLL bırakma karşı denemesi için.
+pub fn dependent_load_flags_offset(pe: &[u8]) -> Option<usize> {
+    let nt = u32_at(pe, 0x3C)? as usize;
+    if pe.get(nt..nt + 4)? != b"PE\0\0" {
+        return None;
+    }
+    let coff = nt + 4;
+    let sections = usize::from(u16_at(pe, coff + 2)?);
+    let opt = coff + 20;
+    let opt_size = usize::from(u16_at(pe, coff + 16)?);
+    if u16_at(pe, opt)? != 0x20B {
+        return None;
+    }
+    // Veri dizinleri PE32+'da isteğe bağlı başlığın 112. baytından başlar; 10 = yükleme
+    // yapılandırması.
+    let rva = u32_at(pe, opt + 112 + 10 * 8)? as usize;
+    if rva == 0 {
+        return None;
+    }
+    let table = opt + opt_size;
+    let offset = (0..sections).find_map(|i| {
+        let s = table + i * 40;
+        let size = u32_at(pe, s + 8)?.max(u32_at(pe, s + 16)?) as usize;
+        let va = u32_at(pe, s + 12)? as usize;
+        let raw = u32_at(pe, s + 20)? as usize;
+        (va..va + size).contains(&rva).then(|| rva - va + raw)
+    })?;
+    (u32_at(pe, offset)? as usize >= 0x50).then_some(offset + 0x4E)
+}
+
+/// Exe'nin `DependentLoadFlags` değeri (beklenen `0x0800`).
+pub fn dependent_load_flags(pe: &[u8]) -> Option<u16> {
+    u16_at(pe, dependent_load_flags_offset(pe)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

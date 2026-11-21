@@ -102,32 +102,5 @@ fn exe_version_info_matches_rules() {
 #[test]
 fn exe_restricts_load_time_imports_to_system32() {
     let pe = std::fs::read(EXE).unwrap();
-    let u16_at = |o: usize| u16::from_le_bytes([pe[o], pe[o + 1]]);
-    let u32_at = |o: usize| u32::from_le_bytes([pe[o], pe[o + 1], pe[o + 2], pe[o + 3]]);
-    let nt = u32_at(0x3C) as usize;
-    assert_eq!(&pe[nt..nt + 4], b"PE\0\0");
-    let coff = nt + 4;
-    let sections = u16_at(coff + 2) as usize;
-    let opt = coff + 20;
-    let opt_size = u16_at(coff + 16) as usize;
-    assert_eq!(u16_at(opt), 0x20B, "PE32+");
-    // Veri dizinleri PE32+'da isteğe bağlı başlığın 112. baytından başlar; 10 = yükleme yapılandırması.
-    let rva = u32_at(opt + 112 + 10 * 8) as usize;
-    assert_ne!(rva, 0, "yükleme yapılandırması yok");
-    let table = opt + opt_size;
-    let offset = (0..sections)
-        .map(|i| table + i * 40)
-        .find_map(|s| {
-            let va = u32_at(s + 12) as usize;
-            let size = u32_at(s + 8).max(u32_at(s + 16)) as usize;
-            let raw = u32_at(s + 20) as usize;
-            (va..va + size).contains(&rva).then(|| rva - va + raw)
-        })
-        .unwrap();
-    // IMAGE_LOAD_CONFIG_DIRECTORY64.DependentLoadFlags: 0x4E.
-    assert!(
-        u32_at(offset) as usize >= 0x50,
-        "yapı DependentLoadFlags'i içermiyor"
-    );
-    assert_eq!(u16_at(offset + 0x4E), 0x0800);
+    assert_eq!(alterdns_buildinfo::dependent_load_flags(&pe), Some(0x0800));
 }
