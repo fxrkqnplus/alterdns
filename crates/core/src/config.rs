@@ -168,6 +168,23 @@ pub fn load_user(path: &Path) -> Result<(UserConfig, LoadOutcome), AdnsError> {
     }
 }
 
+/// Makine yapılandırması. Servis yalnızca okur: bozuk dosya yerinde bırakılır (düzeltmek
+/// yöneticinin işidir), varsayılanla devam edilir ve çağıran durumu loga yazar.
+pub fn load_machine(path: &Path) -> Result<(MachineConfig, LoadOutcome), AdnsError> {
+    let Some(bytes) = read_bounded(path)? else {
+        return Ok((
+            MachineConfig::default(),
+            LoadOutcome::Defaulted { backup: None },
+        ));
+    };
+    let outcome = match parse(&bytes) {
+        Some((_, schema)) if schema == SCHEMA => LoadOutcome::Loaded,
+        Some(_) => LoadOutcome::NewerSchema,
+        None => LoadOutcome::Defaulted { backup: None },
+    };
+    Ok((MachineConfig::default(), outcome))
+}
+
 /// Aynı dizinde benzersiz geçici dosya adı: iki işlem (tepsi ve pencere) aynı anda kaydederse
 /// birbirinin dosyasını kesmez.
 fn temp_path(path: &Path) -> PathBuf {

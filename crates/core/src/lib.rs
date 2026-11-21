@@ -6,11 +6,15 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod log;
 pub mod paths;
 pub mod redact;
 
 pub use alterdns_errors::Lang;
-pub use config::{LeftClick, LoadOutcome, MachineConfig, UserConfig, load_user, save_user};
+pub use config::{
+    LeftClick, LoadOutcome, MachineConfig, UserConfig, load_machine, load_user, save_user,
+};
+pub use log::{CappedWriter, LOG_FILE_MAX, init_log, log_subscriber};
 pub use paths::Paths;
 pub use redact::redact_user_paths;
 
