@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod assets;
 pub mod check;
 pub mod devinstall;
 pub mod docs_errors;

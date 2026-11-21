@@ -123,6 +123,8 @@ pub fn run() -> anyhow::Result<()> {
     crate::docs_errors::check_doc(&root)?;
     eprintln!("==> catalog-coverage");
     crate::docs_errors::coverage(&root, &repo_files(&root)?)?;
+    eprintln!("==> assets");
+    crate::assets::check(&root)?;
     eprintln!("==> scan");
     scan_repo(&root, &Source::Worktree)
 }

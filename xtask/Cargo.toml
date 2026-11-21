@@ -18,6 +18,9 @@ alterdns-winsys.workspace = true
 anyhow.workspace = true
 hickory-proto = "0.26.3"
 regex.workspace = true
+# Yalnızca varlık üretimi (cargo xtask assets): metin ve sistem yazı tipi özellikleri kapalı.
+resvg = { version = "0.50.0", default-features = false }
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "simd", "png-format"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 rustls-platform-verifier = "0.7.1"
 serde.workspace = true

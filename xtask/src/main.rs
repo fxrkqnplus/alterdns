@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use xtask::{check, devinstall, docs_errors, hooks, lab};
+use xtask::{assets, check, devinstall, docs_errors, hooks, lab};
 
 fn report(name: &str, r: anyhow::Result<()>) -> ExitCode {
     match r {
@@ -56,6 +56,20 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("assets") => report(
+            "assets",
+            check::repo_root().and_then(|r| {
+                if args.get(1).map(String::as_str) == Some("--check") {
+                    assets::check(&r)
+                } else {
+                    assets::generate(&r).map(|files| {
+                        for f in files {
+                            eprintln!("yazıldı: {}", f.display());
+                        }
+                    })
+                }
+            }),
+        ),
         // Sistem değiştirir: yalnızca kullanıcının yönetici terminalinde, onayıyla.
         Some("dev-install") => {
             let profile = if args.get(1).map(String::as_str) == Some("--debug") {
@@ -75,7 +89,7 @@ fn main() -> ExitCode {
         },
         _ => {
             eprintln!(
-                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
+                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | assets [--check] | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
             );
             ExitCode::from(2)
         }
