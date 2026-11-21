@@ -11,6 +11,7 @@
 mod acl;
 mod dirs;
 mod dll;
+mod pipe;
 mod token;
 
 pub use acl::{
@@ -19,4 +20,7 @@ pub use acl::{
 };
 pub use dirs::{KnownFolder, known_folder, system_dir, windows_dir};
 pub use dll::harden_dll_search;
+pub use pipe::{
+    CallerToken, PipeConn, PipeListener, PipeOwner, Stopper, connect_pipe, current_session_id,
+};
 pub use token::is_elevated;

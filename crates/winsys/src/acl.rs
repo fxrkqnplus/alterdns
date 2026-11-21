@@ -71,12 +71,12 @@ pub enum DirProblem {
     Unreadable(String),
 }
 
-fn wide(s: &std::ffi::OsStr) -> Vec<u16> {
+pub(crate) fn wide(s: &std::ffi::OsStr) -> Vec<u16> {
     s.encode_wide().chain(std::iter::once(0)).collect()
 }
 
 /// `LocalAlloc` ile ayrılmış güvenlik tanımlayıcısı; düşünce `LocalFree` ile serbest bırakılır.
-struct LocalSd(PSECURITY_DESCRIPTOR);
+pub(crate) struct LocalSd(pub(crate) PSECURITY_DESCRIPTOR);
 
 impl Drop for LocalSd {
     fn drop(&mut self) {
@@ -89,7 +89,7 @@ impl Drop for LocalSd {
     }
 }
 
-fn sd_from_sddl(sddl: &str) -> std::io::Result<LocalSd> {
+pub(crate) fn sd_from_sddl(sddl: &str) -> std::io::Result<LocalSd> {
     let text: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
     let mut sd = PSECURITY_DESCRIPTOR(std::ptr::null_mut());
     // SAFETY: `text` NUL ile biten geçerli bir UTF-16 dizesidir ve çağrı boyunca yaşar; çıktı
