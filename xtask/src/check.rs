@@ -25,7 +25,7 @@ pub fn run() -> anyhow::Result<()> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     // `test-ops`: journal ve bekçi testleri yalnızca AlterDNS'in kendi test nesneleriyle
     // (`HKCU\Software\AlterDNS-Test`, `%TEMP%\alterdns-*`) gerçek sistem işlemi yapar.
-    let steps: [(&str, &[&str]); 6] = [
+    let steps: [(&str, &[&str]); 7] = [
         ("fmt", &["fmt", "--all", "--check"]),
         (
             "clippy",
@@ -76,6 +76,18 @@ pub fn run() -> anyhow::Result<()> {
                 "--locked",
                 "--features",
                 "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
+            ],
+        ),
+        // Platformdan bağımsız crate'ler Linux'ta da derlenir (ARCHITECTURE §3).
+        (
+            "linux-errors",
+            &[
+                "check",
+                "-p",
+                "alterdns-errors",
+                "--target",
+                "x86_64-unknown-linux-gnu",
+                "--locked",
             ],
         ),
         ("deny", &["deny", "check"]),
