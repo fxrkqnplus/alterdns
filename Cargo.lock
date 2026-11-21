@@ -71,6 +71,7 @@ dependencies = [
  "alterdns-journal",
  "alterdns-winsys",
  "serde_json",
+ "windows-registry",
 ]
 
 [[package]]
@@ -85,6 +86,7 @@ dependencies = [
  "alterdns-winsys",
  "serde_json",
  "tracing",
+ "windows-registry",
 ]
 
 [[package]]

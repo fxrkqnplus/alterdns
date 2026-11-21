@@ -64,35 +64,75 @@ fn u32_at(pe: &[u8], o: usize) -> Option<u32> {
     ]))
 }
 
-/// PE32+ yükleme yapılandırmasındaki `DependentLoadFlags` alanının dosyadaki konumu
-/// (`IMAGE_LOAD_CONFIG_DIRECTORY64` + 0x4E). Testler ve DLL bırakma karşı denemesi için.
-pub fn dependent_load_flags_offset(pe: &[u8]) -> Option<usize> {
+/// PE32+ başlıkları: isteğe bağlı başlık ve bölüm tablosu konumları, bölüm sayısı.
+struct Pe {
+    opt: usize,
+    table: usize,
+    sections: usize,
+}
+
+fn headers(pe: &[u8]) -> Option<Pe> {
     let nt = u32_at(pe, 0x3C)? as usize;
     if pe.get(nt..nt + 4)? != b"PE\0\0" {
         return None;
     }
     let coff = nt + 4;
-    let sections = usize::from(u16_at(pe, coff + 2)?);
     let opt = coff + 20;
-    let opt_size = usize::from(u16_at(pe, coff + 16)?);
     if u16_at(pe, opt)? != 0x20B {
         return None;
     }
-    // Veri dizinleri PE32+'da isteğe bağlı başlığın 112. baytından başlar; 10 = yükleme
-    // yapılandırması.
-    let rva = u32_at(pe, opt + 112 + 10 * 8)? as usize;
-    if rva == 0 {
-        return None;
-    }
-    let table = opt + opt_size;
-    let offset = (0..sections).find_map(|i| {
-        let s = table + i * 40;
+    Some(Pe {
+        opt,
+        table: opt + usize::from(u16_at(pe, coff + 16)?),
+        sections: usize::from(u16_at(pe, coff + 2)?),
+    })
+}
+
+/// Veri dizini RVA'sı (PE32+'da dizinler isteğe bağlı başlığın 112. baytından başlar).
+fn directory(pe: &[u8], h: &Pe, index: usize) -> Option<usize> {
+    let rva = u32_at(pe, h.opt + 112 + index * 8)? as usize;
+    (rva != 0).then_some(rva)
+}
+
+fn file_offset(pe: &[u8], h: &Pe, rva: usize) -> Option<usize> {
+    (0..h.sections).find_map(|i| {
+        let s = h.table + i * 40;
         let size = u32_at(pe, s + 8)?.max(u32_at(pe, s + 16)?) as usize;
         let va = u32_at(pe, s + 12)? as usize;
         let raw = u32_at(pe, s + 20)? as usize;
         (va..va + size).contains(&rva).then(|| rva - va + raw)
-    })?;
+    })
+}
+
+/// PE32+ yükleme yapılandırmasındaki `DependentLoadFlags` alanının dosyadaki konumu
+/// (`IMAGE_LOAD_CONFIG_DIRECTORY64` + 0x4E; dizin 10).
+pub fn dependent_load_flags_offset(pe: &[u8]) -> Option<usize> {
+    let h = headers(pe)?;
+    let offset = file_offset(pe, &h, directory(pe, &h, 10)?)?;
     (u32_at(pe, offset)? as usize >= 0x50).then_some(offset + 0x4E)
+}
+
+/// Statik içe aktarılan DLL'lerin adları, küçük harfle (içe aktarma dizini, 1). Yükleme
+/// zamanında `main`'den önce çözülürler.
+pub fn imported_dlls(pe: &[u8]) -> Option<Vec<String>> {
+    let h = headers(pe)?;
+    let mut at = file_offset(pe, &h, directory(pe, &h, 1)?)?;
+    let mut out = Vec::new();
+    loop {
+        // IMAGE_IMPORT_DESCRIPTOR (20 bayt); ad RVA'sı +12'de. Tamamı sıfır olan kayıt sondur.
+        let name_rva = u32_at(pe, at + 12)? as usize;
+        if name_rva == 0 && u32_at(pe, at)? == 0 {
+            break;
+        }
+        let start = file_offset(pe, &h, name_rva)?;
+        let len = pe.get(start..)?.iter().position(|b| *b == 0)?;
+        out.push(String::from_utf8_lossy(pe.get(start..start + len)?).to_ascii_lowercase());
+        at += 20;
+        if out.len() > 512 {
+            return None;
+        }
+    }
+    Some(out)
 }
 
 /// Exe'nin `DependentLoadFlags` değeri (beklenen `0x0800`).

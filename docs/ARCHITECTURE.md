@@ -30,6 +30,11 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 
 **DLL arama yolu:** Bütün exe'ler `main`'in başında `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` çağırır; servis ek olarak `APPLICATION_DIR` ekler. Ayrıca `/DEPENDENTLOADFLAG:0x800` ile bağlanırlar; böylece `main`'den önce çözülen yükleme zamanı içe aktarımları da yalnızca System32'den gelir.
 
+**C çalışma zamanı statik bağlanır** (`+crt-static`, `.cargo/config.toml`):
+- `vcruntime140.dll` Windows'un parçası değildir; VC++ Redistributable ile gelir.
+- Yukarıdaki bayrak yüzünden uygulama dizininden de yüklenemez. Dinamik bağlansaydı yeniden dağıtılabilir paketi olmayan makinede ikililer hiç açılmazdı.
+- Testler her exe'nin statik içe aktarmalarını PE'den okur: hepsi KnownDLL, `ntdll` ya da API kümesi olmalıdır. Bu yüzden uygulama dizinine bırakılan bir DLL yükleme zamanında kullanılamaz.
+
 **Tepsi simgesi kimliği:**
 - `NOTIFYICONDATA.guidItem` exe yoluna bağlıdır ve A/B sürüm dizinlerinde yol değişir. Faz 1'de bu yüzden `uID` kullanılır.
 - Faz 5'te sabit bir başlatıcıyla (`%ProgramFiles%\AlterDNS\alterdns-tray.exe`) GUID'e geçiş değerlendirilir.

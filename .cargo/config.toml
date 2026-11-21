@@ -2,3 +2,8 @@
 # xtask kendi hedef dizininde derlenir: `cargo xtask check` çalışırken `cargo test`
 # target/debug/xtask.exe'yi (entegrasyon testlerinin ikilisi) yeniden bağlayabilsin.
 xtask = "run --quiet --locked --package xtask --target-dir target/xtask --"
+
+# C çalışma zamanı statik bağlanır: vcruntime140.dll Windows'un parçası değildir ve
+# /DEPENDENTLOADFLAG:0x800 (yalnızca System32) yüzünden uygulama dizininden de yüklenemez.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

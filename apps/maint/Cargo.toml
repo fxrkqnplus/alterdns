@@ -21,6 +21,7 @@ alterdns-winsys.workspace = true
 
 [dev-dependencies]
 alterdns-buildinfo.workspace = true
+windows-registry.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
