@@ -27,5 +27,8 @@ windows = { workspace = true, features = [
     "Win32_UI_Shell",
 ] }
 
+[dev-dependencies]
+windows-service.workspace = true
+
 [lints]
 workspace = true

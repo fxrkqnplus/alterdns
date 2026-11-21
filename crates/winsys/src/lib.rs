@@ -27,6 +27,6 @@ pub use pipe::{
 pub use service::{
     REQUIRED_PRIVILEGES, RESET_PERIOD_SECS, RESTART_DELAYS_SECS, ServiceConfigReport, ServiceSpec,
     ServiceState, ServiceStatusReporter, create_service, delete_service, dispatch, query_service,
-    register_stop_handler, service_config_report, start_service,
+    register_stop_handler, service_config_report, service_create_access, start_service,
 };
 pub use token::is_elevated;

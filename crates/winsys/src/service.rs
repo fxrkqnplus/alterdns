@@ -13,10 +13,12 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Services::{
     ChangeServiceConfig2W, QueryServiceConfig2W, SC_HANDLE,
     SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO, SERVICE_REQUIRED_PRIVILEGES_INFOW,
 };
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
 use windows::core::PWSTR;
 use windows_service::service::{
     Service, ServiceAccess, ServiceAction, ServiceActionType, ServiceControl, ServiceControlAccept,
@@ -38,6 +40,13 @@ use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 pub const REQUIRED_PRIVILEGES: [&str; 1] = ["SeChangeNotifyPrivilege"];
 pub const RESTART_DELAYS_SECS: [u64; 3] = [5, 30, 60];
 pub const RESET_PERIOD_SECS: u64 = 86_400;
+
+/// Oluşturulan servisin tutamaç hakları: ayarlar, başlatma (yeniden başlatma eylemleri için
+/// gerekli) ve hata yolunda silme.
+const CREATE_ACCESS: ServiceAccess = ServiceAccess::CHANGE_CONFIG
+    .union(ServiceAccess::QUERY_CONFIG)
+    .union(ServiceAccess::START)
+    .union(ServiceAccess::DELETE);
 
 /// `ERROR_SERVICE_DOES_NOT_EXIST` ve `ERROR_SERVICE_MARKED_FOR_DELETE`.
 const SERVICE_DOES_NOT_EXIST: i32 = 1060;
@@ -165,6 +174,11 @@ fn required_privileges(svc: &Service) -> io::Result<Vec<String>> {
         .collect())
 }
 
+/// Oluşturma tutamacının hakları (test için).
+pub fn service_create_access() -> ServiceAccess {
+    CREATE_ACCESS
+}
+
 /// Servisi K11 ayarlarıyla oluşturur. Ayarlardan biri uygulanamazsa servis silinir.
 pub fn create_service(spec: &ServiceSpec<'_>) -> io::Result<()> {
     let mgr = manager(ServiceManagerAccess::CREATE_SERVICE)?;
@@ -181,20 +195,32 @@ pub fn create_service(spec: &ServiceSpec<'_>) -> io::Result<()> {
         account_name: None,
         account_password: None,
     };
-    let svc = mgr
-        .create_service(
-            &info,
-            ServiceAccess::CHANGE_CONFIG | ServiceAccess::QUERY_CONFIG | ServiceAccess::DELETE,
-        )
-        .map_err(io_err)?;
+    // `START`: Windows, `SC_ACTION_RESTART` içeren başarısızlık eylemlerini ancak tutamaçta
+    // `SERVICE_START` hakkı varsa kabul eder (`ChangeServiceConfig2`); yoksa erişim reddedilir.
+    let svc = mgr.create_service(&info, CREATE_ACCESS).map_err(io_err)?;
+    let step = |name: &str, r: io::Result<()>| {
+        r.map_err(|e| io::Error::new(e.kind(), format!("servis ayarı ({name}): {e}")))
+    };
     let configured = (|| -> io::Result<()> {
-        svc.set_config_service_sid_info(ServiceSidType::Unrestricted)
-            .map_err(io_err)?;
-        svc.update_failure_actions(failure_actions())
-            .map_err(io_err)?;
-        svc.set_failure_actions_on_non_crash_failures(true)
-            .map_err(io_err)?;
-        set_required_privileges(&svc, &REQUIRED_PRIVILEGES)
+        step(
+            "hizmet SID'i",
+            svc.set_config_service_sid_info(ServiceSidType::Unrestricted)
+                .map_err(io_err),
+        )?;
+        step(
+            "başarısızlık eylemleri",
+            svc.update_failure_actions(failure_actions())
+                .map_err(io_err),
+        )?;
+        step(
+            "hata kodunda kurtarma",
+            svc.set_failure_actions_on_non_crash_failures(true)
+                .map_err(io_err),
+        )?;
+        step(
+            "gereken ayrıcalıklar",
+            set_required_privileges(&svc, &REQUIRED_PRIVILEGES),
+        )
     })();
     if let Err(e) = configured {
         let _ = svc.delete();
@@ -231,7 +257,31 @@ pub fn start_service(name: &str, wait: Duration) -> io::Result<()> {
     }
 }
 
-/// Servisi durdurur ve siler; SCM'den kaybolmasını bekler. Servis yoksa `Ok`.
+/// Beklenecek işlemin tutamacı; düşünce kapatılır.
+struct Process(HANDLE);
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        // SAFETY: Tutamaç bu nesneye aittir ve bir kez kapatılır.
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+fn open_for_wait(pid: u32) -> Option<Process> {
+    // SAFETY: Yalnızca bekleme hakkıyla açılır; tutamaç `Process` ile sahiplenilir.
+    unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }
+        .ok()
+        .map(Process)
+}
+
+fn millis(d: Duration) -> u32 {
+    u32::try_from(d.as_millis()).unwrap_or(u32::MAX - 1)
+}
+
+/// Servisi durdurur ve siler; işlemin bitmesini ve SCM'den kaybolmasını bekler. Servis yoksa
+/// `Ok`.
 pub fn delete_service(name: &str, stop_wait: Duration) -> io::Result<()> {
     let mgr = manager(ServiceManagerAccess::empty())?;
     let svc = match mgr.open_service(
@@ -244,10 +294,24 @@ pub fn delete_service(name: &str, stop_wait: Duration) -> io::Result<()> {
             return if missing(&e) { Ok(()) } else { Err(e) };
         }
     };
-    if svc.query_status().map_err(io_err)?.current_state != WsState::Stopped {
+    let status = svc.query_status().map_err(io_err)?;
+    if status.current_state != WsState::Stopped {
+        // Servis "durdu" bildirdikten sonra işlem bir süre daha yaşayabilir ve ikilisini kilitli
+        // tutar; ikili silinmeden önce işlemin bitmesi beklenir.
+        let process = status.process_id.and_then(open_for_wait);
         let _ = svc.stop();
         if wait_state(&svc, WsState::Stopped, stop_wait)?.current_state != WsState::Stopped {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "servis durmadı"));
+        }
+        if let Some(p) = process {
+            // SAFETY: Tutamaç `SYNCHRONIZE` hakkıyla açık bir işlemdir ve `Process` ile yaşar.
+            let w = unsafe { WaitForSingleObject(p.0, millis(stop_wait)) };
+            if w != WAIT_OBJECT_0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "servis işlemi bitmedi",
+                ));
+            }
         }
     }
     svc.delete().map_err(io_err)?;

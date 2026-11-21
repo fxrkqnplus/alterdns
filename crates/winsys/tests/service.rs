@@ -22,6 +22,17 @@ fn query_service_absent_and_present() {
     assert!(!event_log.binary_path.is_empty());
 }
 
+/// `SC_ACTION_RESTART` eylemleri tutamaçta `SERVICE_START` hakkı ister; 2026-11-22'deki ilk
+/// yönetici koşusu bu hak olmadan "Access is denied" ile geri alındı.
+#[test]
+fn create_access_includes_start_for_restart_actions() {
+    use windows_service::service::ServiceAccess;
+    let access = alterdns_winsys::service_create_access();
+    assert!(access.contains(ServiceAccess::START));
+    assert!(access.contains(ServiceAccess::CHANGE_CONFIG));
+    assert!(access.contains(ServiceAccess::DELETE));
+}
+
 #[test]
 #[ignore = "dev-install sonrası, onaylı yönetici koşusu"]
 fn t_svc_001_installed_service_running() {
