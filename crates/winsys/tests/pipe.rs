@@ -26,7 +26,7 @@ fn roundtrip_and_caller_identity() {
     let name = pipe("rt");
     let listener = PipeListener::bind(&name, TEST_SDDL, 4).unwrap();
     let server = std::thread::spawn(move || {
-        let mut conn = listener.accept().unwrap().unwrap();
+        let conn = listener.accept().unwrap().unwrap();
         let mut buf = [0u8; 4];
         conn.read_exact_timeout(&mut buf, Some(T)).unwrap();
         // Kimlik ancak pipe'tan veri okunduktan sonra alınabilir.

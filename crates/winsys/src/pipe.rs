@@ -292,7 +292,7 @@ impl PipeListener {
             return Ok(Some(PipeConn {
                 h,
                 server: true,
-                process: None,
+                process: Mutex::new(None),
             }));
         }
     }
@@ -323,7 +323,7 @@ pub struct PipeConn {
     h: OwnedHandle,
     server: bool,
     /// İstemci işleminin tutamacı; bağlantı boyunca tutulur (PID yeniden kullanımı, K10).
-    process: Option<OwnedHandle>,
+    process: Mutex<Option<OwnedHandle>>,
 }
 
 /// Kimliğe bürünmeyi her yolda geri alır.
@@ -477,7 +477,7 @@ impl PipeConn {
 
     /// Çağıranın kimliği (yalnızca sunucu ucu). Pipe'tan en az bir bayt okunduktan sonra
     /// çağrılmalıdır: Windows kimliğe bürünmeyi son okunan mesaja göre yapar.
-    pub fn caller(&mut self) -> io::Result<CallerToken> {
+    pub fn caller(&self) -> io::Result<CallerToken> {
         if !self.server {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -505,7 +505,7 @@ impl PipeConn {
             })
             .map(OwnedHandle);
         let image_path = process.as_ref().and_then(|p| image_path(p.0));
-        self.process = process;
+        *self.process.lock().unwrap_or_else(PoisonError::into_inner) = process;
         Ok(CallerToken {
             sid,
             session_id,
@@ -596,7 +596,7 @@ pub fn connect_pipe(
                 return Ok(PipeConn {
                     h,
                     server: false,
-                    process: None,
+                    process: Mutex::new(None),
                 });
             }
             Err(e) if is(&e, ERROR_PIPE_BUSY) => {
