@@ -10,6 +10,7 @@ pub mod check;
 pub mod devinstall;
 pub mod docs_errors;
 pub mod hooks;
+pub mod i18n;
 pub mod lab;
 pub mod residue;
 pub mod scan;

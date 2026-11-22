@@ -125,6 +125,8 @@ pub fn run() -> anyhow::Result<()> {
     crate::docs_errors::coverage(&root, &repo_files(&root)?)?;
     eprintln!("==> assets");
     crate::assets::check(&root)?;
+    eprintln!("==> i18n");
+    crate::i18n::check(&root)?;
     eprintln!("==> scan");
     scan_repo(&root, &Source::Worktree)
 }

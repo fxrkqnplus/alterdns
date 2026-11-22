@@ -1,0 +1,186 @@
+// AlterDNS — Copyright (C) 2026 Furkan Okan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Button } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component Heading inherits Text {
+    font-size: Theme.title-size;
+    font-weight: 600;
+    color: Theme.text;
+    wrap: word-wrap;
+}
+
+export component Subtitle inherits Text {
+    font-size: Theme.subtitle-size;
+    font-weight: 600;
+    color: Theme.text;
+    wrap: word-wrap;
+}
+
+export component Body inherits Text {
+    font-size: Theme.body-size;
+    color: Theme.text;
+    wrap: word-wrap;
+}
+
+export component Caption inherits Text {
+    font-size: Theme.caption-size;
+    color: Theme.text-secondary;
+    wrap: word-wrap;
+}
+
+// Vurgu renkli birincil düğme (Windows vurgusu). Enter ve Boşluk etkinleştirir.
+export component PrimaryButton {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    min-height: 32px;
+    min-width: label.preferred-width + 24px;
+    horizontal-stretch: 0;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+    forward-focus: focus;
+
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Rectangle {
+        border-radius: 4px;
+        background: !root.enabled ? Theme.disabled : touch.pressed ? Theme.accent.darker(20%) : touch.has-hover ? Theme.accent.darker(10%) : Theme.accent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.text;
+    }
+
+    label := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        color: root.enabled ? Theme.on-accent : Theme.text-secondary;
+        font-size: Theme.body-size;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Ana penceredeki gezinme öğesi.
+export component NavItem {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+
+    min-height: 36px;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.selected;
+    accessible-action-default => {
+        root.clicked();
+    }
+    forward-focus: focus;
+
+    focus := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Rectangle {
+        border-radius: 4px;
+        background: root.selected ? Theme.selected : touch.has-hover ? Theme.hover : transparent;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.text;
+    }
+
+    Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: 16px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        visible: root.selected;
+    }
+
+    Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.body-size;
+        font-weight: root.selected ? 600 : 400;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Faz 1'de modüller kurulu değildir; "Ekle" bileşen yönetimi gelene kadar devre dışıdır.
+export component ModuleCard inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+
+    background: Theme.card;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-border;
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Subtitle {
+                text: root.title;
+            }
+
+            if root.description != "": Caption {
+                text: root.description;
+            }
+            Caption {
+                text: @tr("Not installed");
+            }
+        }
+
+        Button {
+            text: @tr("Add");
+            enabled: false;
+            accessible-description: @tr("Component management comes in a later release.");
+            horizontal-stretch: 0;
+        }
+    }
+}

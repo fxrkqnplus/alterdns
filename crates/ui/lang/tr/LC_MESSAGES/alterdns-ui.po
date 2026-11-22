@@ -1,0 +1,158 @@
+# AlterDNS — Copyright (C) 2026 Furkan Okan
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: alterdns-ui\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "About"
+msgstr "Hakkında"
+
+msgid "About AlterDNS"
+msgstr "AlterDNS hakkında"
+
+msgid "Add"
+msgstr "Ekle"
+
+msgid "Allow online lookups"
+msgstr "Çevrim içi sorgulara izin ver"
+
+msgid "AlterDNS service"
+msgstr "AlterDNS hizmeti"
+
+msgid "Browser protection"
+msgstr "Tarayıcı koruması"
+
+msgid "Built with Slint. Thanks to the Slint project."
+msgstr "Slint ile geliştirildi. Slint projesine teşekkürler."
+
+msgid "Check now"
+msgstr "Şimdi denetle"
+
+msgid "Code signing: this build is not signed."
+msgstr "Kod imzalama: bu sürüm imzalı değil."
+
+msgid "Component management comes in a later release."
+msgstr "Bileşen yönetimi sonraki bir sürümde gelecek."
+
+msgid "Components"
+msgstr "Bileşenler"
+
+msgid "Connecting to the AlterDNS service…"
+msgstr "AlterDNS hizmetine bağlanılıyor…"
+
+msgid "Connection"
+msgstr "Bağlantı"
+
+msgid "Connection protection"
+msgstr "Bağlantı koruması"
+
+msgid "Copyright © {} {}"
+msgstr "Copyright © {} {}"
+
+msgid "Developer: {}"
+msgstr "Yapımcı: {}"
+
+msgid "File security"
+msgstr "Dosya güvenliği"
+
+msgid ""
+"Helps you reach services that your network blocks by inspecting traffic. "
+"Traffic is handled on this computer; no remote VPN or proxy server is used."
+msgstr ""
+"Ağınızın trafiği inceleyerek engellediği hizmetlere erişmenize yardımcı olur. "
+"Trafik bu bilgisayarda işlenir; uzak bir VPN veya proxy sunucusu kullanılmaz."
+
+msgid ""
+"Inspects downloaded files and the content embedded in them inside a sandbox, "
+"without running them. Parts that cannot be inspected are listed separately."
+msgstr ""
+"İndirilen dosyaları ve içlerine gömülü içeriği çalıştırmadan, sandbox içinde "
+"inceler. İncelenemeyen kısımlar ayrıca belirtilir."
+
+msgid "Language"
+msgstr "Dil"
+
+msgid "Left-clicking the tray icon"
+msgstr "Tepsi simgesine sol tıklama"
+
+msgid "License: {}"
+msgstr "Lisans: {}"
+
+msgid "Name and logo"
+msgstr "Ad ve logo"
+
+msgid "Not installed"
+msgstr "Yüklü değil"
+
+msgid ""
+"Off by default. When on, later releases may check file fingerprints and "
+"addresses with online services."
+msgstr ""
+"Varsayılan olarak kapalı. Açıksa sonraki sürümler dosya parmak izlerini ve "
+"adresleri çevrim içi hizmetlerle denetleyebilir."
+
+msgid "Open main window"
+msgstr "Ana pencereyi aç"
+
+msgid "Opens the main window"
+msgstr "Ana pencereyi açar"
+
+msgid "Opens the menu"
+msgstr "Menüyü açar"
+
+msgid "Overview"
+msgstr "Genel bakış"
+
+msgid "Privacy: AlterDNS sends no telemetry. Logs stay on this computer."
+msgstr "Gizlilik: AlterDNS telemetri göndermez. Kayıtlar bu bilgisayarda kalır."
+
+msgid "Protection module not installed"
+msgstr "Koruma modülü yüklü değil"
+
+msgid "Quit"
+msgstr "Çıkış"
+
+msgid "Running. No protection module is installed yet."
+msgstr "Çalışıyor. Henüz koruma modülü yüklü değil."
+
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgid "Show notifications"
+msgstr "Bildirimleri göster"
+
+msgid ""
+"Shows a warning page before you open a risky address. Works with a browser "
+"extension that you install from the AlterDNS folder in developer mode."
+msgstr ""
+"Riskli bir adrese girmeden önce uyarı sayfası gösterir. AlterDNS klasöründen "
+"geliştirici moduyla kurduğunuz tarayıcı uzantısıyla çalışır."
+
+msgid "Source code: {}"
+msgstr "Kaynak kod: {}"
+
+msgid "Start AlterDNS when I sign in"
+msgstr "Oturum açtığımda AlterDNS'i başlat"
+
+msgid "The AlterDNS name and logo are not covered by this license."
+msgstr "AlterDNS adı ve logosu bu lisansın kapsamında değildir."
+
+msgid "Third-party licenses"
+msgstr "Üçüncü taraf lisansları"
+
+msgid "Update checks come in a later release."
+msgstr "Güncelleme denetimi sonraki bir sürümde gelecek."
+
+msgid "Updates"
+msgstr "Güncellemeler"
+
+msgid "Version {}"
+msgstr "Sürüm {}"
+
+msgid "View source code"
+msgstr "Kaynak kodu görüntüle"

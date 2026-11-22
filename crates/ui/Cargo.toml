@@ -1,0 +1,26 @@
+[package]
+name = "alterdns-ui"
+description = "AlterDNS arayüz bileşenleri: Slint flyout ve ana pencere, gömülü tr/en çeviriler"
+# Slint GPL-3.0-only seçeneğiyle kullanılır (ADR-002, THIRD_PARTY.md); birleşik ikili GPL-3.0
+# koşullarına tabidir. Bu crate `alterdns-svc` ağacına giremez (deny-svc.toml).
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+alterdns-core.workspace = true
+alterdns-errors.workspace = true
+slint.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[dev-dependencies]
+i-slint-backend-testing.workspace = true
+
+[lints]
+workspace = true
