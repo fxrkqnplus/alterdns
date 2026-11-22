@@ -9,9 +9,11 @@
 use xtask::check::{repo_files, repo_root};
 use xtask::docs_errors::{CATALOG_COVERAGE_STRICT, coverage};
 
+// 1E'den itibaren katı kip (derleme zamanı denetimi).
+const _: () = assert!(CATALOG_COVERAGE_STRICT, "1E'de katı kipe geçilir");
+
 #[test]
 fn coverage_is_strict_and_complete() {
-    assert!(CATALOG_COVERAGE_STRICT, "1E'de katı kipe geçilir");
     let root = repo_root().unwrap();
     coverage(&root, &repo_files(&root).unwrap()).unwrap();
 }
