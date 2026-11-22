@@ -24,10 +24,12 @@ use windows::Win32::Graphics::Dwm::{
     DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_WINDOW_CORNER_PREFERENCE,
     DWMWCP_ROUND, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::StationsAndDesktops::{
     GetProcessWindowStation, GetUserObjectInformationW, UOI_FLAGS, USEROBJECTFLAGS,
 };
 use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::WindowsAndMessaging::{
     ASFW_ANY, AllowSetForegroundWindow, CWPRETSTRUCT, CallNextHookEx, CallWindowProcW,
@@ -41,7 +43,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_WINDOWPOSCHANGING, WNDPROC, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_MAXIMIZEBOX, WS_SYSMENU,
 };
-use windows::core::w;
+use windows::Win32::UI::WindowsAndMessaging::{
+    ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXICON, SM_CXSMICON,
+    SendMessageW, WM_SETICON,
+};
+use windows::core::{PCWSTR, w};
 
 use crate::pipe::os_error;
 
@@ -239,11 +245,49 @@ fn harden_with(hwnd: HWND, kind: WindowKind, on_close: Option<CloseFn>) -> io::R
         )
         .map_err(os_error)?;
     }
-    if kind == WindowKind::Flyout {
-        set_dwm(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_ROUND);
-        set_dwm(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_TRANSIENTWINDOW);
+    match kind {
+        WindowKind::Flyout => {
+            set_dwm(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_ROUND);
+            set_dwm(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_TRANSIENTWINDOW);
+        }
+        WindowKind::Main => set_exe_icons(hwnd),
     }
     Ok(())
+}
+
+/// Başlık çubuğu, görev çubuğu ve Alt+Tab simgeleri: exe'nin çok boyutlu simgesinden (kaynak
+/// kimliği 1) pencerenin DPI'ına uygun boyutta yüklenir; böylece Windows tek bir büyük
+/// görseli küçültmez. Simge yoksa (ör. test ikilisi) bir şey yapılmaz. Simgeler işlem
+/// ömrünce kullanılır ve bırakılmaz.
+fn set_exe_icons(hwnd: HWND) {
+    // SAFETY: Modül tanıtıcısı bu işleme ait; kaynak kimliği tamsayı olarak verilir
+    // (MAKEINTRESOURCE); ileti bu iş parçacığının penceresine gönderilir.
+    unsafe {
+        let Ok(module) = GetModuleHandleW(None) else {
+            return;
+        };
+        let dpi = GetDpiForWindow(hwnd);
+        for (which, metric) in [(ICON_SMALL, SM_CXSMICON), (ICON_BIG, SM_CXICON)] {
+            let size = GetSystemMetricsForDpi(metric, dpi);
+            let icon = LoadImageW(
+                Some(module.into()),
+                // MAKEINTRESOURCE(1): işaretçi değil, kaynak kimliği.
+                PCWSTR(std::ptr::without_provenance(1)),
+                IMAGE_ICON,
+                size,
+                size,
+                LR_DEFAULTCOLOR,
+            );
+            if let Ok(icon) = icon {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(which as usize)),
+                    Some(LPARAM(icon.0 as isize)),
+                );
+            }
+        }
+    }
 }
 
 /// Türün stil kuralları: `index` GWL_STYLE ya da GWL_EXSTYLE.

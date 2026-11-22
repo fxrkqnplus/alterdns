@@ -107,7 +107,7 @@ export component MainWindow inherits Window {
     callback open-link(string);
 
     title: "AlterDNS";
-    icon: @image-url("../../../assets/brand/generated/app-256.png");
+    // Pencere simgesi exe'nin çok boyutlu simgesinden yüklenir (winsys, sertleştirmede).
     preferred-width: 960px;
     preferred-height: 640px;
     min-width: 800px;
@@ -133,7 +133,7 @@ export component MainWindow inherits Window {
                 padding-bottom: 12px;
                 spacing: 8px;
                 Image {
-                    source: Theme.dark ? @image-url("../../../assets/brand/generated/logo-dark-512.png") : @image-url("../../../assets/brand/generated/logo-light-512.png");
+                    source: Theme.dark ? @image-url("../../../assets/brand/generated/logo-dark-48.png") : @image-url("../../../assets/brand/generated/logo-light-48.png");
                     width: 24px;
                     height: 24px;
                     image-rendering: smooth;

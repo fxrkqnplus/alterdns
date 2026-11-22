@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use alterdns_core::Paths;
+use alterdns_core::ui::{MSG_QUIT, TRAY_CLASS, WINDOW_CLASS};
 use alterdns_errors::{AdnsError, AdnsErrorCode};
 use alterdns_ipc::{Client, ConnectOptions, PIPE_NAME};
 use alterdns_journal::{
@@ -24,7 +25,7 @@ use alterdns_journal::{
     Txn, list, recover_at_startup, revert_file, sha256_file,
 };
 use alterdns_winsys::{
-    DirAccess, create_protected_dir, is_elevated, query_service, start_service,
+    DirAccess, create_protected_dir, is_elevated, post_broadcast, query_service, start_service,
     verify_protected_chain,
 };
 use anyhow::{Context, bail};
@@ -191,8 +192,55 @@ pub fn dev_install(profile: &str) -> anyhow::Result<()> {
     }
 }
 
+/// Çalışan arayüz işlemlerini (tepsi, ana pencere) kapatır: kurulu `alterdns-ui.exe` açıkken
+/// silinemez. Gizli pencereleri kaybolana kadar (en çok 10 sn) bekler. Yalnızca çağıranın
+/// masaüstündeki pencerelere iletilir.
+fn close_ui() -> anyhow::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut asked = false;
+    loop {
+        let tray = post_broadcast(TRAY_CLASS, MSG_QUIT)?;
+        let window = post_broadcast(WINDOW_CLASS, MSG_QUIT)?;
+        if !tray && !window {
+            break;
+        }
+        if !asked {
+            eprintln!("arayüz kapatılıyor…");
+            asked = true;
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "AlterDNS arayüzü kapanmadı: tepsi menüsünden Çıkış'ı seçin, ana pencereyi kapatın ve yeniden deneyin"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    if asked {
+        // Pencere yok edildikten sonra işlemin çıkıp dosyayı bırakması için.
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    Ok(())
+}
+
+/// Arayüzün kullanıcı verisi (`%LOCALAPPDATA%\AlterDNS`: log ve ayarlar). Bağlantıysa silinmez.
+fn remove_user_data(dir: &Path) -> anyhow::Result<()> {
+    use std::os::windows::fs::MetadataExt;
+    let meta = match std::fs::symlink_metadata(dir) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e).with_context(|| dir.display().to_string()),
+    };
+    if !meta.is_dir() || meta.file_attributes() & 0x400 != 0 {
+        bail!("{} düz bir dizin değil; silinmedi", dir.display());
+    }
+    std::fs::remove_dir_all(dir).with_context(|| dir.display().to_string())?;
+    eprintln!("kullanıcı verisi silindi: {}", dir.display());
+    Ok(())
+}
+
 pub fn dev_uninstall() -> anyhow::Result<()> {
     require_elevated(is_elevated()?)?;
+    close_ui()?;
     let paths = Paths::system()?;
     let journal = paths.journal_dir();
     let targets = Targets::product(paths.program_files.clone());
@@ -229,6 +277,7 @@ pub fn dev_uninstall() -> anyhow::Result<()> {
             std::fs::remove_dir_all(&paths.machine)
                 .with_context(|| paths.machine.display().to_string())?;
         }
+        remove_user_data(&paths.user)?;
     } else {
         eprintln!("geri alma temiz değil; dizinler silinmedi");
     }

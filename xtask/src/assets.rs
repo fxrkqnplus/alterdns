@@ -20,6 +20,8 @@ pub const TRAY_SIZES: [u32; 4] = [16, 20, 24, 32];
 pub const APP_SIZES: [u32; 8] = [16, 20, 24, 32, 40, 48, 64, 256];
 const OUT_DIR: &str = r"assets\brand\generated";
 const TRAY_SVG: &str = r"assets\brand\tray\tray.svg";
+const TRAY_SVG_16: &str = r"assets\brand\tray\tray-16.svg";
+const TRAY_SVG_20: &str = r"assets\brand\tray\tray-20.svg";
 const LOGO_PNG: &str = r"assets\brand\alterdns.png";
 /// Piksel karşılaştırmasında kanal başına izin verilen fark.
 const TOLERANCE: u8 = 2;
@@ -96,9 +98,20 @@ impl Badge {
     }
 }
 
+/// SVG'nin kare ızgara boyu (`viewBox="0 0 N N"`).
+fn grid(svg: &str) -> anyhow::Result<f32> {
+    let start = svg.find(r#"viewBox="0 0 "#).context("viewBox yok")? + r#"viewBox="0 0 "#.len();
+    let n = svg[start..]
+        .split_whitespace()
+        .next()
+        .context("viewBox eksik")?;
+    Ok(n.parse()?)
+}
+
 /// Glif rengini temaya göre verir ve rozeti ekler: 16'lık ızgarada sağ altta r = 2,7, görev
-/// çubuğu renginde 1,1 px kenarlık (tray.svg'deki not).
+/// çubuğu renginde 1,1 px kenarlık (tray.svg'deki not); başka ızgarada aynı oranla.
 fn tray_svg(svg: &str, theme: TrayTheme, badge: Badge) -> anyhow::Result<String> {
+    let k = grid(svg)? / 16.0;
     let colored = svg.replacen(
         r##"color="#000000""##,
         &format!(r#"color="{}""#, theme.glyph()),
@@ -110,8 +123,12 @@ fn tray_svg(svg: &str, theme: TrayTheme, badge: Badge) -> anyhow::Result<String>
     let end = colored.rfind("</svg>").context("tray.svg kapanmıyor")?;
     let badge_el = badge.color().map_or_else(String::new, |c| {
         format!(
-            r#"<circle cx="12.75" cy="12.75" r="2.7" fill="{c}" stroke="{}" stroke-width="1.1"/>"#,
-            theme.taskbar()
+            r#"<circle cx="{}" cy="{}" r="{}" fill="{c}" stroke="{}" stroke-width="{}"/>"#,
+            12.75 * k,
+            12.75 * k,
+            2.7 * k,
+            theme.taskbar(),
+            1.1 * k
         )
     });
     Ok(format!("{}{badge_el}{}", &colored[..end], &colored[end..]))
@@ -170,8 +187,40 @@ fn logo(src: &Pixmap, rgb: [u8; 3], size: u32) -> anyhow::Result<Vec<u8>> {
     fit(&tinted, size, None)
 }
 
+/// Yarıya küçültme: her hedef piksel 2 × 2 kaynak pikselin ortalamasıdır (çift doğrusal
+/// örnekleme tam ortadan).
+fn halve(src: &Pixmap) -> anyhow::Result<Pixmap> {
+    let (w, h) = (src.width().div_ceil(2), src.height().div_ceil(2));
+    let mut out = Pixmap::new(w, h).context("pixmap")?;
+    let paint = PixmapPaint {
+        quality: FilterQuality::Bilinear,
+        ..PixmapPaint::default()
+    };
+    out.draw_pixmap(
+        0,
+        0,
+        src.as_ref(),
+        &paint,
+        Transform::from_scale(0.5, 0.5),
+        None,
+    );
+    Ok(out)
+}
+
 /// `src`'yi kırpmadan `size` × `size` alana ortalar; `background` verilirse önce onu boyar.
+/// Büyük oranlı küçültmede örnek atlanmasın diye kaynak önce kademeli olarak yarıya indirilir;
+/// son adım en çok 2 katlık bikübik küçültmedir.
 fn fit(src: &Pixmap, size: u32, background: Option<Color>) -> anyhow::Result<Vec<u8>> {
+    let mut reduced: Option<Pixmap> = None;
+    loop {
+        let current = reduced.as_ref().unwrap_or(src);
+        if current.width().max(current.height()) < size * 2 {
+            break;
+        }
+        let next = halve(current)?;
+        reduced = Some(next);
+    }
+    let src = reduced.as_ref().unwrap_or(src);
     let mut out = Pixmap::new(size, size).context("pixmap")?;
     if let Some(bg) = background {
         out.fill(bg);
@@ -196,14 +245,21 @@ fn fit(src: &Pixmap, size: u32, background: Option<Color>) -> anyhow::Result<Vec
 
 /// Üretilecek bütün dosyalar: (depo içi yol, içerik).
 fn outputs(root: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
-    let svg = std::fs::read_to_string(root.join(TRAY_SVG)).context(TRAY_SVG)?;
+    let read = |p: &str| std::fs::read_to_string(root.join(p)).with_context(|| p.to_string());
+    let (svg, svg16, svg20) = (read(TRAY_SVG)?, read(TRAY_SVG_16)?, read(TRAY_SVG_20)?);
+    // 16 ve 20 px piksele hizalanmış biçimlerden, diğerleri ana çizimden.
+    let source = |size: u32| match size {
+        16 => &svg16,
+        20 => &svg20,
+        _ => &svg,
+    };
     let out = PathBuf::from(OUT_DIR);
     let mut files = Vec::new();
     for theme in TrayTheme::ALL {
         for badge in Badge::ALL {
             let pngs = TRAY_SIZES
                 .iter()
-                .map(|s| Ok((*s, render_tray(&svg, *s, theme, badge)?)))
+                .map(|s| Ok((*s, render_tray(source(*s), *s, theme, badge)?)))
                 .collect::<anyhow::Result<Vec<_>>>()?;
             files.push((
                 out.join(format!("tray-{}-{}.ico", theme.name(), badge.name())),
@@ -231,7 +287,16 @@ fn outputs(root: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
         .map(|s| Ok((*s, fit(&src, *s, Some(Color::BLACK))?)))
         .collect::<anyhow::Result<Vec<_>>>()?;
     files.push((out.join("app.ico"), ico(&app)));
-    files.push((out.join("app-256.png"), fit(&src, 256, Some(Color::BLACK))?));
+    // Arayüzdeki logolar gösterim boyutunun iki katında (flyout 32, gezinme 24 mantıksal px):
+    // çizici en çok 2 kat küçültür, 200 % ölçekte birebir gösterilir.
+    for (theme, rgb) in [("light", [0x1F, 0x1F, 0x1F]), ("dark", [0xFF, 0xFF, 0xFF])] {
+        for size in [48, 64] {
+            files.push((
+                out.join(format!("logo-{theme}-{size}.png")),
+                logo(&src, rgb, size)?,
+            ));
+        }
+    }
     Ok(files)
 }
 

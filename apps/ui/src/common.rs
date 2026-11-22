@@ -15,12 +15,10 @@ use alterdns_winsys::ThemeInfo;
 
 use crate::status::{IpcSource, Notice, UiStatus, run};
 
-/// Tepsiye: kullanıcı ayarları değişti (yeniden oku).
-pub const MSG_SETTINGS_CHANGED: u32 = 1;
-/// Ana pencereye: öne gel.
-pub const MSG_ACTIVATE: u32 = 2;
-/// Ana pencereye: öne gel ve sayfayı aç (`MSG_PAGE | PageName::code`).
-pub const MSG_PAGE: u32 = 0x100;
+pub use alterdns_core::ui::{
+    MSG_ACTIVATE, MSG_PAGE, MSG_QUIT, MSG_SETTINGS_CHANGED, TRAY_CLASS, WINDOW_CLASS,
+};
+
 /// Kaynak kodu ve belgeler; arayüz yalnızca bu önekle başlayan adresleri açar.
 pub const REPO_URL: &str = "https://github.com/fxrkqnplus/alterdns";
 

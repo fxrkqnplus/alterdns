@@ -24,7 +24,8 @@ use alterdns_winsys::{
 
 use crate::args::PageName;
 use crate::common::{
-    MSG_SETTINGS_CHANGED, spawn_status, start, status_view, theme_colors, ui_error,
+    MSG_QUIT, MSG_SETTINGS_CHANGED, TRAY_CLASS, spawn_status, start, status_view, theme_colors,
+    ui_error,
 };
 use crate::status::{Notice, UiStatus};
 
@@ -276,7 +277,7 @@ impl Tray {
 /// Tepsi kipini çalıştırır. Aynı oturumda tepsi zaten çalışıyorsa ya da oturum açılışında
 /// kullanıcı başlatmayı kapattıysa hemen döner.
 pub fn run(logon: bool) -> Result<(), AdnsError> {
-    let Some(_lock) = single_instance("AlterDNS.Tray").map_err(ui_error)? else {
+    let Some(_lock) = single_instance(TRAY_CLASS).map_err(ui_error)? else {
         return Ok(());
     };
     let (paths, cfg) = start("tray")?;
@@ -297,8 +298,15 @@ pub fn run(logon: bool) -> Result<(), AdnsError> {
     flyout.on_quit(|| post(Cmd::Quit));
     flyout.on_close_requested(|| post(Cmd::CloseFlyout));
 
-    let window = MessageWindow::create("AlterDNS.Tray", Box::new(|e| post(Cmd::Shell(e))))
-        .map_err(ui_error)?;
+    let window = MessageWindow::create(
+        TRAY_CLASS,
+        Box::new(|e| match e {
+            // Kaldırma ve güncelleme öncesi kapanma isteği.
+            ShellEvent::Broadcast(MSG_QUIT) => post(Cmd::Quit),
+            e => post(Cmd::Shell(e)),
+        }),
+    )
+    .map_err(ui_error)?;
     let tooltip = flyout
         .global::<TrayText>()
         .invoke_tooltip(flyout.global::<TrayText>().get_connecting());

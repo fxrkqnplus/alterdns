@@ -56,6 +56,23 @@ fn tray_render_sizes_and_alpha() {
     assert_eq!(&pixel(&data, w, 2, 8)[..3], &[255, 255, 255]);
 }
 
+/// 16 px biçimde yatay kenarlar tam pikseldedir: "A"nın tepesinin hemen üstündeki satır tam
+/// opak, tepe satırı tam saydam (yarı saydam bulanık kenar yok).
+#[test]
+fn hinted_16px_glyph_has_crisp_edges() {
+    let root = xtask::check::repo_root().unwrap();
+    let svg = std::fs::read_to_string(root.join(r"assets\brand\tray\tray-16.svg")).unwrap();
+    let (w, _, data) = rgba(&render_tray(&svg, 16, TrayTheme::Dark, Badge::None).unwrap());
+    for x in 7..=9 {
+        assert_eq!(pixel(&data, w, x, 3)[3], 255, "x={x} üst kenar");
+        assert_eq!(pixel(&data, w, x, 4)[3], 0, "x={x} tepe");
+    }
+    // "A" boşluk olarak çizilir: yatay çizgi (y 9) saydam, ayakların arası (y 10–11) gövde.
+    assert_eq!(pixel(&data, w, 8, 9)[3], 0);
+    assert_eq!(pixel(&data, w, 8, 10)[3], 255);
+    assert_eq!(pixel(&data, w, 9, 11)[3], 255);
+}
+
 #[test]
 fn badge_pixel_has_badge_color() {
     let (w, _, data) = rgba(&render_tray(&svg(), 32, TrayTheme::Light, Badge::Warning).unwrap());

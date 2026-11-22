@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" color="#000000">
+  <!-- tray.svg'nin 20 px (125 %) için piksele hizalanmış biçimi (aday, 2026-11-22). Koordinatlar
+       16'lık çizimin 1,25 katı, tam piksele yuvarlanmış: tepe 5, yatay çizgi 11-13, ayaklar
+       13-15. Rozet 20'lik ızgarada aynı oranla eklenir. -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M5 1h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Z
+           M6 15h3l.5-2h3.5l1 2h2L12 5H8ZM10 8l1 3H9Z"/>
+</svg>

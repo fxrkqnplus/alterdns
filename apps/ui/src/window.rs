@@ -19,8 +19,8 @@ use alterdns_winsys::{
 
 use crate::args::PageName;
 use crate::common::{
-    MSG_ACTIVATE, MSG_PAGE, MSG_SETTINGS_CHANGED, REPO_URL, spawn_status, start, status_view,
-    theme_colors, ui_error,
+    MSG_ACTIVATE, MSG_PAGE, MSG_QUIT, MSG_SETTINGS_CHANGED, REPO_URL, TRAY_CLASS, WINDOW_CLASS,
+    spawn_status, start, status_view, theme_colors, ui_error,
 };
 
 const WIDTH: i32 = 960;
@@ -67,11 +67,11 @@ fn allowed_link(url: &str) -> bool {
 }
 
 pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
-    let Some(_lock) = single_instance("AlterDNS.Window").map_err(ui_error)? else {
+    let Some(_lock) = single_instance(WINDOW_CLASS).map_err(ui_error)? else {
         // Var olan pencere öne gelir; ön plana geçebilmesi için izin verilir.
         allow_foreground_any();
         let code = page.map_or(MSG_ACTIVATE, |p| MSG_PAGE | p.code());
-        post_broadcast("AlterDNS.Window", code).map_err(ui_error)?;
+        post_broadcast(WINDOW_CLASS, code).map_err(ui_error)?;
         return Ok(());
     };
     let (paths, cfg) = start("window")?;
@@ -109,7 +109,7 @@ pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
         }
         current = next;
         // Tepsi açıksa ayarları yeniden okur (dil, sol tık, bildirimler).
-        if let Err(e) = post_broadcast("AlterDNS.Tray", MSG_SETTINGS_CHANGED) {
+        if let Err(e) = post_broadcast(TRAY_CLASS, MSG_SETTINGS_CHANGED) {
             tracing::warn!(error = %e, "tepsiye ayar iletisi gönderilemedi");
         }
     });
@@ -126,11 +126,16 @@ pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
     // İkinci örnekten gelen ileti: öne gel, istenirse sayfayı aç.
     let weak = main.as_weak();
     let _window = MessageWindow::create(
-        "AlterDNS.Window",
+        WINDOW_CLASS,
         Box::new(move |event| {
             let ShellEvent::Broadcast(code) = event else {
                 return;
             };
+            if code == MSG_QUIT {
+                // Kaldırma ve güncelleme öncesi kapanma isteği.
+                let _ = slint::quit_event_loop();
+                return;
+            }
             if let Some(main) = weak.upgrade()
                 && let Some(page) = (code & MSG_PAGE != 0)
                     .then(|| PageName::from_code(code & !MSG_PAGE))
