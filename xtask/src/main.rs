@@ -70,6 +70,15 @@ fn main() -> ExitCode {
                 }
             }),
         ),
+        Some("test") => match args.get(1).map(String::as_str) {
+            None => report("test", check::run_tests(false)),
+            // Kurulu servise karşı salt okunur testler: yönetici terminali, dev-install sonrası.
+            Some("--live") => report("test", check::run_tests(true)),
+            _ => {
+                eprintln!("kullanım: cargo xtask test [--live]");
+                ExitCode::from(2)
+            }
+        },
         // Sistem değiştirir: yalnızca kullanıcının yönetici terminalinde, onayıyla.
         Some("dev-install") => {
             let profile = if args.get(1).map(String::as_str) == Some("--debug") {
@@ -89,7 +98,7 @@ fn main() -> ExitCode {
         },
         _ => {
             eprintln!(
-                "kullanım: cargo xtask check [--staged | --tree <rev>] | docs-errors | assets [--check] | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
+                "kullanım: cargo xtask check [--staged | --tree <rev>] | test [--live] | docs-errors | assets [--check] | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
             );
             ExitCode::from(2)
         }

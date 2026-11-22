@@ -19,89 +19,168 @@ const LOCAL_TERMS_FILE: &str = "lab/local/private-terms.txt";
 const SVC_MANIFEST: &str = "apps/svc/Cargo.toml";
 const SVC_DENY_CONFIG: &str = "deny-svc.toml";
 
+// `test-ops`: journal ve bekçi testleri yalnızca AlterDNS'in kendi test nesneleriyle
+// (`HKCU\Software\AlterDNS-Test`, `%TEMP%\alterdns-*`) gerçek sistem işlemi yapar.
+const CARGO_STEPS: [(&str, &[&str]); 7] = [
+    ("fmt", &["fmt", "--all", "--check"]),
+    (
+        "clippy",
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    ),
+    ("test", &["test", "--workspace", "--locked"]),
+    (
+        "clippy-test-ops",
+        &[
+            "clippy",
+            "-p",
+            "alterdns-journal",
+            "-p",
+            "alterdns-maint",
+            "-p",
+            "alterdns-ipc",
+            "-p",
+            "alterdns-svc",
+            "--all-targets",
+            "--locked",
+            "--features",
+            "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    ),
+    (
+        "test-ops",
+        &[
+            "test",
+            "-p",
+            "alterdns-journal",
+            "-p",
+            "alterdns-maint",
+            "-p",
+            "alterdns-ipc",
+            "-p",
+            "alterdns-svc",
+            "--locked",
+            "--features",
+            "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
+        ],
+    ),
+    // Platformdan bağımsız crate'ler Linux'ta da derlenir (ARCHITECTURE §3).
+    (
+        "linux-errors",
+        &[
+            "check",
+            "-p",
+            "alterdns-errors",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+            "--locked",
+        ],
+    ),
+    ("deny", &["deny", "check"]),
+];
+
+/// `check`'teki test adımları ("test" ve "test-ops"); `xtask test` de bunları çalıştırır.
+pub fn test_steps() -> Vec<(&'static str, Vec<&'static str>)> {
+    CARGO_STEPS
+        .iter()
+        .filter(|(name, _)| matches!(*name, "test" | "test-ops"))
+        .map(|(name, args)| (*name, args.to_vec()))
+        .collect()
+}
+
+/// Kurulu servise karşı salt okunur, `#[ignore]` testler (`dev-install` sonrası, yönetici).
+/// Servisi kurmaz, değiştirmez ya da kaldırmaz.
+pub const LIVE_STEPS: [(&str, &[&str]); 2] = [
+    (
+        "live-service",
+        &[
+            "test",
+            "--locked",
+            "-p",
+            "alterdns-winsys",
+            "--test",
+            "service",
+            "--",
+            "--ignored",
+        ],
+    ),
+    (
+        "live-ipc",
+        &[
+            "test",
+            "--locked",
+            "-p",
+            "alterdns-ipc",
+            "--test",
+            "live",
+            "--",
+            "--ignored",
+        ],
+    ),
+];
+
+/// `--live` ön koşulu: AlterDNS servisi kurulu ve çalışıyor.
+pub fn require_running(state: Option<&alterdns_winsys::ServiceState>) -> anyhow::Result<()> {
+    match state {
+        None => bail!(
+            "AlterDNS servisi kurulu değil: önce yönetici terminalinde cargo xtask dev-install"
+        ),
+        Some(s) if !s.running => bail!(
+            "AlterDNS servisi çalışmıyor: Start-Service AlterDNS ya da yeniden cargo xtask dev-install"
+        ),
+        Some(_) => Ok(()),
+    }
+}
+
+fn run_cargo(cargo: &str, root: &Path, name: &str, args: &[&str]) -> anyhow::Result<()> {
+    eprintln!("==> {name}");
+    let status = Command::new(cargo)
+        .args(args)
+        .current_dir(root)
+        .status()
+        .with_context(|| format!("{name} adımı başlatılamadı"))?;
+    if !status.success() {
+        bail!("{name} adımı başarısız ({status})");
+    }
+    Ok(())
+}
+
+/// `cargo xtask test`: sistem değiştirmeyen testler; `--live` ile ayrıca kurulu servise karşı
+/// salt okunur testler (yönetici ve çalışan servis gerekir).
+pub fn run_tests(live: bool) -> anyhow::Result<()> {
+    let root = repo_root()?;
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    if live {
+        crate::devinstall::require_elevated(alterdns_winsys::is_elevated()?)?;
+        require_running(alterdns_winsys::query_service(alterdns_journal::SERVICE_NAME)?.as_ref())?;
+    }
+    for (name, args) in test_steps() {
+        run_cargo(&cargo, &root, name, &args)?;
+    }
+    if live {
+        for (name, args) in LIVE_STEPS {
+            run_cargo(&cargo, &root, name, args)?;
+        }
+    }
+    Ok(())
+}
+
 /// `xtask check` adımlarını sırayla çalıştırır; ilk hatada durur.
 pub fn run() -> anyhow::Result<()> {
     let root = repo_root()?;
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    // `test-ops`: journal ve bekçi testleri yalnızca AlterDNS'in kendi test nesneleriyle
-    // (`HKCU\Software\AlterDNS-Test`, `%TEMP%\alterdns-*`) gerçek sistem işlemi yapar.
-    let steps: [(&str, &[&str]); 7] = [
-        ("fmt", &["fmt", "--all", "--check"]),
-        (
-            "clippy",
-            &[
-                "clippy",
-                "--workspace",
-                "--all-targets",
-                "--locked",
-                "--",
-                "-D",
-                "warnings",
-            ],
-        ),
-        ("test", &["test", "--workspace", "--locked"]),
-        (
-            "clippy-test-ops",
-            &[
-                "clippy",
-                "-p",
-                "alterdns-journal",
-                "-p",
-                "alterdns-maint",
-                "-p",
-                "alterdns-ipc",
-                "-p",
-                "alterdns-svc",
-                "--all-targets",
-                "--locked",
-                "--features",
-                "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
-                "--",
-                "-D",
-                "warnings",
-            ],
-        ),
-        (
-            "test-ops",
-            &[
-                "test",
-                "-p",
-                "alterdns-journal",
-                "-p",
-                "alterdns-maint",
-                "-p",
-                "alterdns-ipc",
-                "-p",
-                "alterdns-svc",
-                "--locked",
-                "--features",
-                "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
-            ],
-        ),
-        // Platformdan bağımsız crate'ler Linux'ta da derlenir (ARCHITECTURE §3).
-        (
-            "linux-errors",
-            &[
-                "check",
-                "-p",
-                "alterdns-errors",
-                "--target",
-                "x86_64-unknown-linux-gnu",
-                "--locked",
-            ],
-        ),
-        ("deny", &["deny", "check"]),
-    ];
-    for (name, args) in steps {
-        eprintln!("==> {name}");
-        let status = Command::new(&cargo)
-            .args(args)
-            .current_dir(&root)
-            .status()
-            .with_context(|| format!("{name} adımı başlatılamadı"))?;
-        if !status.success() {
-            bail!("{name} adımı başarısız ({status})");
-        }
+    for (name, args) in CARGO_STEPS {
+        run_cargo(&cargo, &root, name, args)?;
     }
     eprintln!("==> deny-svc");
     match svc_deny_args(&root) {
