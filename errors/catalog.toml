@@ -259,7 +259,8 @@ code = "ADNS-SYS-004"
 name = "SysElevationDenied"
 area = "SYS"
 severity = "info"
-faz = 1
+# Ürünün yönetici izni istediği ilk yer Faz 5'teki kurulum ve bileşen yöneticisidir.
+faz = 5
 retryable = true
 user_action_required = true
 params = []

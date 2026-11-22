@@ -106,7 +106,7 @@ fields = ["win32_error", "driver_path", "driver_version"]
 | ADNS-SYS-001 | Hata | 1 | Ayar uygulanamadı | İstenen sistem ayarı değiştirilemedi; hiçbir değişiklik yapılmadı. | Yönetici izni yok; Kurum ilkesi; Ayar kilitli | Yönetici olarak tekrar deneyin; Kurum cihazıysa BT yöneticinize danışın |
 | ADNS-SYS-002 | Kritik | 1 | Değişiklik geri alınamadı | AlterDNS'in yaptığı bir ayar eski haline döndürülemedi. Ayrıntılar aşağıda. | Ayar kilitli; Dosya veya kayıt silinmiş | "Yeniden dene"; Olmazsa ekrandaki eski değeri el ile geri yükleme yönergesini izleyin |
 | ADNS-SYS-003 | Uyarı | 1 | Ayar başka biri tarafından değiştirilmiş | Geri alınacak ayar AlterDNS'ten sonra değiştirilmiş; üzerine yazılmadı. | Kullanıcı veya başka uygulama değiştirdi | Mevcut değeri koru (önerilen) veya AlterDNS öncesi değeri geri yükle |
-| ADNS-SYS-004 | Bilgi | 1 | Yönetici izni verilmedi | İşlem için Windows yönetici onayı gerekiyor; işlem iptal edildi. | UAC penceresi reddedildi | İşlemi yeniden başlatıp onay verin |
+| ADNS-SYS-004 | Bilgi | 5 | Yönetici izni verilmedi | İşlem için Windows yönetici onayı gerekiyor; işlem iptal edildi. | UAC penceresi reddedildi | İşlemi yeniden başlatıp onay verin |
 
 ### NET
 

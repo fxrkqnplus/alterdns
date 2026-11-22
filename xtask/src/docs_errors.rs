@@ -13,8 +13,8 @@ use anyhow::{Context, bail};
 
 /// Geçerli faz: T-ERR-003 yalnızca `faz` değeri buna eşit ya da küçük kodlara uygulanır.
 pub const CURRENT_FAZ: u8 = 1;
-/// Kapsam denetimi 1A'da rapor kipindedir; 1E'de katı kipe geçilir.
-pub const CATALOG_COVERAGE_STRICT: bool = false;
+/// Kapsam denetimi 1A'da rapor kipindeydi; 1E'de katı kipe geçildi (eksik kod check hatasıdır).
+pub const CATALOG_COVERAGE_STRICT: bool = true;
 
 pub const NOTICE: &str = "> Bu dosya `errors/catalog.toml`'dan üretilir; elle düzenlemeyin. Yeniden üretmek için: `cargo xtask docs-errors`.";
 const HEAD: &str = "errors/catalog-head.md";
