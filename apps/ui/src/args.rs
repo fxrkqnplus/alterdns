@@ -63,8 +63,14 @@ impl PageName {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
-    Tray { logon: bool },
-    Window { page: Option<PageName> },
+    Tray {
+        logon: bool,
+    },
+    /// `perf`: ilk çizimde işlem yaşı ölçüm penceresine bildirilir (`xtask perf`).
+    Window {
+        page: Option<PageName>,
+        perf: bool,
+    },
 }
 
 /// Tanınmayan komut satırı (çıkış kodu 2).
@@ -72,12 +78,13 @@ pub enum Mode {
 pub struct UsageError;
 
 pub fn parse_args(args: &[String]) -> Result<Mode, UsageError> {
-    let (mut tray, mut logon, mut page) = (false, false, None);
+    let (mut tray, mut logon, mut page, mut perf) = (false, false, None, false);
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--tray" if !tray => tray = true,
             "--logon" if !logon => logon = true,
+            "--perf" if !perf => perf = true,
             "--page" if page.is_none() => {
                 let name = it.next().ok_or(UsageError)?;
                 page = Some(PageName::parse(name).ok_or(UsageError)?);
@@ -85,9 +92,9 @@ pub fn parse_args(args: &[String]) -> Result<Mode, UsageError> {
             _ => return Err(UsageError),
         }
     }
-    match (tray, logon, page) {
-        (true, logon, None) => Ok(Mode::Tray { logon }),
-        (false, false, page) => Ok(Mode::Window { page }),
+    match (tray, logon, page, perf) {
+        (true, logon, None, false) => Ok(Mode::Tray { logon }),
+        (false, false, page, perf) => Ok(Mode::Window { page, perf }),
         _ => Err(UsageError),
     }
 }

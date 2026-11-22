@@ -50,6 +50,6 @@ pub use tray::{
     MessageWindow, ShellEvent, TrayIcon, icon_count, post_broadcast, taskbar_present, window_owner,
 };
 pub use window::{
-    WindowKind, allow_foreground, arm_harden, bring_to_front, ex_style, harden, hardened_window,
-    interactive_desktop, on_next_paint,
+    WindowKind, allow_foreground, arm_harden, arm_paint_probe, bring_to_front, ex_style, harden,
+    hardened_window, interactive_desktop, on_next_paint,
 };

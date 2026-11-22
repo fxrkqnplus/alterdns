@@ -30,6 +30,12 @@ pub mod ui {
     pub const MSG_ACTIVATE: u32 = 2;
     /// Tepsiye ve ana pencereye: kapan (kaldırma ve güncelleme öncesi).
     pub const MSG_QUIT: u32 = 3;
+    /// Tepsiye (ölçüm, `xtask perf`): flyout'u aç, ilk çizimde süreyi `PERF_CLASS`'a bildir.
+    pub const MSG_PERF_FLYOUT_OPEN: u32 = 4;
+    /// Tepsiye (ölçüm): flyout'u kapat.
+    pub const MSG_PERF_FLYOUT_CLOSE: u32 = 5;
+    /// Ölçüm sonuçlarını alan gizli pencerenin sınıfı (`xtask perf`); değer mikro saniyedir.
+    pub const PERF_CLASS: &str = "AlterDNS.Perf";
     /// Ana pencereye: öne gel ve sayfayı aç (`MSG_PAGE | sayfa kodu`).
     pub const MSG_PAGE: u32 = 0x100;
 }

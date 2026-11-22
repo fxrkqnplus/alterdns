@@ -24,6 +24,7 @@ use windows::Win32::Graphics::Dwm::{
     DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_WINDOW_CORNER_PREFERENCE,
     DWMWCP_ROUND, DWMWINDOWATTRIBUTE, DwmFlush, DwmSetWindowAttribute,
 };
+use windows::Win32::Graphics::Gdi::InvalidateRect;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::StationsAndDesktops::{
     GetProcessWindowStation, GetUserObjectInformationW, UOI_FLAGS, USEROBJECTFLAGS,
@@ -77,6 +78,8 @@ thread_local! {
     static HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
     /// `arm_harden` ile en son yakalanıp sertleştirilen pencere.
     static LAST_HARDENED: Cell<Option<isize>> = const { Cell::new(None) };
+    /// Kancanın yakalayacağı sonraki pencereye bağlanacak çizim sondası.
+    static PENDING_PROBE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
     /// Bu iş parçacığında sertleştirilmiş pencereler (HWND → durum).
     static HARDENED: RefCell<HashMap<isize, Rc<Hardened>>> = RefCell::new(HashMap::new());
 }
@@ -143,6 +146,16 @@ unsafe extern "system" fn show_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
                 // Başarısızsa pencere sertleşmez; çağıran `ex_style` ile denetleyebilir.
                 if harden_with(cwp.hwnd, kind, Some(on_close)).is_ok() {
                     let _ = LAST_HARDENED.try_with(|c| c.set(Some(cwp.hwnd.0 as isize)));
+                    let probe = PENDING_PROBE
+                        .try_with(|p| p.try_borrow_mut().ok().and_then(|mut p| p.take()))
+                        .ok()
+                        .flatten();
+                    if let Some(probe) = probe
+                        && let Some(state) = state_of(cwp.hwnd)
+                        && let Ok(mut slot) = state.paint_probe.try_borrow_mut()
+                    {
+                        *slot = Some(probe);
+                    }
                 }
             }
         }
@@ -167,6 +180,18 @@ pub fn hardened_window() -> Option<isize> {
         .then_some(raw)
 }
 
+/// `arm_harden` ile yakalanacak sonraki pencereye bağlanacak çizim sondası: pencere
+/// gösterilmeden önce bağlanır, ilk `WM_PAINT` işlendikten ve `DwmFlush` döndükten sonra bir
+/// kez çağrılır. winit pencereyi olay döngüsü başlayınca oluşturduğunda kullanılır; pencere
+/// zaten varsa `on_next_paint` kullanılır.
+pub fn arm_paint_probe(f: Box<dyn FnOnce()>) {
+    let _ = PENDING_PROBE.try_with(|p| {
+        if let Ok(mut p) = p.try_borrow_mut() {
+            *p = Some(f);
+        }
+    });
+}
+
 /// `arm_harden` ya da `harden` ile sertleştirilmiş pencerenin sonraki `WM_PAINT`'i işlendikten
 /// ve `DwmFlush` döndükten sonra `f` bir kez çağrılır (ilk çizim ölçümü; Slint'in yazılım
 /// çizicisinde çizim bildirimi yoktur). Pencere sertleştirilmemişse `InvalidInput`.
@@ -178,6 +203,13 @@ pub fn on_next_paint(hwnd: isize, f: Box<dyn FnOnce()>) -> io::Result<()> {
         .try_borrow_mut()
         .map_err(|_| io::Error::other("çizim sondası meşgul"))?;
     *slot = Some(f);
+    drop(slot);
+    // İlk çizim sonda kurulmadan (gösterim sırasında) işlenmiş olabilir: bir çizim daha
+    // istenir. Ölçüm en kötü durumda biraz geç kalır, hiçbir zaman erken değil.
+    // SAFETY: Bu iş parçacığının penceresi; tamamı geçersizleştirilir.
+    unsafe {
+        let _ = InvalidateRect(Some(hwnd_of(hwnd)), None, false);
+    }
     Ok(())
 }
 

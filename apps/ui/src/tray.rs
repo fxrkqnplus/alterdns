@@ -12,14 +12,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use alterdns_core::ui::{MSG_PERF_FLYOUT_CLOSE, MSG_PERF_FLYOUT_OPEN, PERF_CLASS};
 use alterdns_core::{Lang, LeftClick, Paths, UserConfig, load_user};
 use alterdns_errors::{AdnsError, AdnsErrorCode};
 use alterdns_ui::slint::{self, ComponentHandle};
 use alterdns_ui::{FlyoutWindow, TrayText, select_language};
 use alterdns_winsys::{
     MessageWindow, Rect, ShellEvent, TrayIcon, WindowKind, allow_foreground, arm_harden,
-    bring_to_front, cursor_pos, hardened_window, monitor_at, place_flyout, single_instance,
-    taskbar_edge, theme_info,
+    bring_to_front, cursor_pos, hardened_window, monitor_at, on_next_paint, place_flyout,
+    post_broadcast, single_instance, taskbar_edge, theme_info,
 };
 
 use crate::args::PageName;
@@ -41,6 +42,8 @@ enum Cmd {
     CloseFlyout,
     FinishClose,
     OpenMain(Option<PageName>),
+    /// Ölçüm (`xtask perf`): iletinin alındığı an.
+    PerfOpen(Instant),
     Quit,
 }
 
@@ -131,6 +134,7 @@ impl Tray {
                 }
             }
             Cmd::OpenMain(page) => self.open_main(page),
+            Cmd::PerfOpen(start) => self.perf_open(start),
             Cmd::Quit => {}
         }
     }
@@ -255,6 +259,25 @@ impl Tray {
         slint::Timer::single_shot(delay, || post(Cmd::FinishClose));
     }
 
+    /// Flyout'u açar ve ilk çizimde, iletinin alınmasından bu yana geçen süreyi mikro saniye
+    /// olarak `PERF_CLASS` penceresine bildirir. Flyout zaten açıksa bir şey yapılmaz.
+    fn perf_open(&mut self, start: Instant) {
+        if self.open {
+            return;
+        }
+        self.open_flyout();
+        let Some(hwnd) = hardened_window().filter(|_| self.open) else {
+            return;
+        };
+        let report = Box::new(move || {
+            let us = u32::try_from(start.elapsed().as_micros()).unwrap_or(u32::MAX);
+            let _ = post_broadcast(PERF_CLASS, us);
+        });
+        if let Err(e) = on_next_paint(hwnd, report) {
+            tracing::warn!(error = %e, "ilk çizim sondası kurulamadı");
+        }
+    }
+
     fn open_main(&mut self, page: Option<PageName>) {
         self.close_flyout();
         let result = std::env::current_exe().and_then(|exe| {
@@ -301,6 +324,8 @@ pub fn run(logon: bool) -> Result<(), AdnsError> {
         Box::new(|e| match e {
             // Kaldırma ve güncelleme öncesi kapanma isteği.
             ShellEvent::Broadcast(MSG_QUIT) => post(Cmd::Quit),
+            ShellEvent::Broadcast(MSG_PERF_FLYOUT_OPEN) => post(Cmd::PerfOpen(Instant::now())),
+            ShellEvent::Broadcast(MSG_PERF_FLYOUT_CLOSE) => post(Cmd::CloseFlyout),
             e => post(Cmd::Shell(e)),
         }),
     )

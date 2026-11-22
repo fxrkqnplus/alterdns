@@ -13,8 +13,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use alterdns_winsys::{
-    WindowKind, arm_harden, hardened_window, interactive_desktop, logical_cpus, on_next_paint,
-    process_age, pump_messages, sample_process, service_pid,
+    WindowKind, arm_harden, arm_paint_probe, hardened_window, interactive_desktop, logical_cpus,
+    on_next_paint, process_age, pump_messages, sample_process, service_pid,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::InvalidateRect;
@@ -156,5 +156,30 @@ fn paint_probe_requires_hardened_window() {
     let hwnd = test_window();
     let err = on_next_paint(hwnd.0 as isize, Box::new(|| {})).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    destroy(hwnd);
+}
+
+/// Pencere henüz yokken (ör. olay döngüsü başlayınca oluşacakken) kurulan sonda, kanca
+/// pencereyi yakaladığında ona bağlanır ve ilk çizimde bir kez çalışır.
+#[test]
+fn armed_paint_probe_attaches_to_next_hardened_window() {
+    if !interactive_desktop() {
+        eprintln!("etkileşimli masaüstü yok; atlandı");
+        return;
+    }
+    let fired = Rc::new(Cell::new(0));
+    let counter = fired.clone();
+    arm_harden(WindowKind::Main, Box::new(|| {})).unwrap();
+    arm_paint_probe(Box::new(move || counter.set(counter.get() + 1)));
+    let hwnd = test_window();
+    // SAFETY: Canlı pencere; etkinleştirmeden gösterilir.
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+    pump_messages(Duration::from_millis(500));
+    assert_eq!(fired.get(), 1);
+    invalidate(hwnd);
+    pump_messages(Duration::from_millis(300));
+    assert_eq!(fired.get(), 1, "sonda bir kez çalışır");
     destroy(hwnd);
 }

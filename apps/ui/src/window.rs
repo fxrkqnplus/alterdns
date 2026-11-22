@@ -7,14 +7,15 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use alterdns_core::ui::PERF_CLASS;
 use alterdns_core::{Lang, LeftClick, UserConfig, save_user, version::VERSION};
 use alterdns_errors::AdnsError;
 use alterdns_ui::slint::{self, ComponentHandle};
 use alterdns_ui::{MainWindow, Page, select_language};
 use alterdns_winsys::{
-    MessageWindow, ShellEvent, WindowKind, allow_foreground, arm_harden, bring_to_front,
-    centered_on_cursor_monitor, hardened_window, open_url, post_broadcast, single_instance,
-    theme_info, window_owner,
+    MessageWindow, ShellEvent, WindowKind, allow_foreground, arm_harden, arm_paint_probe,
+    bring_to_front, centered_on_cursor_monitor, hardened_window, open_url, post_broadcast,
+    process_age, single_instance, theme_info, window_owner,
 };
 
 use crate::args::PageName;
@@ -66,7 +67,7 @@ fn allowed_link(url: &str) -> bool {
     url == REPO_URL || url.starts_with(&format!("{REPO_URL}/"))
 }
 
-pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
+pub fn run(page: Option<PageName>, perf: bool) -> Result<(), AdnsError> {
     let Some(_lock) = single_instance(WINDOW_CLASS).map_err(ui_error)? else {
         // Var olan pencere öne gelir; ön plana geçme izni yalnızca onun işlemine verilir.
         wait_for_owner(WINDOW_CLASS)?;
@@ -179,6 +180,14 @@ pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
         p.height.max(1) as u32,
     ));
     arm_harden(WindowKind::Main, Box::new(|| {})).map_err(ui_error)?;
+    if perf {
+        // Ölçüm (`xtask perf`): ilk çizimde işlem yaşı bildirilir; bayrak yoksa gönderilmez.
+        // winit pencereyi olay döngüsü başlayınca oluşturur; sonda yakalanacak pencereye bağlanır.
+        arm_paint_probe(Box::new(|| {
+            let us = u32::try_from(process_age().as_micros()).unwrap_or(u32::MAX);
+            let _ = post_broadcast(PERF_CLASS, us);
+        }));
+    }
     main.show().map_err(ui_error)?;
     if let Some(hwnd) = hardened_window() {
         bring_to_front(hwnd);

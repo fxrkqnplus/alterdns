@@ -6,10 +6,22 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::cell::RefCell;
 use std::process::{Command, Stdio};
+use std::rc::Rc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use alterdns_winsys::{icon_count, interactive_desktop, post_broadcast, system_dir};
+use alterdns_core::ui::{
+    MSG_PERF_FLYOUT_CLOSE, MSG_PERF_FLYOUT_OPEN, MSG_QUIT, PERF_CLASS, TRAY_CLASS, WINDOW_CLASS,
+};
+use alterdns_winsys::{
+    MessageWindow, ShellEvent, icon_count, interactive_desktop, post_broadcast, pump_messages,
+    system_dir, taskbar_present, window_owner,
+};
+
+/// Ana pencere tek örneklidir: onu başlatan testler sırayla çalışır.
+static WINDOW: Mutex<()> = Mutex::new(());
 
 const EXE: &str = env!("CARGO_BIN_EXE_alterdns-ui");
 
@@ -78,6 +90,7 @@ fn exe_version_info_and_icon() {
 /// İkinci ana pencere işlemi ilkini öne getirir ve 0 ile çıkar; ilki açık kalır.
 #[test]
 fn second_window_activates_first() {
+    let _guard = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
     if !interactive_desktop() {
         eprintln!("etkileşimli masaüstü yok; atlandı");
         return;
@@ -101,4 +114,125 @@ fn second_window_activates_first() {
     assert!(first.try_wait().unwrap().is_none(), "ilk örnek kapanmamalı");
     let _ = first.kill();
     let _ = first.wait();
+}
+
+/// `--perf`: ana pencere ilk çizimde işlem yaşını (mikro saniye) `AlterDNS.Perf` penceresine
+/// bildirir; kapanma iletisiyle işlem 5 sn içinde biter (T-PERF-010).
+#[test]
+fn perf_window_reports_first_paint_and_exits() {
+    let _guard = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+    if !interactive_desktop() {
+        eprintln!("etkileşimli masaüstü yok; atlandı");
+        return;
+    }
+    let got: Rc<RefCell<Vec<u32>>> = Rc::default();
+    let sink = got.clone();
+    let _perf = MessageWindow::create(
+        PERF_CLASS,
+        Box::new(move |e| {
+            if let ShellEvent::Broadcast(v) = e {
+                sink.borrow_mut().push(v);
+            }
+        }),
+    )
+    .unwrap();
+    let mut child = Command::new(EXE).arg("--perf").spawn().unwrap();
+    let start = Instant::now();
+    while got.borrow().is_empty() && start.elapsed() < Duration::from_secs(10) {
+        pump_messages(Duration::from_millis(100));
+    }
+    let value = got.borrow().first().copied();
+    let quit_at = Instant::now();
+    while post_broadcast(WINDOW_CLASS, MSG_QUIT).unwrap_or(false)
+        && quit_at.elapsed() < Duration::from_secs(5)
+    {
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let exited = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if quit_at.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let us = value.expect("ilk çizim bildirilmedi");
+    assert!(us > 0 && us < 10_000_000, "{us}");
+    assert!(
+        exited.is_some(),
+        "kapanma iletisinden sonra işlem 5 sn içinde bitmedi"
+    );
+}
+
+fn perf_receiver() -> (MessageWindow, Rc<RefCell<Vec<u32>>>) {
+    let got: Rc<RefCell<Vec<u32>>> = Rc::default();
+    let sink = got.clone();
+    let window = MessageWindow::create(
+        PERF_CLASS,
+        Box::new(move |e| {
+            if let ShellEvent::Broadcast(v) = e {
+                sink.borrow_mut().push(v);
+            }
+        }),
+    )
+    .unwrap();
+    (window, got)
+}
+
+fn wait_for(got: &Rc<RefCell<Vec<u32>>>, n: usize, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while got.borrow().len() < n && start.elapsed() < timeout {
+        pump_messages(Duration::from_millis(50));
+    }
+    got.borrow().len() >= n
+}
+
+/// Tepsi, ölçüm iletisiyle flyout'u açar ve ilk çizimde süreyi bildirir (soğuk ve sıcak açılış).
+#[test]
+fn tray_reports_flyout_open_time() {
+    if !interactive_desktop() || !taskbar_present() {
+        eprintln!("etkileşimli masaüstü ya da görev çubuğu yok; atlandı");
+        return;
+    }
+    if window_owner(TRAY_CLASS).is_some() {
+        eprintln!("bu oturumda AlterDNS tepsisi zaten açık; atlandı");
+        return;
+    }
+    let (_perf, got) = perf_receiver();
+    let mut child = Command::new(EXE).arg("--tray").spawn().unwrap();
+    let start = Instant::now();
+    while window_owner(TRAY_CLASS).is_none() && start.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let mut ok = true;
+    for i in 1..=2 {
+        ok &= post_broadcast(TRAY_CLASS, MSG_PERF_FLYOUT_OPEN).unwrap();
+        ok &= wait_for(&got, i, Duration::from_secs(5));
+        let _ = post_broadcast(TRAY_CLASS, MSG_PERF_FLYOUT_CLOSE);
+        pump_messages(Duration::from_millis(400));
+    }
+    let _ = post_broadcast(TRAY_CLASS, MSG_QUIT);
+    let quit_at = Instant::now();
+    while child.try_wait().unwrap().is_none() && quit_at.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let exited = child.try_wait().unwrap().is_some();
+    if !exited {
+        let _ = child.kill();
+    }
+    let values = got.borrow().clone();
+    assert!(ok, "ölçüm değeri gelmedi: {values:?}");
+    assert!(
+        values.iter().all(|us| *us > 0 && *us < 5_000_000),
+        "{values:?}"
+    );
+    assert!(
+        exited,
+        "kapanma iletisinden sonra tepsi 5 sn içinde bitmedi"
+    );
 }

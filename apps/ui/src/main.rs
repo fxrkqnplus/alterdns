@@ -24,7 +24,7 @@ fn main() -> ExitCode {
     };
     let result = match mode {
         Mode::Tray { logon } => tray::run(logon),
-        Mode::Window { page } => window::run(page),
+        Mode::Window { page, perf } => window::run(page, perf),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
