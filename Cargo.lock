@@ -250,6 +250,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterdns-ui-app"
+version = "0.0.0"
+dependencies = [
+ "alterdns-core",
+ "alterdns-errors",
+ "alterdns-ipc",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "alterdns-winsys"
 version = "0.0.0"
 dependencies = [
