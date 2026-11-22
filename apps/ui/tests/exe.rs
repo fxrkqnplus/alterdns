@@ -20,7 +20,8 @@ use alterdns_winsys::{
     system_dir, taskbar_present, window_owner,
 };
 
-/// Ana pencere tek örneklidir: onu başlatan testler sırayla çalışır.
+/// Ana pencere tek örneklidir ve ölçüm alıcısı işlemde tek olmalıdır: bunları kullanan testler
+/// sırayla çalışır.
 static WINDOW: Mutex<()> = Mutex::new(());
 
 const EXE: &str = env!("CARGO_BIN_EXE_alterdns-ui");
@@ -195,6 +196,8 @@ fn wait_for(got: &Rc<RefCell<Vec<u32>>>, n: usize, timeout: Duration) -> bool {
 /// Tepsi, ölçüm iletisiyle flyout'u açar ve ilk çizimde süreyi bildirir (soğuk ve sıcak açılış).
 #[test]
 fn tray_reports_flyout_open_time() {
+    // Ölçüm alıcısı (`AlterDNS.Perf`) işlemde tek olmalı: alıcı açan testler sırayla çalışır.
+    let _guard = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
     if !interactive_desktop() || !taskbar_present() {
         eprintln!("etkileşimli masaüstü ya da görev çubuğu yok; atlandı");
         return;
