@@ -130,7 +130,11 @@ fn evaluate_sd(sd: PSECURITY_DESCRIPTOR) -> Result<(), DirProblem> {
     // SAFETY: `sd` geçerli; çıktılar yerel değişkenlerdir.
     unsafe { GetSecurityDescriptorDacl(sd, &mut present, &mut dacl, &mut defaulted) }
         .map_err(|e| DirProblem::Unreadable(e.to_string()))?;
-    if !present.as_bool() || dacl.is_null() {
+    if !present.as_bool() {
+        return Err(DirProblem::WritableByOthers);
+    }
+    // NULL DACL herkese tam erişimdir. İşaretçi okunmadan önce ayrı bir koşulla denetlenir.
+    if dacl.is_null() {
         return Err(DirProblem::WritableByOthers);
     }
     // SAFETY: `dacl` boş olmayan, güvenlik tanımlayıcısına ait geçerli bir ACL'dir.
@@ -139,7 +143,11 @@ fn evaluate_sd(sd: PSECURITY_DESCRIPTOR) -> Result<(), DirProblem> {
         let mut ace: *mut c_void = std::ptr::null_mut();
         // SAFETY: `i < AceCount`; `ace` ACL içindeki bir ACE'ye işaret eder.
         unsafe { GetAce(dacl, i, &mut ace) }.map_err(|e| DirProblem::Unreadable(e.to_string()))?;
-        // SAFETY: Her ACE bir `ACE_HEADER` ile başlar.
+        // Başarılı çağrı işaretçiyi doldurur; yine de okumadan önce denetlenir.
+        if ace.is_null() {
+            return Err(DirProblem::Unreadable(format!("ACE {i} okunamadı")));
+        }
+        // SAFETY: `ace` boş değil ve ACL içindeki bir ACE'nin başıdır; her ACE `ACE_HEADER` ile başlar.
         let header = unsafe { &*(ace as *const ACE_HEADER) };
         match header.AceType {
             ACCESS_ALLOWED_ACE_TYPE => {}

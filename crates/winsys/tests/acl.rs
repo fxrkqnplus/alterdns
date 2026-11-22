@@ -82,6 +82,8 @@ fn evaluate_security_rejects_everyone_full_and_null_dacl() {
         evaluate_security("O:SYD:NO_ACCESS_CONTROL"),
         Err(DirProblem::WritableByOthers)
     );
+    // DACL hiç yok: koruma yok sayılır.
+    assert_eq!(evaluate_security("O:SY"), Err(DirProblem::WritableByOthers));
 }
 
 fn temp(name: &str) -> std::path::PathBuf {
