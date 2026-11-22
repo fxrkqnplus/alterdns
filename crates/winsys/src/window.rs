@@ -22,7 +22,7 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Graphics::Dwm::{
     DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_WINDOW_CORNER_PREFERENCE,
-    DWMWCP_ROUND, DWMWINDOWATTRIBUTE, DwmSetWindowAttribute,
+    DWMWCP_ROUND, DWMWINDOWATTRIBUTE, DwmFlush, DwmSetWindowAttribute,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::StationsAndDesktops::{
@@ -39,8 +39,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
     SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, ShowWindow,
     UnhookWindowsHookEx, WA_INACTIVE, WH_CALLWNDPROCRET, WINDOWPOS, WM_ACTIVATE, WM_KEYDOWN,
-    WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_SHOWWINDOW, WM_STYLECHANGING, WM_SYSCOMMAND,
-    WM_WINDOWPOSCHANGING, WNDPROC, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_PAINT, WM_SHOWWINDOW, WM_STYLECHANGING,
+    WM_SYSCOMMAND, WM_WINDOWPOSCHANGING, WNDPROC, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_MAXIMIZEBOX, WS_SYSMENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -68,6 +68,8 @@ struct Hardened {
     prev: WNDPROC,
     on_close: RefCell<Option<CloseFn>>,
     close_posted: Cell<bool>,
+    /// Sonraki WM_PAINT işlendikten sonra bir kez çağrılır (`on_next_paint`).
+    paint_probe: RefCell<Option<Box<dyn FnOnce()>>>,
 }
 
 thread_local! {
@@ -165,6 +167,20 @@ pub fn hardened_window() -> Option<isize> {
         .then_some(raw)
 }
 
+/// `arm_harden` ya da `harden` ile sertleştirilmiş pencerenin sonraki `WM_PAINT`'i işlendikten
+/// ve `DwmFlush` döndükten sonra `f` bir kez çağrılır (ilk çizim ölçümü; Slint'in yazılım
+/// çizicisinde çizim bildirimi yoktur). Pencere sertleştirilmemişse `InvalidInput`.
+pub fn on_next_paint(hwnd: isize, f: Box<dyn FnOnce()>) -> io::Result<()> {
+    let state = state_of(hwnd_of(hwnd))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "pencere sertleştirilmemiş"))?;
+    let mut slot = state
+        .paint_probe
+        .try_borrow_mut()
+        .map_err(|_| io::Error::other("çizim sondası meşgul"))?;
+    *slot = Some(f);
+    Ok(())
+}
+
 /// Pencereyi doğrudan sertleştirir (kapatma isteği geri çağrısı olmadan).
 pub fn harden(hwnd: isize, kind: WindowKind) -> io::Result<()> {
     harden_with(hwnd_of(hwnd), kind, None)
@@ -208,6 +224,7 @@ fn subclass(hwnd: HWND, kind: WindowKind, on_close: Option<CloseFn>) -> io::Resu
         prev,
         on_close: RefCell::new(on_close),
         close_posted: Cell::new(false),
+        paint_probe: RefCell::new(None),
     });
     let inserted = HARDENED
         .try_with(|m| {
@@ -372,6 +389,23 @@ unsafe extern "system" fn harden_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
             if !pos.flags.contains(SWP_NOZORDER) {
                 pos.hwndInsertAfter = HWND_TOPMOST;
             }
+        }
+        WM_PAINT => {
+            let r = next();
+            let probe = state
+                .paint_probe
+                .try_borrow_mut()
+                .ok()
+                .and_then(|mut p| p.take());
+            if let Some(probe) = probe {
+                // Çizim kuyruğa verildi; birleştiricinin sonraki kareyi sunmasını bekle.
+                // SAFETY: Parametresiz DWM çağrısı.
+                unsafe {
+                    let _ = DwmFlush();
+                }
+                probe();
+            }
+            return r;
         }
         WM_NCHITTEST if flyout => return LRESULT(HTCLIENT as isize),
         WM_SYSCOMMAND => {

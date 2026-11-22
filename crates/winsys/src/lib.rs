@@ -12,6 +12,7 @@ mod acl;
 mod dirs;
 mod dll;
 mod instance;
+mod perf;
 mod pipe;
 mod screen;
 mod service;
@@ -28,6 +29,7 @@ pub use acl::{
 pub use dirs::{KnownFolder, known_folder, system_dir, windows_dir};
 pub use dll::harden_dll_search;
 pub use instance::{SingleInstance, single_instance};
+pub use perf::{ProcessSample, logical_cpus, process_age, pump_messages, sample_process};
 pub use pipe::{
     CallerToken, PipeConn, PipeListener, PipeOwner, Stopper, connect_pipe, current_session_id,
 };
@@ -38,7 +40,8 @@ pub use screen::{
 pub use service::{
     REQUIRED_PRIVILEGES, RESET_PERIOD_SECS, RESTART_DELAYS_SECS, ServiceConfigReport, ServiceSpec,
     ServiceState, ServiceStatusReporter, create_service, delete_service, dispatch, query_service,
-    register_stop_handler, service_config_report, service_create_access, start_service,
+    register_stop_handler, service_config_report, service_create_access, service_pid,
+    start_service,
 };
 pub use shell::{error_box, open_url, process_image};
 pub use theme::{DEFAULT_ACCENT, ThemeInfo, accent_from_abgr, theme_info};
@@ -48,5 +51,5 @@ pub use tray::{
 };
 pub use window::{
     WindowKind, allow_foreground, arm_harden, bring_to_front, ex_style, harden, hardened_window,
-    interactive_desktop,
+    interactive_desktop, on_next_paint,
 };

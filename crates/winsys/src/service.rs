@@ -344,6 +344,25 @@ pub struct ServiceState {
     pub running: bool,
 }
 
+/// Çalışan servisin işlem kimliği; servis yoksa ya da çalışmıyorsa `None`. Yönetici gerekmez.
+pub fn service_pid(name: &str) -> io::Result<Option<u32>> {
+    let svc = match manager(ServiceManagerAccess::empty())?
+        .open_service(name, ServiceAccess::QUERY_STATUS)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            let e = io_err(e);
+            return if missing(&e) { Ok(None) } else { Err(e) };
+        }
+    };
+    let st = svc.query_status().map_err(io_err)?;
+    Ok(if st.current_state == WsState::Running {
+        st.process_id.filter(|pid| *pid != 0)
+    } else {
+        None
+    })
+}
+
 /// Servis yoksa `None`. Yönetici gerekmez.
 pub fn query_service(name: &str) -> io::Result<Option<ServiceState>> {
     let svc = match manager(ServiceManagerAccess::empty())?.open_service(
