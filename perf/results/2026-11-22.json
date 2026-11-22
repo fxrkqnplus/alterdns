@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-22",
+  "schema": 1,
+  "size": {
+    "maint_bytes": 739840,
+    "svc_bytes": 1415680,
+    "total_bytes": 17614848,
+    "ui_bytes": 15459328
+  },
+  "svc": {
+    "active_intervals": 0,
+    "allowed_intervals": 10,
+    "cpu_percent": 0.0,
+    "minutes": 10,
+    "private_max_bytes": 1540096,
+    "private_median_bytes": 1540096
+  },
+  "ui": {
+    "flyout_cold_ms": 20.595,
+    "flyout_open_private_bytes": 4456448,
+    "flyout_warm_p95_ms": 17.409,
+    "main_exit_ms": 20.6638,
+    "main_first_paint_ms": 41.459,
+    "main_private_bytes": 6676480,
+    "source": "installed",
+    "tray_idle_private_bytes": 3665920
+  },
+  "version": "0.0.0"
+}
