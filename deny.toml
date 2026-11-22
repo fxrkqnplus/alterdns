@@ -7,7 +7,13 @@ targets = ["x86_64-pc-windows-msvc"]
 all-features = true
 
 [advisories]
-ignore = []
+# Bakımsız olarak işaretlenmiş, güvenlik açığı bulunmayan ve düzeltme sürümü olmayan Slint
+# bağımlılıkları (karar 2026-11-22). Her Slint güncellemesinde ve Faz 6'da yeniden
+# değerlendirilir; açık (vulnerability) türündeki tavsiyeler istisna edilmez.
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono: i-slint-core'da zorunlu bağımlılık; açık değil, bakımsız" },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils: spin_on üzerinden slint-build/slint-macros, yalnızca derleme zamanı; açık değil" },
+]
 yanked = "deny"
 
 [licenses]

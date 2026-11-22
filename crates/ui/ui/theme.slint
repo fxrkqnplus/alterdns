@@ -1,0 +1,36 @@
+// AlterDNS — Copyright (C) 2026 Furkan Okan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Tema tokenları (UI_SPEC §2). Metin ve durum renkleri iki temada da kendi yüzeylerinde
+// WCAG AA (4.5:1) kontrastını sağlar. Vurgu Windows'tan okunur (Rust); okunamazsa #2563EB.
+
+export global Theme {
+    in-out property <bool> dark: false;
+    in-out property <color> accent: #2563EB;
+    // Vurgu üzerindeki metin; Rust vurgunun parlaklığına göre beyaz ya da siyah verir.
+    in-out property <color> on-accent: #FFFFFF;
+    // Azaltılmış hareket açıksa yanlış: animasyon süresi sıfır.
+    in-out property <bool> animations: true;
+
+    out property <color> background: dark ? #202020 : #F3F3F3;
+    out property <color> card: dark ? #2B2B2B : #FFFFFF;
+    out property <color> card-border: dark ? #3D3D3D : #E0E0E0;
+    out property <color> text: dark ? #FFFFFF : #1F1F1F;
+    out property <color> text-secondary: dark ? #C8C8C8 : #5C5C5C;
+    out property <color> warning: dark ? #FCD34D : #92400E;
+    out property <color> hover: dark ? #FFFFFF14 : #0000000A;
+    out property <color> selected: dark ? #FFFFFF1F : #00000012;
+    out property <color> disabled: dark ? #3D3D3D : #E0E0E0;
+
+    // Windows 11 sistem yazı tipi; yoksa (Windows 10) sistemin varsayılanı Segoe UI kullanılır.
+    out property <string> font-family: "Segoe UI Variable Text";
+    out property <length> title-size: 20px;
+    out property <length> subtitle-size: 14px;
+    out property <length> body-size: 14px;
+    out property <length> caption-size: 12px;
+    out property <length> radius: 8px;
+
+    out property <duration> open-duration: animations ? 150ms : 0ms;
+    out property <duration> close-duration: animations ? 100ms : 0ms;
+    out property <duration> page-duration: animations ? 150ms : 0ms;
+}

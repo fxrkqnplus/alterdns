@@ -33,11 +33,14 @@
 - **T-IPC-002** Pipe squatting: servisten önce aynı adla pipe açan işlem varsa servis başlamaz ve `ADNS-IPC-005` verir.
 - **T-IPC-003** 1 MB üstü mesaj reddedilir; bozuk JSON servisi çökertmez (fuzz).
 - **T-IPC-004** Sürüm uyuşmazlığında `ADNS-IPC-004` döner.
-- **T-JRN-001** Uygula → geri al sonrası kayıt defteri, servis ve DNS değerleri `before` ile aynı.
+- **T-JRN-001** Uygula → geri al sonrası AlterDNS'in kendi kayıt defteri değerleri, servisi ve başlangıç kaydı `before` ile aynı. Kullanıcıya ait değerlere dokunulmaz.
 - **T-JRN-002** `Pending` kayıtla işlem öldürülür; açılışta kurtarma geri alır.
 - **T-JRN-003** Sahiplik: kullanıcı değeri arada değiştirdiyse geri alma bu değeri ezmez ve kullanıcıya sorar.
 - **T-JRN-004** Bekçi: ana işlem öldürülünce süre dolduğunda txn geri alınır.
-- **T-SVC-001…004** Kur, başlat, durdur, kurtarma ayarları, kaldır.
+- **T-SVC-001** Kur ve başlat.
+- **T-SVC-002** Durdur.
+- **T-SVC-003** Kurtarma ayarları (`FAILURE_ACTIONS_FLAG` dahil) ve gereken ayrıcalıklar.
+- **T-SVC-004** Kaldır; kalıntı taraması temiz.
 - **T-UI-001** Flyout odak kaybında kapanır (başka pencereye tıklama, masaüstüne tıklama, Win tuşu).
 - **T-UI-002** Flyout sürüklenemez: `WM_NCHITTEST`, Alt+Space menüsü ve `SC_MOVE` denemeleri.
 - **T-UI-003** Görev çubuğu dört kenardayken ve otomatik gizliyken flyout simgeye hizalı ve çalışma alanı içinde.
@@ -59,7 +62,7 @@
 - **T-NET-002** Parmak izi kişisel veri sızdırmıyor (yalnız hash'ler).
 - **T-NET-003** Hop limit okunuyor ve **hiçbir kod yolu yazmıyor** (lab modu hariç; statik denetim + test).
 - **T-DNS-001** DoH aktarıcı yalnızca listedeki alan adlarına yanıt enjekte ediyor; diğer DNS trafiğine dokunmuyor.
-- **T-DNS-002** Sistem DoH modu journal'lı; geri alma eski sunuculara ve şablonlara dönüyor.
+- **T-DNS-002** Motor içi DoH aktarıcısı çalışırken kullanıcının DNS sunucuları, DoH tablosu ve NRPT'si değişmiyor (ADR-014; korunan değerler denetimi).
 - **T-REC-001** Servis `TerminateProcess` ile öldürülünce trafik ≤ 1 sn içinde normale dönüyor.
 - **T-LAB-001…006** Faz 0 araştırma senaryoları (`CONNECTIVITY_RESEARCH.md` §5).
 - **T-LAB-010…015** Gerçek istemciler: Discord masaüstü (giriş, metin, ses), Roblox (oyuna katılım), engelli web siteleri, kontrol siteleri. El ile adımları yazılı.
@@ -159,7 +162,29 @@
 | Tarama hızı | 1 GB karışık derlem; MB/sn ve dosya/sn |
 | Disk | Kurulum dizini boyutu; boşta saatlik yazılan bayt (`IO Write Bytes`) |
 
-`xtask perf` sonuçları `perf/results/<tarih>.json` olarak kaydedilir. Bir önceki tabana göre > %10 kötüleşme CI'da başarısızlık sayılır.
+`xtask perf` sonuçları `perf/results/<tarih>.json` olarak kaydedilir. Bir önceki tabana göre > %10 kötüleşme başarısızlık sayılır.
+
+### `cargo xtask perf` (Faz 1'den itibaren)
+
+Üç kip vardır. Her kip kendi bölümünü günün dosyasına yazar; dosya adındaki tarih UTC'dir.
+
+| Kip | Terminal | Ne ölçer |
+|---|---|---|
+| `perf svc [--minutes N]` | Yönetici (servis işlemini okumak için; değilse `ADNS-SYS-004`). Servis kurulu ve çalışıyor olmalı | 10 dk, 10 sn aralıkla `PrivateUsage` (medyan ve en yüksek). CPU: `GetProcessTimes` farkı / (süre × mantıksal işlemci). Uyanma: her aralıkta iş parçacığı döngü sayaçları (`QueryThreadCycleTime`) artmışsa aralık etkin sayılır. İzin verilen, dakikada bir etkin aralıktır (10 dk'da 10) |
+| `perf ui [--opens N]` | Normal (yükseltilmiş terminal reddedilir) | Tepsi: 30 sn yerleşme, sonra 30 sn boyunca bellek medyanı. Flyout: 50 açılış; ilki soğuk, kalanların p95'i sıcak; açıkken en yüksek bellek. Ana pencere: 5 açılış; işlem başlangıcından ilk çizime kadar geçen sürenin medyanı, en yüksek bellek ve kapanma süresi |
+| `perf size` | Normal | `target\release` altındaki üç ikilinin boyutu ve toplamı |
+
+- **Süre ölçümü:** Arayüz, ölçüm iletisini aldığı anda saati başlatır. Sertleştirilmiş pencerenin `WM_PAINT` işlemi ve ardından `DwmFlush` bitince süreyi geri bildirir. Tıklamadan iletiye kadar geçen giriş gecikmesi bu ölçüme girmez. ETW ve WPR ile ayrıntılı ölçüm, bütçe sınırına yaklaşıldığında yapılır.
+- **Soğuk açılış:** Flyout penceresi tepsi başlarken oluşturulur. Soğuk ölçüm, başlangıçtan sonraki ilk gösterimdir.
+- **Arayüz kaynağı:** Kurulu sürüm varsa o ölçülür (`installed`), yoksa `target\release` derlemesi (`target`). Açık bir AlterDNS arayüzü yalnızca kurulu sürüme aitse kapatılır; başka bir kopya açıksa hiçbir şey kapatılmaz ve ölçüm başlamaz.
+- **Sonuç dosyası:** Yalnızca bilinen anahtarlar ve sayılar yazılır. Yol, makine adı veya kullanıcı bilgisi yazılmaz; doğrulayıcı bunları reddeder.
+- **Bütçe ve regresyon:** Bütçe aşımı ya da tabana göre > %10 kötüleşme komutu başarısız yapar ve sonuç dosyaya yazılmaz. Böylece başarısız bir ölçüm sonraki günün tabanı olamaz. Taban, ölçülen bölümü taşıyan daha önceki tarihli en son dosyadır; yoksa komut bunu bildirir. Gürültü tabanının altındaki farklar regresyon sayılmaz: bellekte 512 KiB, sürede 5 ms, CPU'da 0,01 puan, etkin aralık sayısında 1.
+- **Açık arayüz:** `perf ui` başlarken kurulu tepsi ya da ana pencere açıksa kapatılır. Kapatılan tepsi ölçümden sonra yeniden başlatılır.
+
+**Faz 1 sapmaları:**
+- Servis ölçümü 5 tekrar değil, tek 10 dakikalık koşudur; bellek için 61 örneğin medyanı alınır. Flyout 50, ana pencere 5 tekrarla ölçülür.
+- Regresyon denetimi CI'da çalışmaz. Ölçüm kurulu servis, masaüstü oturumu ve boştaki makine ister. Denetim yerel koşuda yapılır, sonuç dosyası commit edilir.
+- Düşük kaynaklı VM ölçümü Faz 6 uyumluluk matrisinde yapılır.
 
 ## 6. Uyumluluk matrisi (Faz 6; Faz 2'den itibaren kısmi)
 
@@ -184,7 +209,10 @@ Bütün kombinasyonlar denenmez; çift yönlü (pairwise) kapsama ile seçilen a
 ## 7. Güvenlik testleri
 
 - IPC yetkilendirme, pipe squatting, mesaj fuzz.
-- DLL arama sırası: bütün exe'ler `SetDefaultDllDirectories` kullanır; kurulum dizini yazılabilir değildir. Uygulama dizinine kötü amaçlı DLL bırakma testi yapılır.
+- DLL arama sırası:
+  - Bütün exe'ler `SetDefaultDllDirectories` kullanır ve `/DEPENDENTLOADFLAG:0x800` ile bağlanır.
+  - Kurulum dizini yazılabilir değildir.
+  - Uygulama dizinine kötü amaçlı DLL bırakma testi yapılır. Test, statik içe aktarımları da kapsar (ör. `version.dll`).
 - Servis yolu tırnaklı; servis ve kurulum dizini ACL denetimi.
 - Güncelleme: imza atlatma, sürüm düşürme, dondurma (eski manifest), kısmi indirme, MITM (geçersiz sertifika).
 - Arşiv: yol aşımı, mutlak yol, NTFS ADS adları, cihaz adları (`CON`, `NUL`), çok uzun yollar.

@@ -1,0 +1,33 @@
+[package]
+name = "alterdns-svc"
+description = "AlterDNS servisi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Testler: kökler ve pipe adı dışarıdan; veri dizini denetimi kapatılabilir; test DACL'i.
+test-ops = ["alterdns-ipc/test-ops", "alterdns-journal/test-ops"]
+
+[dependencies]
+alterdns-core.workspace = true
+alterdns-errors.workspace = true
+alterdns-ipc.workspace = true
+alterdns-journal.workspace = true
+alterdns-winsys.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+alterdns-buildinfo.workspace = true
+windows-registry.workspace = true
+
+[build-dependencies]
+alterdns-buildinfo.workspace = true
+
+[lints]
+workspace = true

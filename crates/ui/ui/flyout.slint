@@ -1,0 +1,162 @@
+// AlterDNS — Copyright (C) 2026 Furkan Okan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Tepsi flyout'u (UI_SPEC §4). Pencere davranışı (sürüklenemez, görev çubuğunda yok, odak
+// kaybında kapanma) winsys'teki sertleştirmeyle sağlanır; burada yalnızca içerik var.
+// Faz 1'de modül yoktur: "Korunuyorsunuz" hiçbir durumda gösterilmez (UI_SPEC §9).
+
+import { Button, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Caption, ModuleCard, PrimaryButton } from "components.slint";
+
+export enum StatusKind {
+    connecting,
+    ready,
+    unreachable,
+}
+
+// Tepsi ipucu metinleri (Rust okur; çeviri seçimiyle güncellenir). Hata durumunda ayrıntı
+// katalog başlığıdır.
+export global TrayText {
+    out property <string> ready: @tr("Protection module not installed");
+    out property <string> connecting: @tr("Connecting to the AlterDNS service…");
+    public pure function tooltip(detail: string) -> string {
+        return @tr("AlterDNS — {}", detail);
+    }
+}
+
+export component FlyoutWindow inherits Window {
+    in property <StatusKind> status-kind: StatusKind.connecting;
+    // Yalnızca `unreachable` iken: katalogdan gelen başlık ve ileti (ADNS-… kodu dahil).
+    in property <string> status-title;
+    in property <string> status-detail;
+    in-out property <bool> dark <=> Theme.dark;
+    in-out property <color> accent <=> Theme.accent;
+    in-out property <color> on-accent <=> Theme.on-accent;
+    in-out property <bool> animations <=> Theme.animations;
+    // Açılış animasyonu: gösterildikten sonra Rust doğru yapar, gizlemeden önce yanlış.
+    in property <bool> shown: false;
+    // İçeriğin mantıksal yüksekliği (konum hesabı için; en fazla 520 px).
+    out property <length> content-height: min(content.preferred-height, 520px);
+
+    callback open-main();
+    callback open-settings();
+    callback quit();
+    callback close-requested();
+
+    title: "AlterDNS";
+    no-frame: true;
+    always-on-top: true;
+    width: 360px;
+    height: root.content-height;
+    background: Theme.background;
+    default-font-family: Theme.font-family;
+    forward-focus: keys;
+
+    init => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+    changed dark => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    property <string> status-label: root.status-kind == StatusKind.ready ? @tr("Protection module not installed") : root.status-kind == StatusKind.unreachable ? root.status-title : @tr("Connecting to the AlterDNS service…");
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.close-requested();
+                return accept;
+            }
+            reject
+        }
+
+        content := VerticalLayout {
+            // Açılışta 10 px aşağıdan kayarak gelir; toplam yükseklik değişmez.
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: root.shown ? 16px : 26px;
+            padding-bottom: root.shown ? 16px : 6px;
+            spacing: 12px;
+            animate padding-top, padding-bottom {
+                duration: root.shown ? Theme.open-duration : Theme.close-duration;
+                easing: ease-out;
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                Image {
+                    source: Theme.dark ? @image-url("../../../assets/brand/generated/logo-dark-64.png") : @image-url("../../../assets/brand/generated/logo-light-64.png");
+                    width: 32px;
+                    height: 32px;
+                    image-rendering: smooth;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: "AlterDNS";
+                        font-size: Theme.subtitle-size;
+                        font-weight: 600;
+                        color: Theme.text;
+                    }
+
+                    Text {
+                        text: root.status-label;
+                        font-size: Theme.caption-size;
+                        color: root.status-kind == StatusKind.unreachable ? Theme.warning : Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            if root.status-kind == StatusKind.unreachable && root.status-detail != "": Caption {
+                text: root.status-detail;
+            }
+
+            ModuleCard {
+                title: @tr("Connection protection");
+            }
+
+            ModuleCard {
+                title: @tr("File security");
+            }
+
+            ModuleCard {
+                title: @tr("Browser protection");
+            }
+
+            Caption {
+                text: @tr("Component management comes in a later release.");
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                PrimaryButton {
+                    text: @tr("Open main window");
+                    clicked => {
+                        root.open-main();
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                Button {
+                    text: @tr("Settings");
+                    clicked => {
+                        root.open-settings();
+                    }
+                }
+
+                Button {
+                    text: @tr("Quit");
+                    clicked => {
+                        root.quit();
+                    }
+                }
+            }
+        }
+    }
+}

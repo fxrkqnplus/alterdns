@@ -1,0 +1,161 @@
+# AlterDNS — Copyright (C) 2026 Furkan Okan
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: alterdns-ui\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "About"
+msgstr "About"
+
+msgid "About AlterDNS"
+msgstr "About AlterDNS"
+
+msgid "Add"
+msgstr "Add"
+
+msgid "AlterDNS — {}"
+msgstr "AlterDNS — {}"
+
+msgid "Allow online lookups"
+msgstr "Allow online lookups"
+
+msgid "AlterDNS service"
+msgstr "AlterDNS service"
+
+msgid "Browser protection"
+msgstr "Browser protection"
+
+msgid "Built with Slint. Thanks to the Slint project."
+msgstr "Built with Slint. Thanks to the Slint project."
+
+msgid "Check now"
+msgstr "Check now"
+
+msgid "Code signing: this build is not signed."
+msgstr "Code signing: this build is not signed."
+
+msgid "Component management comes in a later release."
+msgstr "Component management comes in a later release."
+
+msgid "Components"
+msgstr "Components"
+
+msgid "Connecting to the AlterDNS service…"
+msgstr "Connecting to the AlterDNS service…"
+
+msgid "Connection"
+msgstr "Connection"
+
+msgid "Connection protection"
+msgstr "Connection protection"
+
+msgid "Copyright © {} {}"
+msgstr "Copyright © {} {}"
+
+msgid "Developer: {}"
+msgstr "Developer: {}"
+
+msgid "File security"
+msgstr "File security"
+
+msgid ""
+"Helps you reach services that your network blocks by inspecting traffic. "
+"Traffic is handled on this computer; no remote VPN or proxy server is used."
+msgstr ""
+"Helps you reach services that your network blocks by inspecting traffic. "
+"Traffic is handled on this computer; no remote VPN or proxy server is used."
+
+msgid ""
+"Inspects downloaded files and the content embedded in them inside a sandbox, "
+"without running them. Parts that cannot be inspected are listed separately."
+msgstr ""
+"Inspects downloaded files and the content embedded in them inside a sandbox, "
+"without running them. Parts that cannot be inspected are listed separately."
+
+msgid "Language"
+msgstr "Language"
+
+msgid "Left-clicking the tray icon"
+msgstr "Left-clicking the tray icon"
+
+msgid "License: {}"
+msgstr "License: {}"
+
+msgid "Name and logo"
+msgstr "Name and logo"
+
+msgid "Not installed"
+msgstr "Not installed"
+
+msgid ""
+"Off by default. When on, later releases may check file fingerprints and "
+"addresses with online services."
+msgstr ""
+"Off by default. When on, later releases may check file fingerprints and "
+"addresses with online services."
+
+msgid "Open main window"
+msgstr "Open main window"
+
+msgid "Opens the main window"
+msgstr "Opens the main window"
+
+msgid "Opens the menu"
+msgstr "Opens the menu"
+
+msgid "Overview"
+msgstr "Overview"
+
+msgid "Privacy: AlterDNS sends no telemetry. Logs stay on this computer."
+msgstr "Privacy: AlterDNS sends no telemetry. Logs stay on this computer."
+
+msgid "Protection module not installed"
+msgstr "Protection module not installed"
+
+msgid "Quit"
+msgstr "Quit"
+
+msgid "Running. No protection module is installed yet."
+msgstr "Running. No protection module is installed yet."
+
+msgid "Settings"
+msgstr "Settings"
+
+msgid "Show notifications"
+msgstr "Show notifications"
+
+msgid ""
+"Shows a warning page before you open a risky address. Works with a browser "
+"extension that you install from the AlterDNS folder in developer mode."
+msgstr ""
+"Shows a warning page before you open a risky address. Works with a browser "
+"extension that you install from the AlterDNS folder in developer mode."
+
+msgid "Source code: {}"
+msgstr "Source code: {}"
+
+msgid "Start AlterDNS when I sign in"
+msgstr "Start AlterDNS when I sign in"
+
+msgid "The AlterDNS name and logo are not covered by this license."
+msgstr "The AlterDNS name and logo are not covered by this license."
+
+msgid "Third-party licenses"
+msgstr "Third-party licenses"
+
+msgid "Update checks come in a later release."
+msgstr "Update checks come in a later release."
+
+msgid "Updates"
+msgstr "Updates"
+
+msgid "Version {}"
+msgstr "Version {}"
+
+msgid "View source code"
+msgstr "View source code"

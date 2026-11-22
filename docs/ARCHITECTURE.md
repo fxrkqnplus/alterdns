@@ -15,14 +15,30 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 | İşlem | Bağlam | Yaşam süresi | Görev |
 |---|---|---|---|
 | `alterdns-svc.exe` | Windows servisi, LocalSystem. Hizmet SID'i tanımlı. `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 \| APPLICATION_DIR)` | Sürekli | Bağlantı motoru (teknolojisi D8'e bağlı; ADR-003; Wintun seçilirse `wintun.dll`'i yalnızca bu işlem yükler, ağacında GPL-3.0-only yok — `deny-svc.toml`), ağ izleyici, ayarlayıcı, itibar DB ve beslemeleri, güncelleyici (indirme + doğrulama), journal, IPC sunucusu, yeniden başlatmada silme |
-| `alterdns-tray.exe` | Etkileşimli kullanıcı, orta bütünlük | Oturum boyunca | Tepsi simgesi, flyout, toast bildirimleri, indirme klasörü izleyici, tarama aracısı (işçileri başlatır), karantina (kullanıcı dosyaları) |
-| `alterdns-ui.exe` | Kullanıcı | İsteğe bağlı açılır; pencere kapanınca çıkar | Ana pencere |
+| `alterdns-ui.exe --tray` | Etkileşimli kullanıcı, orta bütünlük | Oturum boyunca | Tepsi simgesi, flyout, toast bildirimleri, indirme klasörü izleyici, tarama aracısı (işçileri başlatır), karantina (kullanıcı dosyaları) |
+| `alterdns-ui.exe` | Kullanıcı | İsteğe bağlı açılır; pencere kapanınca çıkar | Ana pencere. Tepsi kipiyle aynı ikilidir (Slint bir kez gömülür, ADR-002); ayrı işlem olarak çalışır |
 | `alterdns-scan.exe` | AppContainer (yetenek yok), Low IL, Job Object | Tarama başına | Tür tespiti, açma, analizörler, YARA-X. Girdi: devralınmış salt okunur handle. Çıktı: pipe üzerinden JSON |
 | `alterdns-nmh.exe` | Tarayıcının başlattığı kullanıcı işlemi | Tarayıcı bağlantısı boyunca | stdio native messaging ↔ servis pipe'ı. Mesajları şema doğrulamasından geçirir |
-| `alterdns-maint.exe` | Yönetici (UAC) | Kurulum, değiştirme, kaldırma, güncelleme uygulama | Bileşen yöneticisi motoru |
+| `alterdns-maint.exe` | Yönetici (UAC); bekçi kipinde başlatan işlemin çocuğu | Kurulum, değiştirme, kaldırma, güncelleme uygulama; bekçi kipinde txn süresince | Bileşen yöneticisi motoru; `watchdog` alt komutu (§6) |
 | `alterdns-setup.exe` | Önyükleyici; yönetici yetkisini kendisi ister | Kurulum | Bileşen seçimi, manifest indirme, `maint` motorunu çalıştırma |
 
-**Tepsi GUID'i notu:** `NOTIFYICONDATA.guidItem` exe yoluna bağlıdır. A/B sürüm dizinlerinde yol değişir. Bu yüzden tepsi ajanı sabit bir yoldan başlatılır (`%ProgramFiles%\AlterDNS\alterdns-tray.exe`, sürüm dizinine yönlendiren küçük bir başlatıcı) ya da GUID yerine `uID` kullanılır. Spike'ta seçilir.
+**Servis:**
+- Ad `AlterDNS`, görünen ad `AlterDNS`. LocalSystem, hizmet SID türü `unrestricted`, tırnaklı yol, otomatik başlangıç.
+- Kurtarma: 5 sn / 30 sn / 60 sn sonra yeniden başlat, sayaç 86 400 sn'de sıfırlanır. `SERVICE_CONFIG_FAILURE_ACTIONS_FLAG` açıktır; hata koduyla duran servis de yeniden başlar.
+- `SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO` ile yalnızca gereken ayrıcalıklar tutulur.
+- Pipe başkası tarafından tutuluyorsa (`ADNS-IPC-005`) yeniden başlatma denemeleri boşa döner. Bu bilinçli olarak kabul edilmiştir.
+
+**DLL arama yolu:** Bütün exe'ler `main`'in başında `SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32)` çağırır; servis ek olarak `APPLICATION_DIR` ekler. Ayrıca `/DEPENDENTLOADFLAG:0x800` ile bağlanırlar; böylece `main`'den önce çözülen yükleme zamanı içe aktarımları da yalnızca System32'den gelir.
+
+**C çalışma zamanı statik bağlanır** (`+crt-static`, `.cargo/config.toml`):
+- `vcruntime140.dll` Windows'un parçası değildir; VC++ Redistributable ile gelir.
+- Yukarıdaki bayrak yüzünden uygulama dizininden de yüklenemez. Dinamik bağlansaydı yeniden dağıtılabilir paketi olmayan makinede ikililer hiç açılmazdı.
+- Testler her exe'nin statik içe aktarmalarını PE'den okur. Servis ve bakım ikilisinde hepsi KnownDLL, `ntdll` ya da API kümesi olmalıdır. Arayüz ikilisi pencere sistemi için KnownDLL olmayan sistem DLL'lerini de (ör. `dwmapi`, `uxtheme`) içe aktarır; bunların hepsi System32'de bulunmalıdır ve `DEPENDENTLOADFLAG` yüklemeyi oraya sınırlar. Bu yüzden uygulama dizinine bırakılan bir DLL yükleme zamanında kullanılamaz.
+
+**Tepsi simgesi kimliği:**
+- `NOTIFYICONDATA.guidItem` exe yoluna bağlıdır ve A/B sürüm dizinlerinde yol değişir. Faz 1'de bu yüzden `uID` kullanılır.
+- Faz 5'te sabit bir başlatıcıyla (`%ProgramFiles%\AlterDNS\alterdns-tray.exe`) GUID'e geçiş değerlendirilir.
+- Görev çubuğunun "simgeyi göster" tercihi iki yöntemde de exe yoluna bağlıdır; kalıcı çözüm sabit başlatıcıdır.
 
 ## 3. Depo ve crate yapısı
 
@@ -61,7 +77,7 @@ alterdns/
 │  ├─ update/                 # manifest, Ed25519, indirme, staging, A/B, geri dönüş
 │  ├─ components/             # bileşen kayıt defteri, kur/kaldır, kalıntı tarayıcı
 │  └─ ui/                     # Slint bileşenleri, tema, yazı tipleri, simgeler
-├─ apps/ svc/ tray/ ui/ scan/ nmh/ maint/ setup/
+├─ apps/ svc/ ui/ scan/ nmh/ maint/ setup/   # ui: alterdns-ui.exe (tepsi ve ana pencere kipleri)
 ├─ extension/                 # MV3 TypeScript (Chrome + Edge; paketlenmemiş dağıtım), INSTALL.md
 ├─ xtask/                     # check, test, perf, dev-install, lab, package
 ├─ assets/brand/              # logo kopyaları ve türetilmiş simgeler
@@ -73,45 +89,113 @@ Platformdan bağımsız crate'ler (`scan-engine`, `reputation` ayrıştırıcıl
 
 ## 4. IPC
 
-- **Taşıma:** Named pipe `\\.\pipe\AlterDNS.Svc.v1`. DACL: SYSTEM ve Administrators tam erişim; `INTERACTIVE` bağlan/oku/yaz. `FILE_FLAG_FIRST_PIPE_INSTANCE` ile pipe squatting önlenir. İstemci tarafında sunucu işleminin servis olduğu doğrulanır (`GetNamedPipeServerProcessId` → imaj yolu).
-- **Çağıran doğrulaması:** `GetNamedPipeClientProcessId` ile imaj yolu ve kurulum dizini kontrol edilir; imza varsa doğrulanır. Ayrıcalıklı yöntemler (motor yapılandırması, sistem değişikliği, güncelleme uygula) yalnızca AlterDNS imajlarından ve etkileşimli oturumdan kabul edilir. Kullanıcı onayı gerektiren yöntemler bir onay belirteci ister; bu belirteç tepsi veya UI onay ekranından üretilir.
+- **Taşıma:** Named pipe `\\.\pipe\AlterDNS.Svc.v1`.
+  - Güvenlik tanımlayıcısı `O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12008b;;;IU)`: sahibi açıkça SYSTEM (istemci bunu ister; servis belirtecinin varsayılan sahibi Administrators olabilir), SYSTEM ve Administrators tam erişim; `INTERACTIVE` yalnızca okur ve yazar (`FILE_GENERIC_READ | FILE_WRITE_DATA`).
+    - `GENERIC_WRITE` verilmez: içindeki `FILE_APPEND_DATA` pipe'larda `FILE_CREATE_PIPE_INSTANCE`'tır. Verilseydi etkileşimli bir kullanıcı servis çalışırken aynı ada kendi sunucu örneğini açabilirdi. Bu makinede ölçüldü (Faz 1C).
+    - İstemci `GENERIC_READ | FILE_WRITE_DATA` ile açar.
+  - Sunucu, pipe squatting'e karşı `FILE_FLAG_FIRST_PIPE_INSTANCE` ve `PIPE_REJECT_REMOTE_CLIENTS` kullanır.
+  - Bir istemci bağlanınca sonraki dinleyen örnek hemen açılır; böylece servis çalıştığı sürece ad boşa çıkmaz.
+  - En çok 16 örnek. `svc.hello` 5 sn içinde gelmelidir; başlamış bir mesaj ve bir yazma da 5 sn içinde bitmelidir. Okumayan istemci düşürülür.
+  - Hata yanıtından sonra sunucu, bağlantıyı kesmeden önce istemcinin kapatmasını bekler (en çok 5 sn). `DisconnectNamedPipe` okunmamış veriyi siler; hemen kesilseydi istemci hata kodunu göremezdi.
+- **İstemcinin sunucuyu doğrulaması:**
+  - İstemci pipe'ı `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION` ile açar.
+  - Pipe nesnesinin sahibinin SYSTEM olduğunu `GetSecurityInfo` ile doğrular. Servis yeniden başlarken aynı adla pipe açan bir işlem böylece reddedilir.
+  - İmaj yolu denetimi ek bir katmandır.
+- **Çağıran yetkisi:** Yetki çağıranın belirtecinden gelir (`ImpersonateNamedPipeClient`: SID, oturum, yükseltme, `INTERACTIVE` grubu).
+  - Kimliğe bürünme ancak pipe'tan veri okunduktan sonra çalışır. Bu yüzden ilk çerçevenin öneki okunduktan sonra yapılır.
+  - İstemci tanımlama düzeyinde bağlandığı için belirteç `OpenThreadToken(…, OpenAsSelf = TRUE)` ile açılır.
+
+  Yöntemler üç sınıftadır:
+  - `Open`: `svc.hello`, `svc.ping`.
+  - `InteractiveUser`: `svc.status`, `events.subscribe`.
+  - `Elevated`: yönetici belirteci ve kurulum dizinindeki AlterDNS ikilisi. Faz 1'de `svc.reload_config`; sonraki fazlarda motor yapılandırması, sistem değişikliği ve güncelleme uygulama.
+- **İşlem tutamacı ve imaj yolu:**
+  - Bağlantı anında istemci işlemi `OpenProcess` ile açılır ve tutamaç bağlantı boyunca tutulur; böylece PID yeniden kullanımına karşı korunur.
+  - İmaj yolu bu tutamaçtan `QueryFullProcessImageNameW` + `GetFinalPathNameByHandle` ile okunur ve ordinal olarak karşılaştırılır. İmza varsa doğrulanır.
+  - Aynı kullanıcıdaki kod bir AlterDNS ikilisine enjekte edilebileceği için imaj yolu tek başına güvenlik sınırı değildir.
+- **Onay belirteci:** Kullanıcı onayı gerektiren yöntemler bir onay belirteci ister. Belirteç tepsi veya UI onay ekranından üretilir; ilk onaylı yöntemle birlikte gelir (Faz 2).
 - **Çerçeve:** 4 bayt uzunluk + JSON. Mesaj başına üst sınır 1 MB.
   ```json
-  {"v":1,"id":"…","method":"conn.status","params":{}}
+  {"v":1,"id":"…","method":"svc.status","params":{}}
   {"v":1,"id":"…","ok":true,"result":{…}}
   {"v":1,"id":"…","ok":false,"error":{"code":"ADNS-IPC-002","params":{…}}}
   ```
-- **Olaylar:** İstemci `events.subscribe` çağırır; servis durum değişikliklerini iter (bağlantı durumu, engelleme sayacı, güncelleme, hata).
-- **Sürümleme:** `v` alanı uyuşmazsa `ADNS-IPC-004` döner ve UI güncelleme önerir.
+- **El sıkışma ve sürümleme:**
+  - İlk çağrı `svc.hello {client_version, min_server}` olur; yanıt `{server_version, min_client, instance}`. `min_client` servisin kendi sürümüdür; `instance` servisin başlangıç zamanıdır ve tepsi yeniden başlamayı buradan anlar (`ADNS-SVC-002`).
+  - Sürümler uyuşmazsa ya da `v` alanı farklıysa `ADNS-IPC-004` döner ve UI güncelleme önerir.
+  - Bilinmeyen yöntem `ADNS-IPC-002` döner; bilinmeyen alan ve olay yok sayılır.
+- **Olaylar:**
+  - İstemci `events.subscribe` çağırır; servis durum değişikliklerini iter (bağlantı durumu, engelleme sayacı, güncelleme, hata).
+  - Abonelik, çağıranın belirtecindeki oturum kimliğiyle etiketlenir. Kullanıcıya özgü bir olay yalnızca o oturuma gider (Hızlı Kullanıcı Değiştirme, RDP).
+  - Yayıncı beklemez: her abonenin 64 olaylık kuyruğu vardır, dolarsa olay o abone için düşer. Olayları okumayan abone yazma zaman aşımında düşürülür.
+- **Dil:** Servis kullanıcıya metin üretmez, yalnızca hata kodu ve parametre gönderir. Metni istemci kendi dilinde gösterir.
 
 ## 5. Veri ve yapılandırma yolları
 
 | Yol | İçerik | ACL / not |
 |---|---|---|
 | `%ProgramFiles%\AlterDNS\<sürüm>\` | İkililer (A/B). `current` işaretçisi: `HKLM\SOFTWARE\AlterDNS\CurrentVersion` | Yönetici yazar, herkes okur |
-| `%ProgramFiles%\AlterDNS\alterdns-tray.exe` | Sabit başlatıcı (tepsi GUID'i için) | |
+| `%ProgramFiles%\AlterDNS\alterdns-tray.exe` | Sabit başlatıcı (Faz 5; tepsi simgesi kimliği için, §2) | |
 | `%ProgramFiles%\AlterDNS\browser-extension\` | Paketlenmemiş MV3 uzantısı (sabit yol; A/B dışında) | Yalnız yönetici yazar, kullanıcı okur (tarayıcı okuyabilsin) |
-| `%ProgramData%\AlterDNS\` | `config/` (makine), `journal/`, `reputation/`, `rules/` (YARA), `strategies/`, `staging/`, `logs/` | SYSTEM + Administrators yazar; Users yalnızca gerekli alt dizinleri okur |
-| `%LOCALAPPDATA%\AlterDNS\` | `config/` (kullanıcı), `reports/`, `quarantine/`, `logs/` | Kullanıcı + SYSTEM. Karantina dizininde çalıştırma izni yok, kalıtım kapalı |
+| `%ProgramData%\AlterDNS\` | `config/` (makine), `journal/`, `reputation/`, `rules/` (YARA), `strategies/`, `staging/`, `logs/` | SYSTEM + Administrators yazar; Users yalnızca gerekli alt dizinleri okur. Dizin korumalı DACL ile (kalıtım kapalı) oluşturulur. Önceden varsa sahibi ve DACL'i doğrulanır; reparse noktası reddedilir. Servis açılışta aynı denetimi yapar, tutmazsa başlamaz (`ADNS-SVC-001`) |
+| `%LOCALAPPDATA%\AlterDNS\` | `config/` (kullanıcı), `reports/`, `quarantine/`, `logs/` | Kullanıcı + SYSTEM. Karantina dizininde çalıştırma izni yok, kalıtım kapalı. Servis bu dizine yazmaz |
 | `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.alterdns.host` ve Edge karşılığı | Native host kaydı | Journal'a yazılır |
+| `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` değeri `AlterDNS` | Oturum açılışında tepsiyi başlatır (makine kapsamı). `run_at_logon = false` olan kullanıcıda tepsi açılıp hemen çıkar | Journal'a yazılır (`StartupEntry`); yalnızca kendi değerimiz |
 | `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AlterDNS` | Kaldırma kaydı (Publisher: Furkan Okan, ModifyPath, UninstallString) | Journal'a yazılır |
 
-Yapılandırma TOML biçimindedir ve şeması sürümlüdür (`schema = N`). Geçişler ileri yönlüdür ve geçişten önce yedek alınır.
+Yapılandırma TOML biçimindedir ve şeması sürümlüdür (`schema = N`).
+- **Geçişler:** İleri yönlüdür; geçişten önce yedek alınır.
+- **Bilinmeyen anahtarlar** korunur.
+- **Bozuk dosya** `.bak` olarak saklanır ve varsayılanla devam edilir.
+- **Daha yeni şema** okunur ama üzerine yazılmaz.
+
+Şema v1:
+- **Kullanıcı** (`%LOCALAPPDATA%\AlterDNS\config\config.toml`): `schema = 1`; `[ui] language = "tr"|"en"`, `left_click = "flyout"|"main_window"`, `notifications = true`; `[startup] run_at_logon = true`; `[privacy] online_lookups = false`.
+- **Makine** (`%ProgramData%\AlterDNS\config\machine.toml`): `schema = 1`.
 
 ## 6. Journal — sistem değişiklikleri
 
-Her sistem değişikliği bir `ChangeRecord` olarak önce diske yazılır (fsync), sonra uygulanır:
+Journal, txn başına bir JSON Lines dosyasıdır (`%ProgramData%\AlterDNS\journal\<txn>.jsonl`); ilk satırı `{"t":"Schema","schema":1}`'dir. Her sistem değişikliği bir `ChangeRecord` olarak önce diske yazılır (fsync), sonra uygulanır. Yazma başarısız olursa değişiklik uygulanmaz. Canlı bir txn'in dosyası, sahibi olan işlem tarafından kilitli tutulur; başka bir işlem onu okuyamaz ve geri alamaz.
 
 ```
-ChangeRecord { id, txn_id, component, kind, target, before: Snapshot, after: Value,
-               state: Pending|Applied|Reverted|Failed, created_by: "alterdns", ts }
+ChangeRecord { id, txn_id, component, kind, target, before, after,
+               state: Pending|Applied|Reverted|Conflict|Acknowledged|Failed,
+               created_by: "alterdns", ts }
 ```
 
-- **Türler:** `ServiceCreate/Config`, `DriverService` (yalnızca AlterDNS oluşturduysa), `RegistryValue`, `DnsServers(if)`, `DohTemplate`, `ScheduledTask`, `NativeHostRegistration`, `FirewallRule` (gerekirse), `StartupEntry`, `FileInstall`, `UninstallEntry`, `ExternalExtensionHint`.
-- **İşlem (txn):** Ayarlayıcı denemesi, bileşen kurulumu ve güncelleme birer txn'dir. Txn başarısız olursa kayıtları ters sırayla geri alınır.
-- **Açılışta kurtarma:** `Pending` durumundaki kayıtlar kontrol edilir; uygulanmışsa geri alınır, uygulanmamışsa silinir. Sonuç loglanır.
-- **Sahiplik kuralı:** Journal'da `created_by = alterdns` kaydı bulunmayan hiçbir sistem öğesine kaldırma sırasında dokunulmaz. Örnekler: kullanıcının hop limiti, başka uygulamaların kurduğu WinDivert servisi, kullanıcının DNS ayarları. Kurulum öncesi değerler `before` alanında saklanır. Geri yüklemeden önce mevcut değerin hâlâ AlterDNS'in yazdığı değer olduğu kontrol edilir; kullanıcı arada değiştirdiyse değer ezilmez ve kullanıcıya sorulur.
-- **Bekçi:** Lab ve ayarlayıcı denemelerinde ayrı bir işlem (`alterdns-maint watchdog --txn <id> --deadline 60s`) çalışır. Süre dolduğunda txn hâlâ "commit" edilmemişse geri alır. Ana işlem ölse bile bekçi çalışır.
+- **İşlem (txn):**
+  - Sınırları `TxnBegin { txn_id, lifetime: Persistent|Session }` ve `TxnCommit { txn_id }` satırları belirler.
+  - Bileşen kurulumu ve güncelleme `Persistent`; ayarlayıcı denemesi ve motorun ağ nesneleri `Session`.
+  - Başarısız bir txn'in kayıtları ters sırayla geri alınır.
+- **Türler:**
+  - Faz 1: `ServiceCreate`, `ServiceConfig`, `RegistryValue`, `StartupEntry`, `FileInstall`, `UninstallEntry`.
+  - Faz 2: `TunAdapter`, `UnicastAddress`, `Route`. Hedefleri ad yerine GUID/LUID taşır.
+  - Sonraki fazlar: `DriverService` (yalnızca AlterDNS oluşturduysa), `ScheduledTask`, `NativeHostRegistration`, `FirewallRule` (gerekirse), `ExternalExtensionHint`.
+  - Kullanıcıya ait değerler için tür yoktur. Hop limit, DNS sunucuları ve DoH tablosu yazılmaz (ADR-010, ADR-014).
+  - Gerçek işlemler aşamalı gelir: `RegistryValue` 1B'de (yalnızca REG_SZ; başka türde bir değer hata sayılır, "yok" sayılıp silinmez), servis, kaldırma kaydı ve kurulum dosyaları 1C'de, başlangıç kaydı 1D'de.
+- **Hedef izin listesi:**
+  - Her türün hedefi yüklemede sınırlanır: servis adı `AlterDNS`, `HKLM\SOFTWARE\AlterDNS\…`, kendi Run değeri, kurulum dizini, kendi adaptörü.
+  - Listenin dışındaki bir hedefe dokunulmaz. Kayıt defteri kökleri sabittir; gerçek sistem işlemleri bunu txn'in hedeflerinden bağımsız olarak bir kez daha denetler.
+  - AlterDNS'in oluşturduğu nesneler geri almada yalnızca kaldırılır, yeniden eklenmez.
+- **Açılışta kurtarma:**
+  - Commit edilmemiş txn'ler ve `Session` txn'leri geri alınır. Commit edilmiş `Persistent` txn'lere yalnızca kaldırmada dokunulur.
+  - `Pending` bir kayıt uygulanmışsa geri alınır, uygulanmamışsa kapatılır.
+  - Txn'ler en yeniden en eskiye geri alınır.
+  - Yarım kalmış son satır dosyadan kesilip atılır. Ortadaki bozuk bir satır kurtarmayı durdurur (`ADNS-SYS-002`).
+  - Bilinmeyen tür "açık, dokunulmadı" sayılır; böylece eski bir ikili yeni bir journal'da kilitlenmez.
+  - Canlı bir işlemin tuttuğu (kilitli) dosya atlanır. Bir dosyanın hatası diğerlerini durdurmaz.
+  - Sonuç loglanır.
+- **Sahiplik kuralı:**
+  - Journal'da `created_by = alterdns` kaydı bulunmayan hiçbir sistem öğesine kaldırma sırasında dokunulmaz. Örnekler: kullanıcının hop limiti, başka uygulamaların kurduğu WinDivert servisi, kullanıcının DNS ayarları.
+  - Kurulum öncesi değerler `before` alanında saklanır.
+  - Geri yüklemeden önce mevcut değerin hâlâ AlterDNS'in yazdığı değer olduğu kontrol edilir. Kullanıcı arada değiştirdiyse değer ezilmez: kayıt `Conflict` olur ve kullanıcıya `ADNS-SYS-003` gösterilir. Kullanıcı onaylayınca kayıt `Acknowledged` olur.
+- **Bekçi:** Ayrı bir işlemdir: `alterdns-maint watchdog --txn <id>`.
+  - **Yollar:** Journal ve rapor yolu (`<txn>.watchdog.json`) `%ProgramData%\AlterDNS\journal\` altından türetilir; komut satırından keyfi yol alınmaz. Dizin korumalı değilse (K20) bekçi hiçbir şeye dokunmadan çıkar.
+  - **Kira protokolü (stdin):** Ebeveyn kirayı `RENEW <sn>` ile yeniler (1–60 sn; ilk kira 60 sn) ve işi bitince `DONE` gönderir. İzlenecek motoru bildiren `ENGINE` Faz 2'de gelir.
+  - **Geri alma:** Stdin kapanırsa ya da kira dolarsa bekçi txn'i açılış kurtarmasıyla aynı kuralla geri alır: commit edilmiş `Persistent` txn'e dokunulmaz. Ebeveyn dosyayı hâlâ tutuyorsa (askıda) bekçi en çok 10 sn bekler; bırakılmazsa geri alma açılış kurtarmasına kalır ve raporda `InUse` yazar. Faz 2'de motor ve askıdaki ebeveyn PID ile değil, devralınan tutamaçla izlenir ve sonlandırılır. Bekçi yalnızca Win32 API kullanır.
+  - **Başlatma:** Bekçi, onu başlatan işlemin kardeş ikilisidir. Başlatan yükseltilmişse ikilinin dizini kullanıcıya yazılamaz olmalıdır.
+  - **Servisle ilişkisi:** Servis kendi txn'leri için bekçiyi kendi çocuğu olarak başlatır. Servis çökerse bekçi geri alır, SCM servisi yeniden başlatır. Servis açılışta kurtarmayı çalıştırır; o sırada bekçinin geri aldığı (kilitli) dosya atlanır ve sonucu bekçi raporunda görünür.
+- **Lab journal'ı:** Faz 0 bağlantı lab'ının journal'ı ve bekçisi (`xtask/src/lab/`) bu crate'e taşınmadı. Lab, Faz 2'ye kadar kendi kopyasıyla çalışır.
 
 ## 7. Modüller
 
@@ -263,20 +347,35 @@ tag vX.Y.Z (korumalı) ─▶ GitHub Actions: release.yml (windows-latest)
 
 ## 9. Arayüz işlemleri
 
-Ayrıntılar `UI_SPEC.md`'dedir. Teknik notlar:
+Ayrıntılar `UI_SPEC.md`'dedir. Faz 1'de gerçekleşen yapı:
 
-- Flyout tepsi işleminde çalışır; ilk gösterimde oluşturulur.
-- Kapandıktan sonra pencere ve renderer serbest bırakılır. Bellek iadesi spike'ta ölçülür; yeterli değilse flyout da kısa ömürlü ayrı bir işleme taşınır.
-- Toast bildirimleri için AUMID'li Başlat menüsü kısayolu oluşturulur (journal kaydıyla).
+- **İkili ve kipler:** `alterdns-ui.exe` (`apps/ui`), arayüz bileşenleri `crates/ui` (Slint, yazılım çizici, `fluent` stili; ADR-002), Win32 işleri `crates/winsys`. `--tray [--logon]` tepsi kipi; argümansız ya da `--page <ad>` ana pencere. Tanınmayan argüman çıkış 2; başlatma hatası katalog metinli ileti kutusu (`ADNS-UI-001`) ve çıkış 1.
+- **Tek örnek:** `Local\AlterDNS.Tray` ve `Local\AlterDNS.Window` mutex'leri; her oturum kendi örneğini çalıştırır. İkinci ana pencere işlemi, var olan pencereye kayıtlı `AlterDNS.Broadcast.v1` iletisini (`alterdns_core::ui` kodları: ayarlar değişti, öne gel, kapan, sayfa) gönderip çıkar. Hedef `FindWindowW` ile yalnızca çağıranın masaüstünde aranır; başka oturumlara ileti gitmez.
+- **Gizli ileti penceresi:** Görünmeyen üst düzey pencere (ileti penceresi değil; `TaskbarCreated` ve `WM_SETTINGCHANGE` yalnızca üst düzey pencerelere yayınlanır). Tepsi simgesi `Shell_NotifyIcon` sürüm 4, `uID` 1; Explorer yeniden başlayınca yeniden eklenir.
+- **Olay sırası:** Kabuk olayları, Slint geri çağrıları ve durum iş parçacığı komutları Slint olay döngüsüne kuyruklanır ve sırayla işlenir; bir işleyici çalışırken iç içe çağrılar durumu ödünç almaz.
+- **Flyout:** Tepsi işleminde, başlangıçta bileşen olarak oluşturulur ve gizlenip gösterilir. Konum, simge dikdörtgeni ve `ABM_GETTASKBARPOS` kenarından saf bir işlevle hesaplanır (otomatik gizli görev çubuğu ve taşma alanı dahil). Bellek ölçümü 1E'de yapılır.
+- **Pencere sertleştirme:** Gösterilmeden önce `WH_CALLWNDPROCRET` ile `WM_SHOWWINDOW` yakalanır ve `GWLP_WNDPROC` zinciriyle alt sınıf kurulur. comctl32'nin `SetWindowSubclass`'ı kullanılmaz: sürüm 5.82'de yalnızca sıra numarasıyla dışa aktarılır ve bildirimsiz ikililer adla bağlanınca açılmaz. Çatı stili geri yazabildiği için kurallar `WM_STYLECHANGING` ve `WM_WINDOWPOSCHANGING`'de yeniden uygulanır. Ana pencere simgesi exe'nin çok boyutlu simgesinden (kaynak 1) pencerenin DPI'ına göre yüklenir.
+- **Tema:** `HKCU` tema ve DWM vurgu değerleri ile `SPI_GETCLIENTAREAANIMATION` yalnızca okunur; `WM_SETTINGCHANGE("ImmersiveColorSet")` ve `WM_DWMCOLORIZATIONCOLORCHANGED` ile yenilenir.
+- **Durum:** Ayrı iş parçacığında IPC istemcisi; kopunca 2, 4, 8, 16, 30 sn geri çekilmeyle yeniden bağlanır, bağlıyken boşta uyanmaz. Servis örneği değişince `ADNS-SVC-002` balonu gösterilir; gösterilemezse `ADNS-UI-002` loglanır.
+- **Bildirim:** Faz 1'de tepsi balonu (`NIF_INFO`, sessiz saatlere uyar); Windows bunu bildirim olarak gösterir. AUMID'li Başlat menüsü kısayoluyla toast Faz 5'te kurulumla birlikte değerlendirilir.
+- **Oturum açılışı:** `HKLM\…\Run\AlterDNS` = `"<kurulum>\<sürüm>\alterdns-ui.exe" --tray --logon` journal'daki `StartupEntry` ile yazılır; komut birebir bu biçimde doğrulanır. Kullanıcı başlatmayı kapattıysa `--logon` ile açılan tepsi hemen çıkar.
+- **Kaldırma:** Kaldırma ve güncelleme öncesi açık arayüz işlemlerine kapanma iletisi gönderilir; kurulu exe açıkken silinemez.
+- Tepsi çökerse onu yeniden başlatan bir mekanizma Faz 1'de yoktur.
 
 ## 10. Log ve gözlemlenebilirlik
 
-- `tracing` + `tracing-appender`; JSON satırları, döngüsel dosyalar. Toplam ≤ 10 MB.
+- `tracing` + kendi boyut sınırlı yazıcı (`CappedWriter`, 2 × 5 MiB, kullanıcı adı maskeli); JSON satırları. Servis `%ProgramData%\AlterDNS\logs`, arayüz `%LOCALAPPDATA%\AlterDNS\logs\{tray,window}.log`.
 - Varsayılan düzey `info`. "Tanılama modu" 30 dk süreyle `debug` açar ve sonra kendiliğinden kapanır.
 - Kişisel veri en aza indirilir: URL'ler yalnız alan adı olarak tutulur, dosya yolları kullanıcı adı maskelenerek yazılır. Ağ parmak izleri hash'lenir.
 - "Tanılama paketi oluştur": loglar, sürümler ve parmak izi özeti tek bir ZIP'e konur. Kullanıcı önce içeriği görür; otomatik gönderim yoktur.
 
 ## 11. Dil desteği
 
-- Türkçe varsayılan, İngilizce ikinci dildir. Slint `@tr()` + gettext `.po` ile ya da Fluent ile; spike'ta seçilir.
-- Hata kataloğu ve UI aynı dil anahtarı sistemini kullanır. Eksik çeviri CI'da hata verir.
+- Türkçe varsayılan, İngilizce ikinci dildir.
+- Arayüz metinleri Slint `@tr()` ile yazılır:
+  - msgid kararlı bir İngilizce anahtardır. Derleyicinin varsayılan bağlamı (bileşen adı) kapalıdır; bağlam yalnızca `@tr("bağlam" => "metin")` ile verilir.
+  - `crates/ui/lang/{tr,en}/LC_MESSAGES/alterdns-ui.po` ikisi de zorunludur ve ikiliye gömülür. Dil çalışırken değişir; açık pencerelerin ve tepsi ipucunun metni hemen güncellenir.
+  - Rust tarafında gereken metinler (tepsi ipucu) de `.slint` içindeki bir globalden okunur; kodda kullanıcıya görünen metin yazılmaz. Dil adları kendi dillerinde yazılır.
+- Hata metinleri `errors/catalog.toml`'dan gelir. Arayüz ve hata metinleri aynı dil seçimini (`Lang`) kullanır.
+- Arayüzde büyük/küçük harf dönüşümü (`to_uppercase`) yapılmaz (Türkçe i/İ).
+- `cargo xtask check` adımı `i18n`: eksik, boş ya da bulanık çeviri, kullanılmayan anahtar ve yer tutucu sayısı farkı hatadır.

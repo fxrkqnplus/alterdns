@@ -1,0 +1,426 @@
+// AlterDNS — Copyright (C) 2026 Furkan Okan
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Ana pencere (UI_SPEC §5). Faz 1 kabuğu: modüller "Yüklü değil", bileşen yönetimi ve
+// güncelleme denetimi sonraki sürümlerde. Ayarlar gerçek yapılandırmaya bağlıdır (Rust).
+
+import { Button, ComboBox, Palette, ScrollView, Switch } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Body, Caption, Heading, ModuleCard, NavItem, PrimaryButton, Subtitle } from "components.slint";
+import { StatusKind } from "flyout.slint";
+
+export enum Page {
+    overview,
+    file,
+    browser,
+    connection,
+    components,
+    updates,
+    settings,
+    about,
+}
+
+// Kaynak kodu ve belgeler bu depodadır; Rust yalnızca bu önekle başlayan adresleri açar.
+export global Links {
+    out property <string> repo: "https://github.com/fxrkqnplus/alterdns";
+    out property <string> trademark: "https://github.com/fxrkqnplus/alterdns/blob/main/TRADEMARK.md";
+    out property <string> third-party: "https://github.com/fxrkqnplus/alterdns/blob/main/docs/research/THIRD_PARTY.md";
+}
+
+component PageFrame inherits ScrollView {
+    in property <string> title;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 12px;
+        alignment: start;
+        Heading {
+            text: root.title;
+        }
+
+        @children
+    }
+}
+
+component ModulePage inherits PageFrame {
+    in property <string> description;
+    Body {
+        text: root.description;
+    }
+
+    ModuleCard {
+        title: root.title;
+    }
+
+    Caption {
+        text: @tr("Component management comes in a later release.");
+    }
+}
+
+component ServiceCard inherits Rectangle {
+    in property <StatusKind> kind;
+    in property <string> error-title;
+    in property <string> error-detail;
+
+    background: Theme.card;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        Subtitle {
+            text: @tr("AlterDNS service");
+        }
+
+        Text {
+            text: root.kind == StatusKind.ready ? @tr("Running. No protection module is installed yet.") : root.kind == StatusKind.unreachable ? root.error-title : @tr("Connecting to the AlterDNS service…");
+            color: root.kind == StatusKind.unreachable ? Theme.warning : Theme.text-secondary;
+            font-size: Theme.body-size;
+            wrap: word-wrap;
+        }
+
+        if root.kind == StatusKind.unreachable && root.error-detail != "": Caption {
+            text: root.error-detail;
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    in-out property <Page> page: Page.overview;
+    in property <StatusKind> status-kind: StatusKind.connecting;
+    // Yalnızca `unreachable` iken: katalogdan gelen başlık ve ileti.
+    in property <string> service-title;
+    in property <string> service-detail;
+    in property <string> version;
+    // Ayarlar (UserConfig): dil kodu "tr" / "en".
+    in-out property <string> language: "tr";
+    in-out property <bool> run-at-logon: true;
+    in-out property <bool> notifications: true;
+    in-out property <bool> left-click-opens-main: false;
+    in-out property <bool> online-lookups: false;
+    in-out property <bool> dark <=> Theme.dark;
+    in-out property <color> accent <=> Theme.accent;
+    in-out property <color> on-accent <=> Theme.on-accent;
+    in-out property <bool> animations <=> Theme.animations;
+
+    callback settings-changed();
+    callback open-link(string);
+
+    title: "AlterDNS";
+    // Pencere simgesi exe'nin çok boyutlu simgesinden yüklenir (winsys, sertleştirmede).
+    preferred-width: 960px;
+    preferred-height: 640px;
+    min-width: 800px;
+    min-height: 560px;
+    background: Theme.background;
+    default-font-family: Theme.font-family;
+
+    init => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+    changed dark => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    HorizontalLayout {
+        VerticalLayout {
+            width: 220px;
+            padding: 8px;
+            spacing: 2px;
+            alignment: start;
+            HorizontalLayout {
+                padding: 8px;
+                padding-bottom: 12px;
+                spacing: 8px;
+                Image {
+                    source: Theme.dark ? @image-url("../../../assets/brand/generated/logo-dark-48.png") : @image-url("../../../assets/brand/generated/logo-light-48.png");
+                    width: 24px;
+                    height: 24px;
+                    image-rendering: smooth;
+                }
+
+                Text {
+                    text: "AlterDNS";
+                    font-size: Theme.subtitle-size;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+            }
+
+            NavItem {
+                text: @tr("Overview");
+                selected: root.page == Page.overview;
+                clicked => {
+                    root.page = Page.overview;
+                }
+            }
+
+            NavItem {
+                text: @tr("File security");
+                selected: root.page == Page.file;
+                clicked => {
+                    root.page = Page.file;
+                }
+            }
+
+            NavItem {
+                text: @tr("Browser protection");
+                selected: root.page == Page.browser;
+                clicked => {
+                    root.page = Page.browser;
+                }
+            }
+
+            NavItem {
+                text: @tr("Connection");
+                selected: root.page == Page.connection;
+                clicked => {
+                    root.page = Page.connection;
+                }
+            }
+
+            NavItem {
+                text: @tr("Components");
+                selected: root.page == Page.components;
+                clicked => {
+                    root.page = Page.components;
+                }
+            }
+
+            NavItem {
+                text: @tr("Updates");
+                selected: root.page == Page.updates;
+                clicked => {
+                    root.page = Page.updates;
+                }
+            }
+
+            NavItem {
+                text: @tr("Settings");
+                selected: root.page == Page.settings;
+                clicked => {
+                    root.page = Page.settings;
+                }
+            }
+
+            NavItem {
+                text: @tr("About");
+                selected: root.page == Page.about;
+                clicked => {
+                    root.page = Page.about;
+                }
+            }
+        }
+
+        Rectangle {
+            background: Theme.card;
+            border-width: 1px;
+            border-color: Theme.card-border;
+
+            if root.page == Page.overview: PageFrame {
+                title: @tr("Overview");
+                ServiceCard {
+                    kind: root.status-kind;
+                    error-title: root.service-title;
+                    error-detail: root.service-detail;
+                }
+
+                ModuleCard {
+                    title: @tr("Connection protection");
+                }
+
+                ModuleCard {
+                    title: @tr("File security");
+                }
+
+                ModuleCard {
+                    title: @tr("Browser protection");
+                }
+            }
+
+            if root.page == Page.file: ModulePage {
+                title: @tr("File security");
+                description: @tr("Inspects downloaded files and the content embedded in them inside a sandbox, without running them. Parts that cannot be inspected are listed separately.");
+            }
+
+            if root.page == Page.browser: ModulePage {
+                title: @tr("Browser protection");
+                description: @tr("Shows a warning page before you open a risky address. Works with a browser extension that you install from the AlterDNS folder in developer mode.");
+            }
+
+            if root.page == Page.connection: ModulePage {
+                title: @tr("Connection protection");
+                description: @tr("Helps you reach services that your network blocks by inspecting traffic. Traffic is handled on this computer; no remote VPN or proxy server is used.");
+            }
+
+            if root.page == Page.components: PageFrame {
+                title: @tr("Components");
+                ModuleCard {
+                    title: @tr("Connection protection");
+                }
+
+                ModuleCard {
+                    title: @tr("File security");
+                }
+
+                ModuleCard {
+                    title: @tr("Browser protection");
+                }
+
+                Caption {
+                    text: @tr("Component management comes in a later release.");
+                }
+            }
+
+            if root.page == Page.updates: PageFrame {
+                title: @tr("Updates");
+                Body {
+                    text: @tr("Version {}", root.version);
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: @tr("Check now");
+                        enabled: false;
+                    }
+                }
+
+                Caption {
+                    text: @tr("Update checks come in a later release.");
+                }
+            }
+
+            if root.page == Page.settings: PageFrame {
+                title: @tr("Settings");
+                Subtitle {
+                    text: @tr("Language");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    ComboBox {
+                        // Dil adları kendi dillerinde yazılır; çevrilmez.
+                        model: ["Türkçe", "English"];
+                        current-index: root.language == "en" ? 1 : 0;
+                        accessible-label: @tr("Language");
+                        selected(value) => {
+                            root.language = self.current-index == 1 ? "en" : "tr";
+                            root.settings-changed();
+                        }
+                    }
+                }
+
+                Switch {
+                    text: @tr("Start AlterDNS when I sign in");
+                    checked <=> root.run-at-logon;
+                    toggled => {
+                        root.settings-changed();
+                    }
+                }
+
+                Switch {
+                    text: @tr("Show notifications");
+                    checked <=> root.notifications;
+                    toggled => {
+                        root.settings-changed();
+                    }
+                }
+
+                Subtitle {
+                    text: @tr("Left-clicking the tray icon");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    ComboBox {
+                        model: [@tr("Opens the menu"), @tr("Opens the main window")];
+                        current-index: root.left-click-opens-main ? 1 : 0;
+                        accessible-label: @tr("Left-clicking the tray icon");
+                        selected(value) => {
+                            root.left-click-opens-main = self.current-index == 1;
+                            root.settings-changed();
+                        }
+                    }
+                }
+
+                Switch {
+                    text: @tr("Allow online lookups");
+                    checked <=> root.online-lookups;
+                    toggled => {
+                        root.settings-changed();
+                    }
+                }
+
+                Caption {
+                    text: @tr("Off by default. When on, later releases may check file fingerprints and addresses with online services.");
+                }
+            }
+
+            if root.page == Page.about: PageFrame {
+                title: @tr("About AlterDNS");
+                Body {
+                    text: @tr("Version {}", root.version);
+                }
+
+                Body {
+                    text: @tr("Developer: {}", "Furkan Okan");
+                }
+
+                Body {
+                    text: @tr("Copyright © {} {}", "2026", "Furkan Okan");
+                }
+
+                Body {
+                    text: @tr("License: {}", "GPL-3.0-or-later");
+                }
+
+                Caption {
+                    text: @tr("Source code: {}", "github.com/fxrkqnplus/alterdns");
+                }
+
+                Body {
+                    text: @tr("The AlterDNS name and logo are not covered by this license.");
+                }
+
+                Body {
+                    text: @tr("Code signing: this build is not signed.");
+                }
+
+                Body {
+                    text: @tr("Privacy: AlterDNS sends no telemetry. Logs stay on this computer.");
+                }
+
+                Body {
+                    text: @tr("Built with Slint. Thanks to the Slint project.");
+                }
+
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    PrimaryButton {
+                        text: @tr("View source code");
+                        clicked => {
+                            root.open-link(Links.repo);
+                        }
+                    }
+
+                    Button {
+                        text: @tr("Name and logo");
+                        clicked => {
+                            root.open-link(Links.trademark);
+                        }
+                    }
+
+                    Button {
+                        text: @tr("Third-party licenses");
+                        clicked => {
+                            root.open-link(Links.third-party);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

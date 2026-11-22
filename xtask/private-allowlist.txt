@@ -2,3 +2,11 @@
 # Biçim: <depo yolu><TAB><değer>. Yalnızca gerçek kişisel veri olmayan, belgelenmiş örnekler.
 docs/UI_SPEC.md	192.168.1.1
 xtask/private-allowlist.txt	192.168.1.1
+# Test örnekleri (2026-11-20, S-5): CGNAT ve link-local adresler gerçek ağ adresi değildir.
+spikes/wintun/src/s4.rs	100.64.0.0
+spikes/wintun/src/s4.rs	100.64.2.3
+xtask/src/lab/ops.rs	100.64.0.0
+spikes/wintun/src/harden.rs	fe80::1
+xtask/private-allowlist.txt	100.64.0.0
+xtask/private-allowlist.txt	100.64.2.3
+xtask/private-allowlist.txt	fe80::1

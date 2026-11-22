@@ -1,0 +1,36 @@
+[package]
+name = "alterdns-ui-app"
+description = "AlterDNS arayüzü: tepsi simgesi, flyout ve ana pencere"
+# İkili Slint'i (GPL-3.0-only seçeneği) içerir; birleşik ikili GPL-3.0 koşullarına tabidir.
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "alterdns_ui_app"
+
+[[bin]]
+name = "alterdns-ui"
+path = "src/main.rs"
+
+[dependencies]
+alterdns-core.workspace = true
+alterdns-errors.workspace = true
+alterdns-ipc.workspace = true
+alterdns-ui = { path = "../../crates/ui" }
+alterdns-winsys.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+alterdns-buildinfo.workspace = true
+
+[build-dependencies]
+alterdns-buildinfo.workspace = true
+
+[lints]
+workspace = true

@@ -19,37 +19,168 @@ const LOCAL_TERMS_FILE: &str = "lab/local/private-terms.txt";
 const SVC_MANIFEST: &str = "apps/svc/Cargo.toml";
 const SVC_DENY_CONFIG: &str = "deny-svc.toml";
 
+// `test-ops`: journal ve bekçi testleri yalnızca AlterDNS'in kendi test nesneleriyle
+// (`HKCU\Software\AlterDNS-Test`, `%TEMP%\alterdns-*`) gerçek sistem işlemi yapar.
+const CARGO_STEPS: [(&str, &[&str]); 7] = [
+    ("fmt", &["fmt", "--all", "--check"]),
+    (
+        "clippy",
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--locked",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    ),
+    ("test", &["test", "--workspace", "--locked"]),
+    (
+        "clippy-test-ops",
+        &[
+            "clippy",
+            "-p",
+            "alterdns-journal",
+            "-p",
+            "alterdns-maint",
+            "-p",
+            "alterdns-ipc",
+            "-p",
+            "alterdns-svc",
+            "--all-targets",
+            "--locked",
+            "--features",
+            "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    ),
+    (
+        "test-ops",
+        &[
+            "test",
+            "-p",
+            "alterdns-journal",
+            "-p",
+            "alterdns-maint",
+            "-p",
+            "alterdns-ipc",
+            "-p",
+            "alterdns-svc",
+            "--locked",
+            "--features",
+            "alterdns-maint/test-ops,alterdns-ipc/test-ops,alterdns-svc/test-ops",
+        ],
+    ),
+    // Platformdan bağımsız crate'ler Linux'ta da derlenir (ARCHITECTURE §3).
+    (
+        "linux-errors",
+        &[
+            "check",
+            "-p",
+            "alterdns-errors",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+            "--locked",
+        ],
+    ),
+    ("deny", &["deny", "check"]),
+];
+
+/// `check`'teki test adımları ("test" ve "test-ops"); `xtask test` de bunları çalıştırır.
+pub fn test_steps() -> Vec<(&'static str, Vec<&'static str>)> {
+    CARGO_STEPS
+        .iter()
+        .filter(|(name, _)| matches!(*name, "test" | "test-ops"))
+        .map(|(name, args)| (*name, args.to_vec()))
+        .collect()
+}
+
+/// Kurulu servise karşı salt okunur, `#[ignore]` testler (`dev-install` sonrası, yönetici).
+/// Servisi kurmaz, değiştirmez ya da kaldırmaz.
+pub const LIVE_STEPS: [(&str, &[&str]); 2] = [
+    (
+        "live-service",
+        &[
+            "test",
+            "--locked",
+            "-p",
+            "alterdns-winsys",
+            "--test",
+            "service",
+            "--",
+            "--ignored",
+        ],
+    ),
+    (
+        "live-ipc",
+        &[
+            "test",
+            "--locked",
+            "-p",
+            "alterdns-ipc",
+            "--test",
+            "live",
+            "--",
+            "--ignored",
+        ],
+    ),
+];
+
+/// `--live` ön koşulu: AlterDNS servisi kurulu ve çalışıyor.
+pub fn require_running(state: Option<&alterdns_winsys::ServiceState>) -> anyhow::Result<()> {
+    match state {
+        None => bail!(
+            "AlterDNS servisi kurulu değil: önce yönetici terminalinde cargo xtask dev-install"
+        ),
+        Some(s) if !s.running => bail!(
+            "AlterDNS servisi çalışmıyor: Start-Service AlterDNS ya da yeniden cargo xtask dev-install"
+        ),
+        Some(_) => Ok(()),
+    }
+}
+
+fn run_cargo(cargo: &str, root: &Path, name: &str, args: &[&str]) -> anyhow::Result<()> {
+    eprintln!("==> {name}");
+    let status = Command::new(cargo)
+        .args(args)
+        .current_dir(root)
+        .status()
+        .with_context(|| format!("{name} adımı başlatılamadı"))?;
+    if !status.success() {
+        bail!("{name} adımı başarısız ({status})");
+    }
+    Ok(())
+}
+
+/// `cargo xtask test`: sistem değiştirmeyen testler; `--live` ile ayrıca kurulu servise karşı
+/// salt okunur testler (yönetici ve çalışan servis gerekir).
+pub fn run_tests(live: bool) -> anyhow::Result<()> {
+    let root = repo_root()?;
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    if live {
+        crate::devinstall::require_elevated(alterdns_winsys::is_elevated()?)?;
+        require_running(alterdns_winsys::query_service(alterdns_journal::SERVICE_NAME)?.as_ref())?;
+    }
+    for (name, args) in test_steps() {
+        run_cargo(&cargo, &root, name, &args)?;
+    }
+    if live {
+        for (name, args) in LIVE_STEPS {
+            run_cargo(&cargo, &root, name, args)?;
+        }
+    }
+    Ok(())
+}
+
 /// `xtask check` adımlarını sırayla çalıştırır; ilk hatada durur.
 pub fn run() -> anyhow::Result<()> {
     let root = repo_root()?;
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let steps: [(&str, &[&str]); 4] = [
-        ("fmt", &["fmt", "--all", "--check"]),
-        (
-            "clippy",
-            &[
-                "clippy",
-                "--workspace",
-                "--all-targets",
-                "--locked",
-                "--",
-                "-D",
-                "warnings",
-            ],
-        ),
-        ("test", &["test", "--workspace", "--locked"]),
-        ("deny", &["deny", "check"]),
-    ];
-    for (name, args) in steps {
-        eprintln!("==> {name}");
-        let status = Command::new(&cargo)
-            .args(args)
-            .current_dir(&root)
-            .status()
-            .with_context(|| format!("{name} adımı başlatılamadı"))?;
-        if !status.success() {
-            bail!("{name} adımı başarısız ({status})");
-        }
+    for (name, args) in CARGO_STEPS {
+        run_cargo(&cargo, &root, name, args)?;
     }
     eprintln!("==> deny-svc");
     match svc_deny_args(&root) {
@@ -67,11 +198,42 @@ pub fn run() -> anyhow::Result<()> {
         }
         None => eprintln!("{SVC_MANIFEST} yok; svc ağacı denetimi atlandı (Faz 1'de etkinleşir)"),
     }
+    eprintln!("==> catalog-doc");
+    crate::docs_errors::check_doc(&root)?;
+    eprintln!("==> catalog-coverage");
+    crate::docs_errors::coverage(&root, &repo_files(&root)?)?;
+    eprintln!("==> assets");
+    crate::assets::check(&root)?;
+    eprintln!("==> i18n");
+    crate::i18n::check(&root)?;
     eprintln!("==> scan");
-    scan_repo(&root)
+    scan_repo(&root, &Source::Worktree)
 }
 
-fn repo_root() -> anyhow::Result<PathBuf> {
+/// Depoya girebilecek dosyalar (izlenenler + yok sayılmayan izlenmeyenler), göreli yollar.
+pub fn repo_files(root: &Path) -> anyhow::Result<Vec<String>> {
+    let out = Command::new("git")
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ])
+        .current_dir(root)
+        .output()
+        .context("git ls-files çalıştırılamadı")?;
+    if !out.status.success() {
+        bail!("git ls-files başarısız");
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+pub fn repo_root() -> anyhow::Result<PathBuf> {
     let out = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -90,58 +252,216 @@ fn read_optional(path: &Path) -> anyhow::Result<String> {
     }
 }
 
-/// İzlenen ve yok sayılmayan izlenmeyen dosyaları tarar (yeni dosyalar `git add` öncesinde de yakalanır).
-fn scan_repo(root: &Path) -> anyhow::Result<()> {
+/// Taranacak içeriğin kaynağı.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// Çalışma ağacı: izlenen ve yok sayılmayan izlenmeyen dosyalar (yeni dosyalar `git add`
+    /// öncesinde de yakalanır).
+    Worktree,
+    /// Git indeksi (`--staged`): commit'e hazırlanan içerik.
+    Index,
+    /// Bir commit'in ağacı (`--tree <rev>`): push edilecek içerik.
+    Tree(String),
+}
+
+fn git(root: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .with_context(|| format!("git {} çalıştırılamadı", args.join(" ")))?;
+    if !out.status.success() {
+        bail!(
+            "git {} başarısız: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    Ok(out.stdout)
+}
+
+/// Git'e seçenek olarak yorumlanabilecek revizyonları reddeder (`-` ile başlayan).
+fn safe_rev(rev: &str) -> anyhow::Result<&str> {
+    if rev.is_empty() || rev.starts_with('-') {
+        bail!("geçersiz revizyon: {rev:?}");
+    }
+    Ok(rev)
+}
+
+fn list(root: &Path, source: &Source) -> anyhow::Result<Vec<String>> {
+    if let Source::Tree(rev) = source {
+        safe_rev(rev)?;
+    }
+    let raw = match source {
+        Source::Worktree => return repo_files(root),
+        Source::Index => git(root, &["ls-files", "--cached", "-z"])?,
+        Source::Tree(rev) => git(root, &["ls-tree", "-r", "-z", "--name-only", rev])?,
+    };
+    Ok(String::from_utf8_lossy(&raw)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn read(root: &Path, source: &Source, rel: &str) -> anyhow::Result<Option<Vec<u8>>> {
+    match source {
+        Source::Worktree => match std::fs::read(root.join(rel)) {
+            Ok(b) => Ok(Some(b)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).with_context(|| format!("{rel} okunamadı")),
+        },
+        Source::Index => git(root, &["show", &format!(":{rel}")]).map(Some),
+        Source::Tree(rev) => git(root, &["show", &format!("{rev}:{rel}")]).map(Some),
+    }
+}
+
+fn finding(rel: &str, rule: scan::Rule) -> scan::Finding {
+    scan::Finding {
+        path: rel.to_string(),
+        line: 0,
+        rule,
+        excerpt: String::new(),
+    }
+}
+
+/// Kaynaktaki dosyaları tarar: (taranan dosya sayısı, bulgular).
+pub fn scan_files(root: &Path, source: &Source) -> anyhow::Result<(usize, Vec<scan::Finding>)> {
+    let entries = list(root, source)?
+        .into_iter()
+        .map(|rel| (source.clone(), rel))
+        .collect::<Vec<_>>();
+    scan_entries(root, &entries)
+}
+
+/// (kaynak, yol) çiftlerini tarar.
+fn scan_entries(
+    root: &Path,
+    entries: &[(Source, String)],
+) -> anyhow::Result<(usize, Vec<scan::Finding>)> {
     let ctx = ScanContext {
         allowlist: parse_allowlist(&read_optional(&root.join(ALLOWLIST_FILE))?),
         local_terms: parse_terms(&read_optional(&root.join(LOCAL_TERMS_FILE))?),
     };
-    let out = Command::new("git")
-        .args([
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ])
-        .current_dir(root)
-        .output()
-        .context("git ls-files çalıştırılamadı")?;
-    if !out.status.success() {
-        bail!("git ls-files başarısız");
-    }
-    let list = String::from_utf8(out.stdout)?;
     let mut findings = Vec::new();
     let mut scanned = 0usize;
-    for rel in list.split('\0').filter(|p| !p.is_empty()) {
+    for (source, rel) in entries {
+        let rel = rel.as_str();
+        if scan::forbidden_file(rel) {
+            findings.push(finding(rel, scan::Rule::ForbiddenFile));
+            continue;
+        }
         let lower = rel.to_ascii_lowercase();
         if BINARY_EXTS.iter().any(|e| lower.ends_with(e)) {
             continue;
         }
-        let bytes = match std::fs::read(root.join(rel)) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e).with_context(|| format!("{rel} okunamadı")),
+        let Some(bytes) = read(root, source, rel)? else {
+            continue;
         };
         scanned += 1;
         findings.extend(scan::scan_bytes_header(rel, &bytes));
-        match std::str::from_utf8(&bytes) {
-            Ok(text) => findings.extend(scan::scan_text(rel, text, &ctx)),
-            Err(_) => eprintln!("uyarı: {rel} UTF-8 değil; metin taraması atlandı"),
+        match scan::decode_text(&bytes) {
+            Some(text) => findings.extend(scan::scan_text(rel, &text, &ctx)),
+            None => findings.push(finding(rel, scan::Rule::UndecodableText)),
         }
     }
-    eprintln!(
-        "scan: {scanned} dosya, {} izinli değer, {} yerel terim",
-        ctx.allowlist.len(),
-        ctx.local_terms.len()
-    );
+    Ok((scanned, findings))
+}
+
+fn report(label: &str, scanned: usize, findings: &[scan::Finding]) -> anyhow::Result<()> {
+    eprintln!("scan ({label}): {scanned} dosya");
     if findings.is_empty() {
         return Ok(());
     }
-    for f in &findings {
+    for f in findings {
         eprintln!("{}:{}: {:?} {}", f.path, f.line, f.rule, f.excerpt);
     }
     bail!("{} kişisel veri / politika bulgusu", findings.len())
+}
+
+/// Kişisel veri ve politika taraması; bulgu varsa başarısız olur.
+pub fn scan_repo(root: &Path, source: &Source) -> anyhow::Result<()> {
+    let (scanned, findings) = scan_files(root, source)?;
+    report(&format!("{source:?}"), scanned, &findings)
+}
+
+fn is_sha(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// `pre-push` kancasının stdin satırları: `<yerel ref> <yerel sha> <uzak ref> <uzak sha>`.
+/// Dönen: (yerel sha, uzak sha; uzakta yoksa `None`). Silmeler (yerel sha sıfır) ve onaltılık
+/// olmayan değerler atlanır.
+pub fn parse_push_lines(text: &str) -> Vec<(String, Option<String>)> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            let (local, remote) = (*f.get(1)?, *f.get(3)?);
+            let zero = |s: &str| s.bytes().all(|b| b == b'0');
+            if !is_sha(local) || !is_sha(remote) || zero(local) {
+                return None;
+            }
+            Some((
+                local.to_string(),
+                (!zero(remote)).then(|| remote.to_string()),
+            ))
+        })
+        .collect()
+}
+
+/// Push edilecek her commit'in eklediği ya da değiştirdiği dosyalar, o commit'teki halleriyle.
+/// Böylece bir commit'te eklenip sonrakinde silinen bilgi de yakalanır.
+fn pushed_entries(
+    root: &Path,
+    pushes: &[(String, Option<String>)],
+) -> anyhow::Result<Vec<(Source, String)>> {
+    let mut entries = Vec::new();
+    for (local, remote) in pushes {
+        let range = match remote {
+            Some(r) => git(root, &["rev-list", &format!("{r}..{local}")])?,
+            None => git(root, &["rev-list", local, "--not", "--remotes"])?,
+        };
+        for commit in String::from_utf8_lossy(&range)
+            .lines()
+            .filter(|c| is_sha(c))
+        {
+            let changed = git(
+                root,
+                &[
+                    "diff-tree",
+                    "--no-commit-id",
+                    "-r",
+                    "-z",
+                    "--name-only",
+                    "--diff-filter=d",
+                    "--root",
+                    commit,
+                ],
+            )?;
+            for path in String::from_utf8_lossy(&changed)
+                .split('\0')
+                .filter(|p| !p.is_empty())
+            {
+                entries.push((Source::Tree(commit.to_string()), path.to_string()));
+            }
+        }
+    }
+    Ok(entries)
+}
+
+/// `cargo xtask check --pre-push`: kanca stdin'indeki her push için commit'leri tarar.
+pub fn run_pre_push(mut input: impl std::io::Read) -> anyhow::Result<()> {
+    let mut text = String::new();
+    input.read_to_string(&mut text)?;
+    let root = repo_root()?;
+    let entries = pushed_entries(&root, &parse_push_lines(&text))?;
+    let (scanned, findings) = scan_entries(&root, &entries)?;
+    report("pre-push", scanned, &findings)
+}
+
+/// `cargo xtask check --staged | --tree <rev>`: yalnızca tarama (push öncesi kanca için hızlı).
+pub fn run_scan_only(source: &Source) -> anyhow::Result<()> {
+    scan_repo(&repo_root()?, source)
 }
 
 fn meaningful_lines(text: &str) -> impl Iterator<Item = &str> {
@@ -194,12 +514,8 @@ pub fn svc_deny_args(root: &Path) -> Option<Vec<String>> {
 mod tests {
     use super::*;
 
-    fn temp_root(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("alterdns-xtask-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn temp_root(name: &str) -> crate::testutil::TempDir {
+        crate::testutil::temp("xtask", name).unwrap()
     }
 
     fn repo_file(name: &str) -> toml::Table {
@@ -289,5 +605,82 @@ mod tests {
             parse_terms(text),
             vec!["terim-a".to_string(), "terim-b".to_string()]
         );
+    }
+
+    #[test]
+    fn staged_scan_reads_index_not_worktree() {
+        let dir = std::env::temp_dir().join(format!("alterdns-staged-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q"]).unwrap();
+        let file = dir.join("not.txt");
+        // Örnek adres parçalı kurulur; tarayıcı bu dosyayı yakalamasın.
+        std::fs::write(&file, ["adres 192.168", ".7.9\n"].concat()).unwrap();
+        git(&dir, &["add", "not.txt"]).unwrap();
+        std::fs::write(&file, "temiz\n").unwrap();
+        let (_, staged) = scan_files(&dir, &Source::Index).unwrap();
+        assert!(
+            staged.iter().any(|f| f.rule == scan::Rule::PrivateIpv4),
+            "{staged:?}"
+        );
+        let (_, work) = scan_files(&dir, &Source::Worktree).unwrap();
+        assert!(work.is_empty(), "{work:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn push_lines_skip_deletions_and_non_hex() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let z = "0".repeat(40);
+        let text = format!(
+            "refs/heads/x {a} refs/heads/x {b}\nrefs/heads/y {a} refs/heads/y {z}\nrefs/heads/d {z} refs/heads/d {b}\nrefs/heads/k --output=x refs/heads/k {b}\n"
+        );
+        assert_eq!(parse_push_lines(&text), [(a.clone(), Some(b)), (a, None)]);
+        assert!(safe_rev("--output=x").is_err());
+        assert!(safe_rev("HEAD").is_ok());
+    }
+
+    /// Bir commit'te eklenip sonrakinde silinen bilgi de yakalanır (inceleme bulgusu, 2026-11-20).
+    #[test]
+    fn pre_push_scans_every_pushed_commit() {
+        let dir = std::env::temp_dir().join(format!("alterdns-prepush-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let commit = |msg: &str| {
+            git(
+                &dir,
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@example.com",
+                    "commit",
+                    "-q",
+                    "-a",
+                    "-m",
+                    msg,
+                ],
+            )
+            .unwrap();
+        };
+        git(&dir, &["init", "-q"]).unwrap();
+        let file = dir.join("not.txt");
+        std::fs::write(&file, ["adres 192.168", ".7.9\\n"].concat()).unwrap();
+        git(&dir, &["add", "not.txt"]).unwrap();
+        commit("bir");
+        std::fs::write(&file, "temiz\\n").unwrap();
+        commit("iki");
+        let head = String::from_utf8(git(&dir, &["rev-parse", "HEAD"]).unwrap()).unwrap();
+        let entries = pushed_entries(&dir, &[(head.trim().to_string(), None)]).unwrap();
+        let (_, findings) = scan_entries(&dir, &entries).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == scan::Rule::PrivateIpv4),
+            "{findings:?}"
+        );
+        // Son ağaç temiz: yalnızca ağaç taraması bunu kaçırırdı.
+        let (_, tip) = scan_files(&dir, &Source::Tree("HEAD".into())).unwrap();
+        assert!(tip.is_empty(), "{tip:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

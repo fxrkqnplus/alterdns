@@ -19,13 +19,12 @@ pub struct RealOps;
 /// PowerShell sorgusunun üst süresi (bekçi kirasının altında kalır).
 const PS_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// `%SystemRoot%\System32` altındaki bir sistem aracı. Çalışma dizinindeki aynı adlı bir
-/// dosyanın araya girmemesi için mutlak yol kullanılır.
+/// System32 altındaki bir sistem aracı. Çalışma dizinindeki aynı adlı bir dosyanın araya
+/// girmemesi için mutlak yol kullanılır. Dizin `SystemRoot` ortam değişkeninden değil, Win32
+/// API'sinden alınır (Faz 0 S-2); API başarısız olursa sabit varsayılan kullanılır.
 pub fn system32(exe: &str) -> PathBuf {
-    std::env::var_os("SystemRoot")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
-        .join("System32")
+    alterdns_winsys::system_dir()
+        .unwrap_or_else(|_| PathBuf::from(r"C:\Windows\System32"))
         .join(exe)
 }
 
@@ -484,13 +483,21 @@ mod tests {
             .map(PathBuf::from)
             .unwrap();
         assert!(module_path.is_absolute());
-        assert!(module_path.ends_with(r"System32\WindowsPowerShell\v1.0\Modules"));
+        // Windows yolları büyük/küçük harf duyarsızdır; API `system32` döndürebilir.
+        let lower = module_path.display().to_string().to_lowercase();
+        assert!(
+            lower.ends_with(r"system32\windowspowershell\v1.0\modules"),
+            "{lower}"
+        );
     }
 
     #[test]
     fn system_tools_use_absolute_paths() {
         assert!(powershell().is_absolute());
-        assert!(system32("taskkill.exe").ends_with(r"System32\taskkill.exe"));
+        let taskkill = system32("taskkill.exe");
+        assert!(taskkill.is_file(), "{}", taskkill.display());
+        let lower = taskkill.display().to_string().to_lowercase();
+        assert!(lower.ends_with(r"system32\taskkill.exe"), "{lower}");
     }
 
     fn route(prefix: &str, if_name: &str) -> OpKind {
