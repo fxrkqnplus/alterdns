@@ -16,6 +16,8 @@ use resvg::tiny_skia::{
 use resvg::usvg;
 
 pub const TRAY_SIZES: [u32; 4] = [16, 20, 24, 32];
+/// Uygulama simgesi boyutları (100–200 % ölçekte küçük ve büyük simge, Explorer görünümleri).
+pub const APP_SIZES: [u32; 8] = [16, 20, 24, 32, 40, 48, 64, 256];
 const OUT_DIR: &str = r"assets\brand\generated";
 const TRAY_SVG: &str = r"assets\brand\tray\tray.svg";
 const LOGO_PNG: &str = r"assets\brand\alterdns.png";
@@ -222,6 +224,14 @@ fn outputs(root: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
         out.join("square-1024.png"),
         fit(&src, 1024, Some(Color::BLACK))?,
     ));
+    // Exe simgesi (Explorer, görev çubuğu, Alt+Tab) ve ana pencere simgesi: siyah kare zemin
+    // açık ve koyu temada okunur.
+    let app = APP_SIZES
+        .iter()
+        .map(|s| Ok((*s, fit(&src, *s, Some(Color::BLACK))?)))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    files.push((out.join("app.ico"), ico(&app)));
+    files.push((out.join("app-256.png"), fit(&src, 256, Some(Color::BLACK))?));
     Ok(files)
 }
 

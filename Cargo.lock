@@ -253,9 +253,12 @@ dependencies = [
 name = "alterdns-ui-app"
 version = "0.0.0"
 dependencies = [
+ "alterdns-buildinfo",
  "alterdns-core",
  "alterdns-errors",
  "alterdns-ipc",
+ "alterdns-ui",
+ "alterdns-winsys",
  "serde_json",
  "tracing",
 ]

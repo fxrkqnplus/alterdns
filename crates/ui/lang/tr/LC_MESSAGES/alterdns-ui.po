@@ -18,6 +18,9 @@ msgstr "AlterDNS hakkında"
 msgid "Add"
 msgstr "Ekle"
 
+msgid "AlterDNS — {}"
+msgstr "AlterDNS — {}"
+
 msgid "Allow online lookups"
 msgstr "Çevrim içi sorgulara izin ver"
 

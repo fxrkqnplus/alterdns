@@ -13,12 +13,24 @@ publish.workspace = true
 [lib]
 name = "alterdns_ui_app"
 
+[[bin]]
+name = "alterdns-ui"
+path = "src/main.rs"
+
 [dependencies]
 alterdns-core.workspace = true
 alterdns-errors.workspace = true
 alterdns-ipc.workspace = true
+alterdns-ui = { path = "../../crates/ui" }
+alterdns-winsys.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+alterdns-buildinfo.workspace = true
+
+[build-dependencies]
+alterdns-buildinfo.workspace = true
 
 [lints]
 workspace = true

@@ -18,6 +18,9 @@ msgstr "About AlterDNS"
 msgid "Add"
 msgstr "Add"
 
+msgid "AlterDNS — {}"
+msgstr "AlterDNS — {}"
+
 msgid "Allow online lookups"
 msgstr "Allow online lookups"
 

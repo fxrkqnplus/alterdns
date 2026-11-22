@@ -67,6 +67,8 @@ struct Hardened {
 thread_local! {
     static PENDING: RefCell<Option<(WindowKind, CloseFn)>> = const { RefCell::new(None) };
     static HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
+    /// `arm_harden` ile en son yakalanıp sertleştirilen pencere.
+    static LAST_HARDENED: Cell<Option<isize>> = const { Cell::new(None) };
     /// Bu iş parçacığında sertleştirilmiş pencereler (HWND → durum).
     static HARDENED: RefCell<HashMap<isize, Rc<Hardened>>> = RefCell::new(HashMap::new());
 }
@@ -124,7 +126,9 @@ unsafe extern "system" fn show_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
             if let Some((kind, on_close)) = pending {
                 captured = true;
                 // Başarısızsa pencere sertleşmez; çağıran `ex_style` ile denetleyebilir.
-                let _ = harden_with(cwp.hwnd, kind, Some(on_close));
+                if harden_with(cwp.hwnd, kind, Some(on_close)).is_ok() {
+                    LAST_HARDENED.with(|c| c.set(Some(cwp.hwnd.0 as isize)));
+                }
             }
         }
     }
@@ -137,6 +141,15 @@ unsafe extern "system" fn show_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
         }
     }
     result
+}
+
+/// Bu iş parçacığında `arm_harden` ile en son sertleştirilen ve hâlâ var olan pencere.
+pub fn hardened_window() -> Option<isize> {
+    let raw = LAST_HARDENED.with(Cell::get)?;
+    // SAFETY: Salt okunur geçerlilik sorgusu.
+    unsafe { IsWindow(Some(hwnd_of(raw))) }
+        .as_bool()
+        .then_some(raw)
 }
 
 /// Pencereyi doğrudan sertleştirir (kapatma isteği geri çağrısı olmadan).

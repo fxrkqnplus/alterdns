@@ -15,6 +15,16 @@ export enum StatusKind {
     unreachable,
 }
 
+// Tepsi ipucu metinleri (Rust okur; çeviri seçimiyle güncellenir). Hata durumunda ayrıntı
+// katalog başlığıdır.
+export global TrayText {
+    out property <string> ready: @tr("Protection module not installed");
+    out property <string> connecting: @tr("Connecting to the AlterDNS service…");
+    public pure function tooltip(detail: string) -> string {
+        return @tr("AlterDNS — {}", detail);
+    }
+}
+
 export component FlyoutWindow inherits Window {
     in property <StatusKind> status-kind: StatusKind.connecting;
     // Yalnızca `unreachable` iken: katalogdan gelen başlık ve ileti (ADNS-… kodu dahil).
