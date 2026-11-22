@@ -12,6 +12,7 @@ pub mod docs_errors;
 pub mod hooks;
 pub mod i18n;
 pub mod lab;
+pub mod perf;
 pub mod residue;
 pub mod scan;
 pub mod testutil;

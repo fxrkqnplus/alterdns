@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use xtask::{assets, check, devinstall, docs_errors, hooks, lab};
+use xtask::{assets, check, devinstall, docs_errors, hooks, lab, perf};
 
 fn report(name: &str, r: anyhow::Result<()>) -> ExitCode {
     match r {
@@ -70,6 +70,8 @@ fn main() -> ExitCode {
                 }
             }),
         ),
+        // `svc` yönetici terminalinde, `ui` normal terminalde; ikisi de dev-install sonrası.
+        Some("perf") => report("perf", perf::run(&args[1..])),
         Some("test") => match args.get(1).map(String::as_str) {
             None => report("test", check::run_tests(false)),
             // Kurulu servise karşı salt okunur testler: yönetici terminali, dev-install sonrası.
@@ -98,7 +100,7 @@ fn main() -> ExitCode {
         },
         _ => {
             eprintln!(
-                "kullanım: cargo xtask check [--staged | --tree <rev>] | test [--live] | docs-errors | assets [--check] | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
+                "kullanım: cargo xtask check [--staged | --tree <rev>] | test [--live] | perf svc [--minutes N] | perf ui [--opens N] | perf size | docs-errors | assets [--check] | hooks install | dev-install [--debug] | dev-uninstall | lab <komut>"
             );
             ExitCode::from(2)
         }
