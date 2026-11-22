@@ -88,12 +88,25 @@ fn exe_version_info_and_icon() {
     assert!(icon_count(std::path::Path::new(EXE)) >= 1);
 }
 
+/// Kullanıcının açık bir AlterDNS ana penceresi varsa ana pencere testleri atlanır: test kendi
+/// örneğini açamaz ve kapanma iletisi kullanıcının penceresine de gider.
+fn user_main_window_open() -> bool {
+    if window_owner(WINDOW_CLASS).is_some() {
+        eprintln!("bu oturumda AlterDNS ana penceresi zaten açık; atlandı");
+        return true;
+    }
+    false
+}
+
 /// İkinci ana pencere işlemi ilkini öne getirir ve 0 ile çıkar; ilki açık kalır.
 #[test]
 fn second_window_activates_first() {
     let _guard = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
     if !interactive_desktop() {
         eprintln!("etkileşimli masaüstü yok; atlandı");
+        return;
+    }
+    if user_main_window_open() {
         return;
     }
     let mut first = Command::new(EXE).spawn().unwrap();
@@ -124,6 +137,9 @@ fn perf_window_reports_first_paint_and_exits() {
     let _guard = WINDOW.lock().unwrap_or_else(|e| e.into_inner());
     if !interactive_desktop() {
         eprintln!("etkileşimli masaüstü yok; atlandı");
+        return;
+    }
+    if user_main_window_open() {
         return;
     }
     let got: Rc<RefCell<Vec<u32>>> = Rc::default();

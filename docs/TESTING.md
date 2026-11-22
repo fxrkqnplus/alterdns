@@ -176,9 +176,10 @@
 
 - **Süre ölçümü:** Arayüz, ölçüm iletisini aldığı anda saati başlatır. Sertleştirilmiş pencerenin `WM_PAINT` işlemi ve ardından `DwmFlush` bitince süreyi geri bildirir. Tıklamadan iletiye kadar geçen giriş gecikmesi bu ölçüme girmez. ETW ve WPR ile ayrıntılı ölçüm, bütçe sınırına yaklaşıldığında yapılır.
 - **Soğuk açılış:** Flyout penceresi tepsi başlarken oluşturulur. Soğuk ölçüm, başlangıçtan sonraki ilk gösterimdir.
-- **Arayüz kaynağı:** Kurulu sürüm varsa o ölçülür (`installed`), yoksa `target\release` derlemesi (`target`). Açık bir AlterDNS arayüzü yalnızca kurulu sürüme aitse kapatılır; başka bir kopya açıksa ölçüm başlamaz.
+- **Arayüz kaynağı:** Kurulu sürüm varsa o ölçülür (`installed`), yoksa `target\release` derlemesi (`target`). Açık bir AlterDNS arayüzü yalnızca kurulu sürüme aitse kapatılır; başka bir kopya açıksa hiçbir şey kapatılmaz ve ölçüm başlamaz.
 - **Sonuç dosyası:** Yalnızca bilinen anahtarlar ve sayılar yazılır. Yol, makine adı veya kullanıcı bilgisi yazılmaz; doğrulayıcı bunları reddeder.
-- **Bütçe ve regresyon:** Bütçe aşımı ve daha önceki tarihli en son dosyaya göre > %10 kötüleşme komutu başarısız yapar. Gürültü tabanının altındaki farklar regresyon sayılmaz: bellekte 512 KiB, sürede 5 ms, CPU'da 0,01 puan, etkin aralık sayısında 1.
+- **Bütçe ve regresyon:** Bütçe aşımı ya da tabana göre > %10 kötüleşme komutu başarısız yapar ve sonuç dosyaya yazılmaz. Böylece başarısız bir ölçüm sonraki günün tabanı olamaz. Taban, ölçülen bölümü taşıyan daha önceki tarihli en son dosyadır; yoksa komut bunu bildirir. Gürültü tabanının altındaki farklar regresyon sayılmaz: bellekte 512 KiB, sürede 5 ms, CPU'da 0,01 puan, etkin aralık sayısında 1.
+- **Açık arayüz:** `perf ui` başlarken kurulu tepsi ya da ana pencere açıksa kapatılır. Kapatılan tepsi ölçümden sonra yeniden başlatılır.
 
 **Faz 1 sapmaları:**
 - Servis ölçümü 5 tekrar değil, tek 10 dakikalık koşudur; bellek için 61 örneğin medyanı alınır. Flyout 50, ana pencere 5 tekrarla ölçülür.

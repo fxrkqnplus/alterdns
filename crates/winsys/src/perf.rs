@@ -82,6 +82,7 @@ fn thread_cycles(pid: u32) -> io::Result<Vec<(u32, u64)>> {
             {
                 let h = Owned(h);
                 let mut cycles = 0u64;
+                // SAFETY: Tutamaç `Owned` içinde ve çağrı boyunca açık; çıktı yerel değişken.
                 if unsafe { QueryThreadCycleTime(h.0, &mut cycles) }.is_ok() {
                     out.push((entry.th32ThreadID, cycles));
                 }

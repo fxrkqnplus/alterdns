@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 use xtask::perf::{
     MIB, PerfReceiver, UiPreflight, active_intervals, allowed_intervals, check_mode, cpu_percent,
-    date_from_unix, median, merge_section, over_budget, p95, previous_baseline, regressions,
-    svc_pid, ui_preflight, validate_results,
+    date_from_unix, median, merge_section, over_budget, p95, plan_ui_close, previous_baseline,
+    record_in, regressions, svc_pid, ui_preflight, validate_results,
 };
 use xtask::testutil::temp;
 
@@ -122,26 +122,74 @@ fn merge_keeps_other_sections() {
 }
 
 #[test]
-fn previous_baseline_picks_latest_earlier_day() {
+fn previous_baseline_picks_latest_earlier_day_with_section() {
     let d = temp("perf", "baseline").unwrap();
-    assert_eq!(previous_baseline(&d, "2026-11-23"), None);
-    for name in [
-        "2026-11-20.json",
-        "2026-11-22.json",
-        "2026-11-23.json",
-        "notlar.json",
+    assert_eq!(previous_baseline(&d, "2026-11-23", "ui"), None);
+    for (name, body) in [
+        ("2026-11-20.json", r#"{"ui":{},"size":{}}"#),
+        ("2026-11-22.json", r#"{"size":{}}"#),
+        ("2026-11-23.json", r#"{"ui":{}}"#),
+        ("notlar.json", r#"{"ui":{}}"#),
     ] {
-        std::fs::write(d.join(name), "{}").unwrap();
+        std::fs::write(d.join(name), body).unwrap();
     }
+    // Bölümü olmayan daha yeni dosya taban sayılmaz.
     assert_eq!(
-        previous_baseline(&d, "2026-11-23"),
+        previous_baseline(&d, "2026-11-23", "ui"),
+        Some(d.join("2026-11-20.json"))
+    );
+    assert_eq!(
+        previous_baseline(&d, "2026-11-23", "size"),
         Some(d.join("2026-11-22.json"))
     );
     assert_eq!(
-        previous_baseline(&d, "2026-11-21"),
+        previous_baseline(&d, "2026-11-21", "size"),
         Some(d.join("2026-11-20.json"))
     );
-    assert_eq!(previous_baseline(&d, "2026-11-20"), None);
+    assert_eq!(previous_baseline(&d, "2026-11-20", "ui"), None);
+}
+
+fn read_json(path: &Path) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[test]
+fn record_merges_section_and_keeps_others() {
+    let d = temp("perf", "record-ok").unwrap();
+    let day = "2026-11-23";
+    std::fs::write(
+        d.join(format!("{day}.json")),
+        r#"{"svc":{"cpu_percent":0.0}}"#,
+    )
+    .unwrap();
+    record_in(&d, day, "size", json!({ "total_bytes": 3 })).unwrap();
+    let v = read_json(&d.join(format!("{day}.json")));
+    assert_eq!(v["size"]["total_bytes"], json!(3));
+    assert_eq!(v["svc"]["cpu_percent"], json!(0.0));
+    assert_eq!(v["schema"], json!(1));
+    assert_eq!(v["date"], json!(day));
+}
+
+/// Bütçeyi aşan ya da kötüleşen sonuç dosyaya yazılmaz; böylece sonraki günün tabanı olamaz.
+#[test]
+fn failing_result_is_not_written() {
+    let d = temp("perf", "record-fail").unwrap();
+    let day = "2026-11-23";
+    let path = d.join(format!("{day}.json"));
+    std::fs::write(&path, r#"{"size":{"total_bytes":3}}"#).unwrap();
+    let over = json!({ "flyout_cold_ms": 401.0 });
+    assert!(record_in(&d, day, "ui", over).is_err());
+    assert_eq!(read_json(&path), json!({ "size": { "total_bytes": 3 } }));
+
+    std::fs::write(
+        d.join("2026-11-22.json"),
+        r#"{"ui":{"flyout_cold_ms":20.0}}"#,
+    )
+    .unwrap();
+    let worse = json!({ "flyout_cold_ms": 40.0 });
+    let err = format!("{:#}", record_in(&d, day, "ui", worse).unwrap_err());
+    assert!(err.contains("flyout_cold_ms"), "{err}");
+    assert!(read_json(&path).get("ui").is_none());
 }
 
 #[test]
@@ -162,6 +210,24 @@ fn ui_preflight_decisions() {
         ui_preflight(true, None, root),
         UiPreflight::Blocked(_)
     ));
+}
+
+/// Kapatma kararı iki pencere sınıfı için önceden verilir: biri engelliyse hiçbiri kapatılmaz.
+#[test]
+fn ui_close_plan_decides_before_closing() {
+    let root = Path::new(r"C:\Program Files\AlterDNS");
+    let installed = root.join(r"0.0.0\alterdns-ui.exe");
+    let other = Path::new(r"C:\Sistem\x\target\release\alterdns-ui.exe");
+    assert!(plan_ui_close(&[(true, Some(&installed)), (true, Some(other))], root).is_err());
+    assert!(plan_ui_close(&[(true, Some(other)), (true, Some(&installed))], root).is_err());
+    assert_eq!(
+        plan_ui_close(&[(true, Some(&installed)), (false, None)], root).unwrap(),
+        vec![true, false]
+    );
+    assert_eq!(
+        plan_ui_close(&[(false, None), (false, None)], root).unwrap(),
+        vec![false, false]
+    );
 }
 
 #[test]

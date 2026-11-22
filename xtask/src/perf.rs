@@ -219,8 +219,9 @@ pub fn merge_section(file: Option<Value>, section: &str, data: Value) -> Value {
     Value::Object(map)
 }
 
-/// `dir` içindeki `YYYY-MM-DD.json` dosyalarından `today`'den önceki en yenisi.
-pub fn previous_baseline(dir: &Path, today: &str) -> Option<PathBuf> {
+/// `dir` içindeki `YYYY-MM-DD.json` dosyalarından `today`'den önceki ve `section` bölümünü
+/// taşıyan en yenisi. Bölümü olmayan dosya o bölümün tabanı değildir.
+pub fn previous_baseline(dir: &Path, today: &str, section: &str) -> Option<PathBuf> {
     let mut days: Vec<String> = std::fs::read_dir(dir)
         .ok()?
         .flatten()
@@ -230,7 +231,15 @@ pub fn previous_baseline(dir: &Path, today: &str) -> Option<PathBuf> {
         .filter(|d| d.as_str() < today)
         .collect();
     days.sort();
-    days.pop().map(|d| dir.join(format!("{d}.json")))
+    days.into_iter()
+        .rev()
+        .map(|d| dir.join(format!("{d}.json")))
+        .find(|p| {
+            std::fs::read_to_string(p)
+                .ok()
+                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                .is_some_and(|v| v.get(section).is_some())
+        })
 }
 
 /// Yalnızca belgelenen alanlar; hiçbir metin değeri yol ya da makineye özgü bilgi içermez.
@@ -306,6 +315,24 @@ pub fn ui_preflight(
             "AlterDNS arayüzü açık ama işlemi okunamadı; kapatıp yeniden deneyin".into(),
         ),
     }
+}
+
+/// Pencere sınıfı başına kapatma kararı (`true`: kurulu arayüz kapatılır). Biri engelliyse
+/// hiçbiri kapatılmaz; karar bütün sınıflar için kapatmadan önce verilir.
+pub fn plan_ui_close(
+    found: &[(bool, Option<&Path>)],
+    install_root: &Path,
+) -> Result<Vec<bool>, String> {
+    found
+        .iter()
+        .map(
+            |(lock_held, image)| match ui_preflight(*lock_held, *image, install_root) {
+                UiPreflight::Ready => Ok(false),
+                UiPreflight::CloseInstalled => Ok(true),
+                UiPreflight::Blocked(why) => Err(why),
+            },
+        )
+        .collect()
 }
 
 /// `svc` yönetici ister (ADNS-SYS-004); `ui` yönetici terminalinde reddeder (başlattığı
@@ -482,37 +509,71 @@ fn ui_exe(root: &Path, paths: &Paths) -> anyhow::Result<(PathBuf, &'static str)>
     bail!("alterdns-ui.exe yok: önce cargo build --release -p alterdns-ui-app")
 }
 
-fn close_running_ui(install_root: &Path) -> anyhow::Result<()> {
-    for class in [TRAY_CLASS, WINDOW_CLASS] {
-        let owner = window_owner(class);
-        let image = owner.and_then(|pid| process_image(pid).ok());
-        match ui_preflight(owner.is_some(), image.as_deref(), install_root) {
-            UiPreflight::Ready => {}
-            UiPreflight::Blocked(why) => bail!("{why}"),
-            UiPreflight::CloseInstalled => {
-                eprintln!("açık AlterDNS arayüzü kapatılıyor ({class})");
-                let start = Instant::now();
-                while post_broadcast(class, MSG_QUIT)? {
-                    if start.elapsed() > Duration::from_secs(10) {
-                        bail!("AlterDNS arayüzü kapanmadı ({class})");
-                    }
-                    std::thread::sleep(Duration::from_millis(200));
-                }
-                std::thread::sleep(Duration::from_secs(1));
+/// Kurulu dizinden çalışan arayüzü kapatır. Kapatılan tepsinin ikilisini döndürür; ölçümden
+/// sonra yeniden başlatılır.
+fn close_running_ui(install_root: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let classes = [TRAY_CLASS, WINDOW_CLASS];
+    let found: Vec<(bool, Option<PathBuf>)> = classes
+        .iter()
+        .map(|class| {
+            let owner = window_owner(class);
+            (
+                owner.is_some(),
+                owner.and_then(|pid| process_image(pid).ok()),
+            )
+        })
+        .collect();
+    let refs: Vec<(bool, Option<&Path>)> = found.iter().map(|(l, i)| (*l, i.as_deref())).collect();
+    let plan = plan_ui_close(&refs, install_root).map_err(|why| anyhow::anyhow!(why))?;
+    let mut tray = None;
+    for ((class, close), (_, image)) in classes.iter().zip(plan).zip(&found) {
+        if !close {
+            continue;
+        }
+        eprintln!("açık AlterDNS arayüzü kapatılıyor ({class})");
+        let start = Instant::now();
+        while post_broadcast(class, MSG_QUIT)? {
+            if start.elapsed() > Duration::from_secs(10) {
+                bail!("AlterDNS arayüzü kapanmadı ({class})");
             }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        std::thread::sleep(Duration::from_secs(1));
+        if *class == TRAY_CLASS {
+            tray.clone_from(image);
+        } else {
+            eprintln!("ana pencere kapatıldı; ölçümden sonra yeniden açabilirsiniz");
         }
     }
-    Ok(())
+    Ok(tray)
+}
+
+/// Ölçüm için kapatılan kurulu tepsiyi geri açar.
+fn restart_tray(exe: &Path) {
+    match Command::new(exe).arg("--tray").spawn() {
+        Ok(_) => eprintln!("AlterDNS tepsisi yeniden başlatıldı"),
+        Err(e) => eprintln!(
+            "AlterDNS tepsisi yeniden başlatılamadı ({e}); oturum yeniden açılınca kendiliğinden başlar"
+        ),
+    }
 }
 
 fn measure_ui(root: &Path, opens: u64) -> anyhow::Result<Value> {
     let paths = Paths::system()?;
     let (exe, source) = ui_exe(root, &paths)?;
-    close_running_ui(&paths.program_files)?;
+    let closed_tray = close_running_ui(&paths.program_files)?;
+    let result = measure_ui_with(&exe, source, opens);
+    if let Some(tray) = closed_tray {
+        restart_tray(&tray);
+    }
+    result
+}
+
+fn measure_ui_with(exe: &Path, source: &str, opens: u64) -> anyhow::Result<Value> {
     let rx = PerfReceiver::new()?;
     let mut spawned = Spawned::default();
     eprintln!("tepsi başlatılıyor ({source}); ölçüm sırasında fare ve klavye kullanmayın");
-    spawned.0.push(Command::new(&exe).arg("--tray").spawn()?);
+    spawned.0.push(Command::new(exe).arg("--tray").spawn()?);
     let tray_pid = spawned.0[0].id();
     let start = Instant::now();
     while window_owner(TRAY_CLASS) != Some(tray_pid) {
@@ -547,7 +608,7 @@ fn measure_ui(root: &Path, opens: u64) -> anyhow::Result<Value> {
     eprintln!("ana pencere 5 kez açılıp kapatılıyor");
     let (mut paint, mut main_private, mut exit_ms) = (Vec::new(), 0u64, 0f64);
     for _ in 0..5 {
-        spawned.0.push(Command::new(&exe).arg("--perf").spawn()?);
+        spawned.0.push(Command::new(exe).arg("--perf").spawn()?);
         let child = spawned.0.len() - 1;
         let us = rx
             .wait(Duration::from_secs(15))
@@ -580,9 +641,13 @@ fn today() -> String {
 }
 
 fn record(root: &Path, section: &str, data: Value) -> anyhow::Result<()> {
-    let dir = root.join(RESULTS_DIR);
-    std::fs::create_dir_all(&dir)?;
-    let day = today();
+    record_in(&root.join(RESULTS_DIR), &today(), section, data)
+}
+
+/// Bölümü `dir/<day>.json` dosyasına birleştirir. Bütçe aşımı ya da önceki tabana göre
+/// kötüleşme varsa dosya değiştirilmez: başarısız bir ölçüm sonraki günün tabanı olamaz.
+pub fn record_in(dir: &Path, day: &str, section: &str, data: Value) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dir)?;
     let path = dir.join(format!("{day}.json"));
     let existing = match std::fs::read_to_string(&path) {
         Ok(text) => Some(serde_json::from_str(&text).with_context(|| path.display().to_string())?),
@@ -596,32 +661,47 @@ fn record(root: &Path, section: &str, data: Value) -> anyhow::Result<()> {
     }
     validate_results(&merged)?;
     let mut problems = over_budget(section, &merged[section]);
-    if let Some(prev_path) = previous_baseline(&dir, &day) {
-        let prev: Value = serde_json::from_str(&std::fs::read_to_string(&prev_path)?)
-            .with_context(|| prev_path.display().to_string())?;
-        let cur = json!({ section: merged[section].clone() });
-        problems.extend(
-            regressions(&prev, &cur)
-                .into_iter()
-                .map(|l| format!("kötüleşme: {l}")),
+    match previous_baseline(dir, day, section) {
+        Some(prev_path) => {
+            let prev: Value = serde_json::from_str(&std::fs::read_to_string(&prev_path)?)
+                .with_context(|| prev_path.display().to_string())?;
+            let cur = json!({ section: merged[section].clone() });
+            problems.extend(
+                regressions(&prev, &cur)
+                    .into_iter()
+                    .map(|l| format!("kötüleşme: {l}")),
+            );
+            eprintln!(
+                "taban: {}",
+                prev_path.file_name().unwrap_or_default().to_string_lossy()
+            );
+        }
+        None => eprintln!(
+            "taban yok: {section} bölümü olan daha eski bir sonuç dosyası bulunamadı; kötüleşme karşılaştırması yapılmadı"
+        ),
+    }
+    eprintln!("{section}:");
+    if let Some(fields) = merged[section].as_object() {
+        for (k, v) in fields {
+            eprintln!("  {k:<28} {v}");
+        }
+    }
+    if !problems.is_empty() {
+        bail!(
+            "{}\nsonuç {} dosyasına yazılmadı",
+            problems.join("\n"),
+            path.display()
         );
     }
     std::fs::write(
         &path,
         format!("{}\n", serde_json::to_string_pretty(&merged)?),
     )?;
-    eprintln!("{section} ({}):", path.display());
-    if let Some(fields) = merged[section].as_object() {
-        for (k, v) in fields {
-            eprintln!("  {k:<28} {v}");
-        }
-    }
-    if problems.is_empty() {
-        eprintln!("bütçe ve regresyon denetimi temiz");
-        Ok(())
-    } else {
-        bail!("{}", problems.join("\n"))
-    }
+    eprintln!(
+        "bütçe ve regresyon denetimi temiz; {} güncellendi",
+        path.display()
+    );
+    Ok(())
 }
 
 pub fn run(args: &[String]) -> anyhow::Result<()> {

@@ -219,3 +219,15 @@ Kapsam: `winsys` tepsi, pencere sertleştirme, tek örnek, kabuk, ekran ve tema;
 - **Yayınlar oturumla sınırlı:** Başka bir kullanıcı oturumunda açık arayüz kapatılamaz; kaldırma bu durumda temiz olmayan sonuçla durur ve iletide belirtilir.
 - **Kullanıcı verisinin silinmesi:** `dev-uninstall` yükseltilmiş belirtecin profilindeki `%LOCALAPPDATA%\AlterDNS`'i siler; başka bir yönetici hesabıyla yükseltilirse o hesabın verisidir. Ürün kaldırıcısında kullanıcıya sorulması Faz 5'te değerlendirilir.
 - **Aynı bütünlükteki işlemler:** Aynı kullanıcının orta bütünlükteki bir işlemi arayüze ileti gönderebilir ya da onu sonlandırabilir; bu bir güvenlik sınırı sayılmaz.
+
+### Faz 1E incelemesi (2026-11-23)
+
+Kapsam: `winsys` ölçüm ilkelleri (işlem ve iş parçacığı sayaçları, ilk çizim sondası), arayüzün ölçüm iletileri (`MSG_PERF_FLYOUT_OPEN` ve `MSG_PERF_FLYOUT_CLOSE`, `--perf`), `xtask perf` ve `xtask test --live`. Kod okumasıyla incelendi; kritik bulgu yok.
+
+**İnceleme bulguları (düzeltildi):**
+- **`perf ui` tepsiyi kapatıp ölçmeden durabiliyordu:** Kapatma kararı pencere sınıfı başına sırayla veriliyordu. Kurulu tepsi kapatıldıktan sonra ana pencere başka bir kopyadan çalışıyorsa ölçüm başlamıyordu. Karar artık iki sınıf için kapatmadan önce verilir. Ölçüm için kapatılan kurulu tepsi sonda yeniden başlatılır.
+- **Regresyon tabanı:** Taban, ölçülen bölümü taşıyan en yeni eski dosyadır; yoksa bu açıkça bildirilir. Bütçeyi aşan ya da kötüleşen sonuç dosyaya yazılmaz, böylece sonraki günün tabanı olamaz.
+- **Ana pencere testleri kullanıcının penceresini kapatabiliyordu:** Kapanma iletisi bütün AlterDNS ana pencerelerine gidiyordu. Kullanıcının penceresi açıksa testler atlanır.
+
+**Açık ve kabul edilenler:**
+- **Ölçüm iletileri ürün ikilisinde:** Aynı oturumdaki bir işlem flyout'u açıp kapatabilir ya da `--perf` ile ana pencere başlatabilir. Bu, yukarıdaki "aynı bütünlükteki işlemler" kabulünün kapsamındadır. Tepsi çökmez, veri sızmaz. İlk çizim sondası yalnızca `--perf` ile kurulur ve penceresiyle birlikte kalkar.
