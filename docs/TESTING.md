@@ -162,7 +162,28 @@
 | Tarama hızı | 1 GB karışık derlem; MB/sn ve dosya/sn |
 | Disk | Kurulum dizini boyutu; boşta saatlik yazılan bayt (`IO Write Bytes`) |
 
-`xtask perf` sonuçları `perf/results/<tarih>.json` olarak kaydedilir. Bir önceki tabana göre > %10 kötüleşme CI'da başarısızlık sayılır.
+`xtask perf` sonuçları `perf/results/<tarih>.json` olarak kaydedilir. Bir önceki tabana göre > %10 kötüleşme başarısızlık sayılır.
+
+### `cargo xtask perf` (Faz 1'den itibaren)
+
+Üç kip vardır. Her kip kendi bölümünü günün dosyasına yazar; dosya adındaki tarih UTC'dir.
+
+| Kip | Terminal | Ne ölçer |
+|---|---|---|
+| `perf svc [--minutes N]` | Yönetici (servis işlemini okumak için; değilse `ADNS-SYS-004`). Servis kurulu ve çalışıyor olmalı | 10 dk, 10 sn aralıkla `PrivateUsage` (medyan ve en yüksek). CPU: `GetProcessTimes` farkı / (süre × mantıksal işlemci). Uyanma: her aralıkta iş parçacığı döngü sayaçları (`QueryThreadCycleTime`) artmışsa aralık etkin sayılır. İzin verilen, dakikada bir etkin aralıktır (10 dk'da 10) |
+| `perf ui [--opens N]` | Normal (yükseltilmiş terminal reddedilir) | Tepsi: 30 sn yerleşme, sonra 30 sn boyunca bellek medyanı. Flyout: 50 açılış; ilki soğuk, kalanların p95'i sıcak; açıkken en yüksek bellek. Ana pencere: 5 açılış; işlem başlangıcından ilk çizime kadar geçen sürenin medyanı, en yüksek bellek ve kapanma süresi |
+| `perf size` | Normal | `target\release` altındaki üç ikilinin boyutu ve toplamı |
+
+- **Süre ölçümü:** Arayüz, ölçüm iletisini aldığı anda saati başlatır. Sertleştirilmiş pencerenin `WM_PAINT` işlemi ve ardından `DwmFlush` bitince süreyi geri bildirir. Tıklamadan iletiye kadar geçen giriş gecikmesi bu ölçüme girmez. ETW ve WPR ile ayrıntılı ölçüm, bütçe sınırına yaklaşıldığında yapılır.
+- **Soğuk açılış:** Flyout penceresi tepsi başlarken oluşturulur. Soğuk ölçüm, başlangıçtan sonraki ilk gösterimdir.
+- **Arayüz kaynağı:** Kurulu sürüm varsa o ölçülür (`installed`), yoksa `target\release` derlemesi (`target`). Açık bir AlterDNS arayüzü yalnızca kurulu sürüme aitse kapatılır; başka bir kopya açıksa ölçüm başlamaz.
+- **Sonuç dosyası:** Yalnızca bilinen anahtarlar ve sayılar yazılır. Yol, makine adı veya kullanıcı bilgisi yazılmaz; doğrulayıcı bunları reddeder.
+- **Bütçe ve regresyon:** Bütçe aşımı ve daha önceki tarihli en son dosyaya göre > %10 kötüleşme komutu başarısız yapar. Gürültü tabanının altındaki farklar regresyon sayılmaz: bellekte 512 KiB, sürede 5 ms, CPU'da 0,01 puan, etkin aralık sayısında 1.
+
+**Faz 1 sapmaları:**
+- Servis ölçümü 5 tekrar değil, tek 10 dakikalık koşudur; bellek için 61 örneğin medyanı alınır. Flyout 50, ana pencere 5 tekrarla ölçülür.
+- Regresyon denetimi CI'da çalışmaz. Ölçüm kurulu servis, masaüstü oturumu ve boştaki makine ister. Denetim yerel koşuda yapılır, sonuç dosyası commit edilir.
+- Düşük kaynaklı VM ölçümü Faz 6 uyumluluk matrisinde yapılır.
 
 ## 6. Uyumluluk matrisi (Faz 6; Faz 2'den itibaren kısmi)
 

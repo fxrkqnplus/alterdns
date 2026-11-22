@@ -85,11 +85,16 @@ Not (2026-11-09, D8): Microsoft Defender resmi `WinDivert-2.2.2-A.zip` arşivini
 **Testler:** T-ERR-*, T-IPC-*, T-JRN-*, T-SVC-001…004, T-UI-001…008, T-PERF-001…003, T-PERF-010
 
 **Çıkış ölçütleri**
-- [ ] Servis ve tepsi IPC üzerinden konuşuyor. Yetkisiz istemci ayrıcalıklı yöntemi çağıramıyor.
-- [ ] Journal kurtarma testi geçiyor: `kill -9` simülasyonu sonrası açılışta geri alma.
-- [ ] Flyout gereksinimleri karşılanıyor: odak kaybında kapanma, sürüklenememe, DPI, çoklu monitör, görev çubuğunun dört kenarı.
-- [ ] Boştaki RAM ve CPU bütçeleri karşılanıyor (T-PERF).
-- [ ] `dev-install` → `dev-uninstall` sonrası kalıntı taraması temiz.
+- [x] Servis ve tepsi IPC üzerinden konuşuyor. Yetkisiz istemci ayrıcalıklı yöntemi çağıramıyor.
+- [x] Journal kurtarma testi geçiyor: `kill -9` simülasyonu sonrası açılışta geri alma.
+- [x] Flyout gereksinimleri karşılanıyor: odak kaybında kapanma, sürüklenememe, DPI, çoklu monitör, görev çubuğunun dört kenarı.
+  - Odak kaybı ve sürüklenememe gerçek masaüstünde de denetlendi.
+  - Dört kenar, otomatik gizli görev çubuğu, taşma alanı ve DPI ölçekleme konum testlerinde.
+  - İkinci monitörde ve DPI değişiminde elle denetim Faz 6 uyumluluk matrisinde yapılır.
+- [x] Boştaki RAM ve CPU bütçeleri karşılanıyor (T-PERF).
+- [x] `dev-install` → `dev-uninstall` sonrası kalıntı taraması temiz.
+
+**Durum (2026-11-23):** Faz 1 tamamlandı. Performans tabanı `perf/results/2026-11-22.json`'da; bütçelerin hepsi karşılandı. Ölçüm yöntemi `TESTING.md` §5'te. Açık bulgular `SECURITY.md` §6'da, fazlarıyla.
 
 ---
 
