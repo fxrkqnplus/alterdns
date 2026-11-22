@@ -213,6 +213,11 @@ fn validate_install_binary(p: &str, name: &str) -> Result<PathBuf, String> {
     if !plain_absolute(path) || !ok_name || !ok_depth {
         return Err(format!("izin dışı ikili: {p}"));
     }
+    // Sürüm dizini ve üstleri yalnızca yöneticilerce yazılabilir olmalı (K20): servis ve oturum
+    // açılışı bu ikiliyi çalıştırır.
+    if let Some(parent) = path.parent() {
+        verify_protected_chain(&root, parent).map_err(|p| format!("kurulum dizini: {p:?}"))?;
+    }
     let real = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
     let real_root = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
     if !real.starts_with(&real_root) {

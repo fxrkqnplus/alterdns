@@ -22,8 +22,32 @@ pub use alterdns_core::ui::{
 /// Kaynak kodu ve belgeler; arayüz yalnızca bu önekle başlayan adresleri açar.
 pub const REPO_URL: &str = "https://github.com/fxrkqnplus/alterdns";
 
+/// Arayüz başlatılamadı (ADNS-UI-001): ileti kutusuyla gösterilir, çıkış 1.
 pub fn ui_error(e: impl std::error::Error + Send + Sync + 'static) -> AdnsError {
     AdnsError::new(AdnsErrorCode::UiStartFailed).with_source(e)
+}
+
+/// Tek örnek kilidi başka bir işlemdeyken, o örneğin gizli penceresini en çok 3 sn bekler (ilk
+/// örnek kilidi alıp penceresini henüz oluşturmamış olabilir). Pencere hiç yoksa kilit başka
+/// bir işlemce tutuluyordur: sessizce çıkılmaz, ADNS-UI-001 döner.
+pub fn wait_for_owner(class: &str) -> Result<(), AdnsError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        if alterdns_winsys::window_owner(class).is_some() {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(ui_error(std::io::Error::other(format!(
+                "{class} kilidi tutuluyor ama penceresi yok"
+            ))));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// Bildirim gösterilemedi (ADNS-UI-002): yalnızca loglanır, akış sürer.
+pub fn notification_error(e: std::io::Error) -> AdnsError {
+    AdnsError::new(AdnsErrorCode::UiNotificationsUnavailable).with_source(e)
 }
 
 /// Yollar, log (`%LOCALAPPDATA%\AlterDNS\logs\<name>.log`) ve kullanıcı yapılandırması.

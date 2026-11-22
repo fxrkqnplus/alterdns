@@ -5,13 +5,20 @@
 
 use std::io;
 
+use std::os::windows::ffi::OsStringExt;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     MB_ICONERROR, MB_OK, MB_SETFOREGROUND, MessageBoxW, SW_SHOWNORMAL,
 };
-use windows::core::{PCWSTR, w};
+
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::System::Threading::{
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+};
+use windows::core::{PCWSTR, PWSTR, w};
 
 use crate::acl::wide;
+use crate::pipe::os_error;
 
 /// `https://` adresini varsayılan tarayıcıda açar. Başka şema reddedilir (`InvalidInput`);
 /// hangi adreslerin açılabileceğine çağıran karar verir.
@@ -40,6 +47,30 @@ pub fn open_url(url: &str) -> io::Result<()> {
     } else {
         Err(io::Error::other("ShellExecuteW başarısız"))
     }
+}
+
+/// İşlemin ikili yolu (`QueryFullProcessImageNameW`, Win32 biçimi).
+pub fn process_image(pid: u32) -> io::Result<std::path::PathBuf> {
+    let mut buf = vec![0u16; 32_768];
+    let mut len = buf.len() as u32;
+    // SAFETY: Tutamaç yalnızca sorgu hakkıyla açılır ve kapatılır; arabellek `len` öğe tutar ve
+    // API en çok o kadar yazar.
+    unsafe {
+        let handle =
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).map_err(os_error)?;
+        let result = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+        result.map_err(os_error)?;
+    }
+    buf.truncate(len as usize);
+    Ok(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &buf,
+    )))
 }
 
 /// Hata simgeli, tek düğmeli ileti kutusu (arayüz başlatılamadığında).

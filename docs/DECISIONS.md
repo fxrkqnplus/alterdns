@@ -40,7 +40,9 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 **Karar kuralı:** Bütçeleri karşılayan en düşük emekli seçenek. Slint seçilirse GPL-3.0 koşulları uygulanır; Hakkında ekranında Slint'e teşekkür edilir.
 
-**Spike sonucu (2026-11-09; ayrıntı `spikes/ui/RESULTS.md`):** Release derlemeler, aynı flyout taslağı. Bellek özel bayt (MB), süre ms.
+**Spike sonucu (2026-11-09):** Release derlemeler, aynı flyout taslağı. Bellek özel bayt (MB), süre ms. Spike kodu 1D sonunda silindi (K8); ölçümler burada kalır.
+- **Yöntem:** Ölçüm aracı flyout'u `PostMessage` ile açıp kapatır. Açılış süresi, iletiden hemen önceki QPC ile uygulamanın ilk `WM_PAINT` işlendikten ve `DwmFlush` döndükten sonra yazdığı `READY <qpc>` arasındaki farktır. "Kapandıktan sonra" sütunu 50 aç/kapa döngüsünden sonraki değerdir. Ölçüm kipinde odak kaybında kapanma kapalıydı.
+- Win32 + D2D yazılım varyantında yaklaşık 110 açılışta bir `READY` 20 sn içinde gelmedi (yöntemin sınırı olarak kaydedildi).
 
 | Varyant | Boşta | Açık | Kapandıktan sonra | Sıcak p95 | Soğuk en çok | İkili | UIA |
 |---|---|---|---|---|---|---|---|
@@ -60,10 +62,13 @@ Durumlar: **Kabul** · **Önerilen (spike bekliyor)** · **Reddedildi** · **Yer
 
 **Kabul (2026-11-09):** Kullanıcının elle denetiminde (gerçek odak kaybı, Alt+Space ve sürükleme, görev çubuğu ve Alt+Tab, %125/%150 DPI) sorun gözlenmedi; kullanıcı devam onayı verdi.
 
-**Açık maddeler (Faz 1):**
-- winit'in `WS_EX_TOOLWINDOW` bayrağını geri yazması otomatik denetimde görüldü; görev çubuğu ve Alt+Tab davranışı tepsi ajanında winit API'siyle ayrıca doğrulanacak.
-- İkinci monitör ve görev çubuğunun farklı kenarları denenmedi.
-- Tepsi GUID yaklaşımı, i18n seçimi (Slint `@tr` + gettext ya da Fluent) ve vurgu rengi Faz 1'e kaldı.
+**Açık maddeler (Faz 1) ve 1D sonuçları (2026-11-22):**
+- **`WS_EX_TOOLWINDOW` geri yazımı:** Kapandı. Alt sınıf `WM_STYLECHANGING` ve `WM_WINDOWPOSCHANGING`'de kuralları yeniden uygular (test `flyout_style_survives_show_hide_cycles`). Kullanıcının elle denetiminde T-UI-001/002/005/006/008 geçti (ARCHITECTURE §9).
+- **Görev çubuğu kenarları:** Konum, `ABM_GETTASKBARPOS` kenarı ve simge dikdörtgeninden saf bir işlevle hesaplanır; dört kenar, otomatik gizli görev çubuğu, taşma alanı ve 96–288 DPI testte. İkinci monitör ve görev çubuğunun başka kenarda elle denetimi yapılmadı (T-UI-003 isteğe bağlı; Faz 6 uyumluluk matrisi).
+- **Tepsi kimliği:** `uID` (GUID exe yoluna bağlı; ARCHITECTURE §2).
+- **Çeviri:** Slint `@tr` + gömülü gettext (`.po`), varsayılan bağlam kapalı (ARCHITECTURE §11).
+- **Vurgu rengi:** DWM `AccentColor` salt okunur; okunamazsa `#2563EB`.
+- **Sürüm:** Ürün Slint 1.19.0 kullanır (spike 1.18.1). Sürüm `alterdns-ui.exe` 15,07 MB (spike ikilisi 9,1 MB); çekirdek kurulum bütçesi (≤ 25 MB) 1E'de ölçülür.
 
 ---
 

@@ -12,15 +12,15 @@ use alterdns_errors::AdnsError;
 use alterdns_ui::slint::{self, ComponentHandle};
 use alterdns_ui::{MainWindow, Page, select_language};
 use alterdns_winsys::{
-    MessageWindow, ShellEvent, WindowKind, allow_foreground_any, arm_harden, bring_to_front,
+    MessageWindow, ShellEvent, WindowKind, allow_foreground, arm_harden, bring_to_front,
     centered_on_cursor_monitor, hardened_window, open_url, post_broadcast, single_instance,
-    theme_info,
+    theme_info, window_owner,
 };
 
 use crate::args::PageName;
 use crate::common::{
     MSG_ACTIVATE, MSG_PAGE, MSG_QUIT, MSG_SETTINGS_CHANGED, REPO_URL, TRAY_CLASS, WINDOW_CLASS,
-    spawn_status, start, status_view, theme_colors, ui_error,
+    spawn_status, start, status_view, theme_colors, ui_error, wait_for_owner,
 };
 
 const WIDTH: i32 = 960;
@@ -68,8 +68,11 @@ fn allowed_link(url: &str) -> bool {
 
 pub fn run(page: Option<PageName>) -> Result<(), AdnsError> {
     let Some(_lock) = single_instance(WINDOW_CLASS).map_err(ui_error)? else {
-        // Var olan pencere öne gelir; ön plana geçebilmesi için izin verilir.
-        allow_foreground_any();
+        // Var olan pencere öne gelir; ön plana geçme izni yalnızca onun işlemine verilir.
+        wait_for_owner(WINDOW_CLASS)?;
+        if let Some(pid) = window_owner(WINDOW_CLASS) {
+            allow_foreground(pid);
+        }
         let code = page.map_or(MSG_ACTIVATE, |p| MSG_PAGE | p.code());
         post_broadcast(WINDOW_CLASS, code).map_err(ui_error)?;
         return Ok(());

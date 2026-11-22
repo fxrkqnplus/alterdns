@@ -21,8 +21,8 @@ use alterdns_core::ui::{MSG_QUIT, TRAY_CLASS, WINDOW_CLASS};
 use alterdns_errors::{AdnsError, AdnsErrorCode};
 use alterdns_ipc::{Client, ConnectOptions, PIPE_NAME};
 use alterdns_journal::{
-    InstallOps, JournalFile, Kind, Lifetime, RUN_VALUE, RealOps, SERVICE_NAME, Snapshot, Targets,
-    Txn, list, recover_at_startup, revert_file, sha256_file,
+    InstallOps, JournalFile, Kind, Lifetime, RUN_VALUE, RealOps, SERVICE_NAME, Snapshot, SystemOps,
+    Targets, Txn, list, recover_at_startup, revert_file, sha256_file,
 };
 use alterdns_winsys::{
     DirAccess, create_protected_dir, is_elevated, post_broadcast, query_service, start_service,
@@ -155,6 +155,17 @@ pub fn dev_install(profile: &str) -> anyhow::Result<()> {
     if query_service(SERVICE_NAME)?.is_some() || paths.program_files.exists() {
         bail!("AlterDNS zaten kurulu ya da kalıntısı var: önce cargo xtask dev-uninstall");
     }
+    // Önceden var olan (başka kaynaklı) bir Run değeri journal'a "önceki değer" olarak girer ama
+    // geri almada doğrulamadan geçemez; kurulum baştan reddedilir.
+    if RealOps
+        .read(Kind::StartupEntry, RUN_VALUE)
+        .map_err(|e| anyhow::anyhow!("başlangıç kaydı okunamadı: {e}"))?
+        != Snapshot::Absent
+    {
+        bail!(
+            "{RUN_VALUE} zaten var; AlterDNS ona dokunmaz. Değeri kendiniz kaldırıp yeniden deneyin"
+        );
+    }
     let changes = plan(&paths, version, &target_dir)?;
     prepare_dirs(&paths, version)?;
     let journal = paths.journal_dir();
@@ -195,12 +206,19 @@ pub fn dev_install(profile: &str) -> anyhow::Result<()> {
 /// Çalışan arayüz işlemlerini (tepsi, ana pencere) kapatır: kurulu `alterdns-ui.exe` açıkken
 /// silinemez. Gizli pencereleri kaybolana kadar (en çok 10 sn) bekler. Yalnızca çağıranın
 /// masaüstündeki pencerelere iletilir.
-fn close_ui() -> anyhow::Result<()> {
+fn close_ui(install_root: &Path) -> anyhow::Result<()> {
+    // Yalnızca sahibi kurulu `alterdns-ui.exe` olan pencerelere iletilir; aynı sınıf adlı başka
+    // bir pencere (ör. target\ altından çalışan geliştirme sürümü) kurulu dosyayı kilitlemez.
+    let installed = |class: &str| {
+        alterdns_winsys::window_owner(class)
+            .and_then(|pid| alterdns_winsys::process_image(pid).ok())
+            .is_some_and(|image| image.starts_with(install_root))
+    };
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut asked = false;
     loop {
-        let tray = post_broadcast(TRAY_CLASS, MSG_QUIT)?;
-        let window = post_broadcast(WINDOW_CLASS, MSG_QUIT)?;
+        let tray = installed(TRAY_CLASS) && post_broadcast(TRAY_CLASS, MSG_QUIT)?;
+        let window = installed(WINDOW_CLASS) && post_broadcast(WINDOW_CLASS, MSG_QUIT)?;
         if !tray && !window {
             break;
         }
@@ -210,7 +228,7 @@ fn close_ui() -> anyhow::Result<()> {
         }
         if Instant::now() >= deadline {
             bail!(
-                "AlterDNS arayüzü kapanmadı: tepsi menüsünden Çıkış'ı seçin, ana pencereyi kapatın ve yeniden deneyin"
+                "AlterDNS arayüzü kapanmadı: tepsi menüsünden Çıkış'ı seçin, ana pencereyi kapatın ve yeniden deneyin (başka bir kullanıcı oturumunda açıksa orada kapatın)"
             );
         }
         std::thread::sleep(Duration::from_millis(200));
@@ -240,8 +258,8 @@ fn remove_user_data(dir: &Path) -> anyhow::Result<()> {
 
 pub fn dev_uninstall() -> anyhow::Result<()> {
     require_elevated(is_elevated()?)?;
-    close_ui()?;
     let paths = Paths::system()?;
+    close_ui(&paths.program_files)?;
     let journal = paths.journal_dir();
     let targets = Targets::product(paths.program_files.clone());
     let mut clean = true;

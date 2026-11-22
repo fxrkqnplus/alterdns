@@ -33,7 +33,7 @@ Durum: taslak (2026-11-09). Faz 0 spike'larından sonra ADR'lerle kesinleşir.
 **C çalışma zamanı statik bağlanır** (`+crt-static`, `.cargo/config.toml`):
 - `vcruntime140.dll` Windows'un parçası değildir; VC++ Redistributable ile gelir.
 - Yukarıdaki bayrak yüzünden uygulama dizininden de yüklenemez. Dinamik bağlansaydı yeniden dağıtılabilir paketi olmayan makinede ikililer hiç açılmazdı.
-- Testler her exe'nin statik içe aktarmalarını PE'den okur: hepsi KnownDLL, `ntdll` ya da API kümesi olmalıdır. Bu yüzden uygulama dizinine bırakılan bir DLL yükleme zamanında kullanılamaz.
+- Testler her exe'nin statik içe aktarmalarını PE'den okur. Servis ve bakım ikilisinde hepsi KnownDLL, `ntdll` ya da API kümesi olmalıdır. Arayüz ikilisi pencere sistemi için KnownDLL olmayan sistem DLL'lerini de (ör. `dwmapi`, `uxtheme`) içe aktarır; bunların hepsi System32'de bulunmalıdır ve `DEPENDENTLOADFLAG` yüklemeyi oraya sınırlar. Bu yüzden uygulama dizinine bırakılan bir DLL yükleme zamanında kullanılamaz.
 
 **Tepsi simgesi kimliği:**
 - `NOTIFYICONDATA.guidItem` exe yoluna bağlıdır ve A/B sürüm dizinlerinde yol değişir. Faz 1'de bu yüzden `uID` kullanılır.
@@ -77,7 +77,7 @@ alterdns/
 │  ├─ update/                 # manifest, Ed25519, indirme, staging, A/B, geri dönüş
 │  ├─ components/             # bileşen kayıt defteri, kur/kaldır, kalıntı tarayıcı
 │  └─ ui/                     # Slint bileşenleri, tema, yazı tipleri, simgeler
-├─ apps/ svc/ tray/ ui/ scan/ nmh/ maint/ setup/
+├─ apps/ svc/ ui/ scan/ nmh/ maint/ setup/   # ui: alterdns-ui.exe (tepsi ve ana pencere kipleri)
 ├─ extension/                 # MV3 TypeScript (Chrome + Edge; paketlenmemiş dağıtım), INSTALL.md
 ├─ xtask/                     # check, test, perf, dev-install, lab, package
 ├─ assets/brand/              # logo kopyaları ve türetilmiş simgeler
@@ -347,18 +347,24 @@ tag vX.Y.Z (korumalı) ─▶ GitHub Actions: release.yml (windows-latest)
 
 ## 9. Arayüz işlemleri
 
-Ayrıntılar `UI_SPEC.md`'dedir. Teknik notlar:
+Ayrıntılar `UI_SPEC.md`'dedir. Faz 1'de gerçekleşen yapı:
 
-- Flyout tepsi işleminde çalışır; ilk gösterimde oluşturulur.
-- Kapandıktan sonra pencere ve renderer serbest bırakılır. Bellek iadesi spike'ta ölçülür; yeterli değilse flyout da kısa ömürlü ayrı bir işleme taşınır.
-- Toast bildirimleri için AUMID'li Başlat menüsü kısayolu oluşturulur (journal kaydıyla).
-- Ana pencere ayrı bir işlemdir ama tepsiyle aynı ikilidir (`alterdns-ui.exe`, §2).
-- Tek örnek mutex'leri `Local\` ad alanındadır; her oturum kendi örneğini çalıştırır.
+- **İkili ve kipler:** `alterdns-ui.exe` (`apps/ui`), arayüz bileşenleri `crates/ui` (Slint, yazılım çizici, `fluent` stili; ADR-002), Win32 işleri `crates/winsys`. `--tray [--logon]` tepsi kipi; argümansız ya da `--page <ad>` ana pencere. Tanınmayan argüman çıkış 2; başlatma hatası katalog metinli ileti kutusu (`ADNS-UI-001`) ve çıkış 1.
+- **Tek örnek:** `Local\AlterDNS.Tray` ve `Local\AlterDNS.Window` mutex'leri; her oturum kendi örneğini çalıştırır. İkinci ana pencere işlemi, var olan pencereye kayıtlı `AlterDNS.Broadcast.v1` iletisini (`alterdns_core::ui` kodları: ayarlar değişti, öne gel, kapan, sayfa) gönderip çıkar. Hedef `FindWindowW` ile yalnızca çağıranın masaüstünde aranır; başka oturumlara ileti gitmez.
+- **Gizli ileti penceresi:** Görünmeyen üst düzey pencere (ileti penceresi değil; `TaskbarCreated` ve `WM_SETTINGCHANGE` yalnızca üst düzey pencerelere yayınlanır). Tepsi simgesi `Shell_NotifyIcon` sürüm 4, `uID` 1; Explorer yeniden başlayınca yeniden eklenir.
+- **Olay sırası:** Kabuk olayları, Slint geri çağrıları ve durum iş parçacığı komutları Slint olay döngüsüne kuyruklanır ve sırayla işlenir; bir işleyici çalışırken iç içe çağrılar durumu ödünç almaz.
+- **Flyout:** Tepsi işleminde, başlangıçta bileşen olarak oluşturulur ve gizlenip gösterilir. Konum, simge dikdörtgeni ve `ABM_GETTASKBARPOS` kenarından saf bir işlevle hesaplanır (otomatik gizli görev çubuğu ve taşma alanı dahil). Bellek ölçümü 1E'de yapılır.
+- **Pencere sertleştirme:** Gösterilmeden önce `WH_CALLWNDPROCRET` ile `WM_SHOWWINDOW` yakalanır ve `GWLP_WNDPROC` zinciriyle alt sınıf kurulur. comctl32'nin `SetWindowSubclass`'ı kullanılmaz: sürüm 5.82'de yalnızca sıra numarasıyla dışa aktarılır ve bildirimsiz ikililer adla bağlanınca açılmaz. Çatı stili geri yazabildiği için kurallar `WM_STYLECHANGING` ve `WM_WINDOWPOSCHANGING`'de yeniden uygulanır. Ana pencere simgesi exe'nin çok boyutlu simgesinden (kaynak 1) pencerenin DPI'ına göre yüklenir.
+- **Tema:** `HKCU` tema ve DWM vurgu değerleri ile `SPI_GETCLIENTAREAANIMATION` yalnızca okunur; `WM_SETTINGCHANGE("ImmersiveColorSet")` ve `WM_DWMCOLORIZATIONCOLORCHANGED` ile yenilenir.
+- **Durum:** Ayrı iş parçacığında IPC istemcisi; kopunca 2, 4, 8, 16, 30 sn geri çekilmeyle yeniden bağlanır, bağlıyken boşta uyanmaz. Servis örneği değişince `ADNS-SVC-002` balonu gösterilir; gösterilemezse `ADNS-UI-002` loglanır.
+- **Bildirim:** Faz 1'de tepsi balonu (`NIF_INFO`, sessiz saatlere uyar); Windows bunu bildirim olarak gösterir. AUMID'li Başlat menüsü kısayoluyla toast Faz 5'te kurulumla birlikte değerlendirilir.
+- **Oturum açılışı:** `HKLM\…\Run\AlterDNS` = `"<kurulum>\<sürüm>\alterdns-ui.exe" --tray --logon` journal'daki `StartupEntry` ile yazılır; komut birebir bu biçimde doğrulanır. Kullanıcı başlatmayı kapattıysa `--logon` ile açılan tepsi hemen çıkar.
+- **Kaldırma:** Kaldırma ve güncelleme öncesi açık arayüz işlemlerine kapanma iletisi gönderilir; kurulu exe açıkken silinemez.
 - Tepsi çökerse onu yeniden başlatan bir mekanizma Faz 1'de yoktur.
 
 ## 10. Log ve gözlemlenebilirlik
 
-- `tracing` + `tracing-appender`; JSON satırları, döngüsel dosyalar. Toplam ≤ 10 MB.
+- `tracing` + kendi boyut sınırlı yazıcı (`CappedWriter`, 2 × 5 MiB, kullanıcı adı maskeli); JSON satırları. Servis `%ProgramData%\AlterDNS\logs`, arayüz `%LOCALAPPDATA%\AlterDNS\logs\{tray,window}.log`.
 - Varsayılan düzey `info`. "Tanılama modu" 30 dk süreyle `debug` açar ve sonra kendiliğinden kapanır.
 - Kişisel veri en aza indirilir: URL'ler yalnız alan adı olarak tutulur, dosya yolları kullanıcı adı maskelenerek yazılır. Ağ parmak izleri hash'lenir.
 - "Tanılama paketi oluştur": loglar, sürümler ve parmak izi özeti tek bir ZIP'e konur. Kullanıcı önce içeriği görür; otomatik gönderim yoktur.
@@ -367,8 +373,9 @@ Ayrıntılar `UI_SPEC.md`'dedir. Teknik notlar:
 
 - Türkçe varsayılan, İngilizce ikinci dildir.
 - Arayüz metinleri Slint `@tr()` ile yazılır:
-  - msgid kararlı bir İngilizce anahtardır.
-  - `tr.po` ve `en.po` ikisi de zorunludur ve derlemeye gömülür.
+  - msgid kararlı bir İngilizce anahtardır. Derleyicinin varsayılan bağlamı (bileşen adı) kapalıdır; bağlam yalnızca `@tr("bağlam" => "metin")` ile verilir.
+  - `crates/ui/lang/{tr,en}/LC_MESSAGES/alterdns-ui.po` ikisi de zorunludur ve ikiliye gömülür. Dil çalışırken değişir; açık pencerelerin ve tepsi ipucunun metni hemen güncellenir.
+  - Rust tarafında gereken metinler (tepsi ipucu) de `.slint` içindeki bir globalden okunur; kodda kullanıcıya görünen metin yazılmaz. Dil adları kendi dillerinde yazılır.
 - Hata metinleri `errors/catalog.toml`'dan gelir. Arayüz ve hata metinleri aynı dil seçimini (`Lang`) kullanır.
 - Arayüzde büyük/küçük harf dönüşümü (`to_uppercase`) yapılmaz (Türkçe i/İ).
-- Eksik çeviri CI'da hata verir.
+- `cargo xtask check` adımı `i18n`: eksik, boş ya da bulanık çeviri, kullanılmayan anahtar ve yer tutucu sayısı farkı hatadır.

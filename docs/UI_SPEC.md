@@ -68,6 +68,17 @@ Referans deneyim: Cloudflare WARP'ın tepsi menüsü. Hedef: modern, sade, hızl
 4. **Tarayıcı koruması kartı:** bugün engellenen sayısı; uzantı bağlantı durumu (bağlı / bağlı değil / kurulu değil veya devre dışı → "Tarayıcıda kur" sihirbazı).
 5. **Alt çubuk:** "Ana pencereyi aç" (birincil, tek tık), "Duraklat ▾" (15 dk / 1 saat / yeniden başlatmaya kadar), ayarlar simgesi, "Çıkış".
 
+**Faz 1 (modüller kurulu değilken) gerçekleşen içerik:**
+- **Başlık durum etiketi:**
+  - Servise bağlı: "Koruma modülü yüklü değil".
+  - Bağlanırken: "AlterDNS hizmetine bağlanılıyor…".
+  - Servis yok: katalog başlığı ("AlterDNS hizmetine bağlanılamıyor"), altında katalog iletisi ve kod (`ADNS-IPC-001`).
+  - "Korunuyorsunuz" bu fazda hiçbir durumda gösterilmez.
+- **Tepsi:** Bağlıyken glif rozetsiz; servis yoksa uyarı rozetli. İpucu "AlterDNS — <durum>". Servis yeniden başlayınca `ADNS-SVC-002` balonu (bildirimler açıksa).
+- **Kartlar:** Üç modül "Yüklü değil"; "Ekle" devre dışı, altında "Bileşen yönetimi sonraki bir sürümde gelecek." Duraklatılacak modül olmadığı için "Duraklat" yok.
+- **Alt çubuk:** "Ana pencereyi aç" (birincil, vurgu renginde), "Ayarlar", "Çıkış".
+- **Glif:** 16 ve 20 px'te piksele hizalanmış biçim (`assets/brand/tray/tray-16.svg`, `tray-20.svg`), 24 ve 32 px'te `tray.svg`. Arayüzdeki logo gösterim boyutunun iki katında, kademeli küçültülmüş PNG'dir.
+
 **Durum geçişleri:** Anahtar değişiminde iyimser (optimistic) gösterim yapılmaz. "Ayarlanıyor…" gösterilir ve servis olayı gelince güncellenir. Hata olursa kartın içinde kod ve tek satır özet çıkar; "Ayrıntılar" ana pencereyi ilgili sayfada açar.
 
 ## 5. Ana pencere

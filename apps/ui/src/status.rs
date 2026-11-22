@@ -45,6 +45,15 @@ pub enum Notice {
     ServiceRestarted,
 }
 
+impl Notice {
+    /// Bildirimin metni katalogdan gelir.
+    pub fn code(self) -> AdnsErrorCode {
+        match self {
+            Notice::ServiceRestarted => AdnsErrorCode::SvcRestarted,
+        }
+    }
+}
+
 /// Geri çekilme ve servis örneği takibi (saf).
 #[derive(Debug, Default)]
 pub struct StatusMachine {

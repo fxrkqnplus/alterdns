@@ -32,8 +32,8 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::WindowsAndMessaging::{
-    ASFW_ANY, AllowSetForegroundWindow, CWPRETSTRUCT, CallNextHookEx, CallWindowProcW,
-    DefWindowProcW, GA_ROOT, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, GetAncestor, GetWindowLongPtrW,
+    AllowSetForegroundWindow, CWPRETSTRUCT, CallNextHookEx, CallWindowProcW, DefWindowProcW,
+    GA_ROOT, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, GetAncestor, GetWindowLongPtrW,
     GetWindowThreadProcessId, HHOOK, HTCAPTION, HTCLIENT, HWND_TOPMOST, IsIconic, IsWindow,
     PostMessageW, RegisterWindowMessageW, SC_KEYMENU, SC_MAXIMIZE, SC_MOVE, SC_SIZE, STYLESTRUCT,
     SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
@@ -91,7 +91,11 @@ fn hwnd_of(raw: isize) -> HWND {
 }
 
 fn state_of(hwnd: HWND) -> Option<Rc<Hardened>> {
-    HARDENED.with(|m| m.try_borrow().ok()?.get(&(hwnd.0 as isize)).cloned())
+    // `try_with`: iş parçacığı sonlanırken pencere iletisi gelirse panik (işlem iptali) olmaz.
+    HARDENED
+        .try_with(|m| m.try_borrow().ok()?.get(&(hwnd.0 as isize)).cloned())
+        .ok()
+        .flatten()
 }
 
 /// Sonraki görünür üst düzey pencereyi (bu iş parçacığında) gösterilmeden önce yakalar ve
@@ -128,19 +132,22 @@ unsafe extern "system" fn show_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
         // SAFETY: Bu iş parçacığına ait HWND üzerinde salt okunur sorgu.
         let top_level = unsafe { GetAncestor(cwp.hwnd, GA_ROOT) } == cwp.hwnd;
         if cwp.message == WM_SHOWWINDOW && cwp.wParam.0 != 0 && top_level {
-            let pending = PENDING.with(|p| p.try_borrow_mut().ok().and_then(|mut p| p.take()));
+            let pending = PENDING
+                .try_with(|p| p.try_borrow_mut().ok().and_then(|mut p| p.take()))
+                .ok()
+                .flatten();
             if let Some((kind, on_close)) = pending {
                 captured = true;
                 // Başarısızsa pencere sertleşmez; çağıran `ex_style` ile denetleyebilir.
                 if harden_with(cwp.hwnd, kind, Some(on_close)).is_ok() {
-                    LAST_HARDENED.with(|c| c.set(Some(cwp.hwnd.0 as isize)));
+                    let _ = LAST_HARDENED.try_with(|c| c.set(Some(cwp.hwnd.0 as isize)));
                 }
             }
         }
     }
     // SAFETY: Zincirdeki sonraki kancaya aynı parametreler aktarılır.
     let result = unsafe { CallNextHookEx(None, code, wp, lp) };
-    if captured && let Some(hook) = HOOK.with(Cell::take) {
+    if captured && let Some(hook) = HOOK.try_with(Cell::take).ok().flatten() {
         // SAFETY: Bu iş parçacığında kurulan kanca bir kez kaldırılır.
         unsafe {
             let _ = UnhookWindowsHookEx(hook);
@@ -180,19 +187,21 @@ fn set_dwm<T>(hwnd: HWND, attr: DWMWINDOWATTRIBUTE, value: &T) {
 fn subclass(hwnd: HWND, kind: WindowKind, on_close: Option<CloseFn>) -> io::Result<()> {
     if let Some(state) = state_of(hwnd) {
         state.kind.set(kind);
-        *state.on_close.borrow_mut() = on_close;
+        if let Ok(mut slot) = state.on_close.try_borrow_mut() {
+            *slot = on_close;
+        }
         return Ok(());
     }
     let proc: unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT = harden_proc;
     // SAFETY: Pencere bu iş parçacığına ait (çağıran denetler). Önceki işleyici değeri bir
     // WNDPROC'tur; sıfır dönüşü son hatayla ayırt edilir.
-    let prev = unsafe {
+    let (prev_raw, prev) = unsafe {
         SetLastError(WIN32_ERROR(0));
         let prev = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, proc as usize as isize);
         if prev == 0 && GetLastError() != WIN32_ERROR(0) {
             return Err(io::Error::last_os_error());
         }
-        std::mem::transmute::<isize, WNDPROC>(prev)
+        (prev, std::mem::transmute::<isize, WNDPROC>(prev))
     };
     let state = Rc::new(Hardened {
         kind: Cell::new(kind),
@@ -200,7 +209,21 @@ fn subclass(hwnd: HWND, kind: WindowKind, on_close: Option<CloseFn>) -> io::Resu
         on_close: RefCell::new(on_close),
         close_posted: Cell::new(false),
     });
-    HARDENED.with(|m| m.borrow_mut().insert(hwnd.0 as isize, state));
+    let inserted = HARDENED
+        .try_with(|m| {
+            m.try_borrow_mut()
+                .map(|mut m| m.insert(hwnd.0 as isize, state))
+                .is_ok()
+        })
+        .unwrap_or(false);
+    if !inserted {
+        // Durumsuz alt sınıf zinciri koparırdı: önceki işleyici geri yüklenir.
+        // SAFETY: Aynı pencere; değer az önce okunan önceki WNDPROC'tur.
+        unsafe {
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, prev_raw);
+        }
+        return Err(io::Error::other("sertleştirme kaydı yazılamadı"));
+    }
     Ok(())
 }
 
@@ -326,7 +349,7 @@ unsafe extern "system" fn harden_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
     match msg {
         WM_NCDESTROY => {
             let r = next();
-            HARDENED.with(|m| {
+            let _ = HARDENED.try_with(|m| {
                 if let Ok(mut m) = m.try_borrow_mut() {
                     m.remove(&(hwnd.0 as isize));
                 }
@@ -368,7 +391,8 @@ unsafe extern "system" fn harden_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
             post_close(hwnd, &state);
             return LRESULT(0);
         }
-        m if m == close_message() => {
+        // Kayıt başarısız olursa (0) WM_NULL ile eşleşmesin.
+        m if m != 0 && m == close_message() => {
             state.close_posted.set(false);
             let taken = state
                 .on_close
@@ -411,11 +435,12 @@ pub fn bring_to_front(hwnd: isize) {
     }
 }
 
-/// Başka bir işlemin (ör. öne getirilecek ilk örnek) ön plana geçmesine izin verir.
-pub fn allow_foreground_any() {
-    // SAFETY: Parametresi sabit sistem çağrısı.
+/// Yalnızca verilen işlemin (ör. başlatılan ya da öne getirilecek ana pencere) ön plana
+/// geçmesine izin verir; oturumdaki başka işlemlere izin verilmez.
+pub fn allow_foreground(pid: u32) {
+    // SAFETY: Parametresi tamsayı olan sistem çağrısı.
     unsafe {
-        let _ = AllowSetForegroundWindow(ASFW_ANY);
+        let _ = AllowSetForegroundWindow(pid);
     }
 }
 

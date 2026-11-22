@@ -26,12 +26,12 @@ use windows::Win32::UI::Shell::{
     Shell_NotifyIconGetRect, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    ChangeWindowMessageFilterEx, CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW,
-    DestroyIcon, DestroyWindow, FindWindowW, GWLP_USERDATA, GetSystemMetrics, GetWindowLongPtrW,
-    HICON, LR_DEFAULTCOLOR, MSGFLT_ALLOW, PostMessageW, RegisterClassW, RegisterWindowMessageW,
-    SM_CXSMICON, SPI_SETCLIENTAREAANIMATION, SetWindowLongPtrW, WM_APP, WM_CLOSE, WM_CONTEXTMENU,
-    WM_DWMCOLORIZATIONCOLORCHANGED, WM_NCDESTROY, WM_SETTINGCHANGE, WM_WTSSESSION_CHANGE,
-    WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP, WTS_SESSION_LOCK,
+    CreateIconFromResourceEx, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyWindow,
+    FindWindowW, GWLP_USERDATA, GetSystemMetrics, GetWindowLongPtrW, GetWindowThreadProcessId,
+    HICON, LR_DEFAULTCOLOR, PostMessageW, RegisterClassW, RegisterWindowMessageW, SM_CXSMICON,
+    SetWindowLongPtrW, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DWMCOLORIZATIONCOLORCHANGED,
+    WM_NCDESTROY, WM_SETTINGCHANGE, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    WTS_SESSION_LOCK,
 };
 use windows::core::{PCWSTR, w};
 
@@ -179,8 +179,8 @@ impl MessageWindow {
             .map_err(os_error)?;
             inner.hwnd.set(hwnd);
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Rc::as_ptr(&inner) as isize);
-            // Yükseltilmiş çalışılırsa Explorer'ın TaskbarCreated iletisi UIPI'ye takılmasın.
-            let _ = ChangeWindowMessageFilterEx(hwnd, taskbar_msg, MSGFLT_ALLOW, None);
+            // İleti filtresi gevşetilmez: arayüz orta bütünlükte çalışır, Explorer'ın
+            // TaskbarCreated iletisi zaten gelir; düşük bütünlükten gelen iletiler UIPI'de kalır.
             // Kilitlenme bildirimi alınamazsa yalnızca SessionLocked olayı gelmez.
             let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
         }
@@ -200,24 +200,6 @@ impl Drop for MessageWindow {
             let _ = WTSUnRegisterSessionNotification(hwnd);
             let _ = DestroyWindow(hwnd);
         }
-    }
-}
-
-fn setting_name_is(lp: LPARAM, name: &str) -> bool {
-    if lp.0 == 0 {
-        return false;
-    }
-    let ptr = lp.0 as *const u16;
-    let want: Vec<u16> = name.encode_utf16().collect();
-    // SAFETY: WM_SETTINGCHANGE'in lParam'ı sıfır değilse sistemin sıralayıp ilettiği, sıfırla
-    // biten bir dizedir. Okuma ilk farklı karakterde ya da sonlandırıcıda durur.
-    unsafe {
-        for (i, &c) in want.iter().enumerate() {
-            if *ptr.add(i) != c {
-                return false;
-            }
-        }
-        *ptr.add(want.len()) == 0
     }
 }
 
@@ -269,12 +251,10 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
             }
             LRESULT(0)
         }
+        // lParam okunmaz: aynı oturumdan PostMessage ile gelen geçersiz bir işaretçi işlemi
+        // düşürebilirdi. Her ayar değişiminde tema yeniden okunur (ucuz, salt okunur).
         WM_SETTINGCHANGE => {
-            if wp.0 == SPI_SETCLIENTAREAANIMATION.0 as usize
-                || setting_name_is(lp, "ImmersiveColorSet")
-            {
-                inner.dispatch(ShellEvent::SettingChanged);
-            }
+            inner.dispatch(ShellEvent::SettingChanged);
             LRESULT(0)
         }
         WM_DWMCOLORIZATIONCOLORCHANGED => {
@@ -534,6 +514,18 @@ pub fn post_broadcast(class: &str, code: u32) -> io::Result<bool> {
         PostMessageW(Some(hwnd), msg, WPARAM(code as usize), LPARAM(0)).map_err(os_error)?;
     }
     Ok(true)
+}
+
+/// O sınıftaki (çağıranın masaüstündeki) pencerenin sahibi olan işlemin kimliği.
+pub fn window_owner(class: &str) -> Option<u32> {
+    let class_w = wide(class.as_ref());
+    let mut pid = 0u32;
+    // SAFETY: Sınıf adı çağrı boyunca canlı; çıktı yerel değişkene yazılır.
+    unsafe {
+        let hwnd = FindWindowW(PCWSTR(class_w.as_ptr()), PCWSTR::null()).ok()?;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    }
+    (pid != 0).then_some(pid)
 }
 
 /// Explorer'ın görev çubuğu bu masaüstünde var mı (`Shell_TrayWnd`).

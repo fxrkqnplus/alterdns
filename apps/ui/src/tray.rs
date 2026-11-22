@@ -17,15 +17,15 @@ use alterdns_errors::{AdnsError, AdnsErrorCode};
 use alterdns_ui::slint::{self, ComponentHandle};
 use alterdns_ui::{FlyoutWindow, TrayText, select_language};
 use alterdns_winsys::{
-    MessageWindow, Rect, ShellEvent, TrayIcon, WindowKind, allow_foreground_any, arm_harden,
+    MessageWindow, Rect, ShellEvent, TrayIcon, WindowKind, allow_foreground, arm_harden,
     bring_to_front, cursor_pos, hardened_window, monitor_at, place_flyout, single_instance,
     taskbar_edge, theme_info,
 };
 
 use crate::args::PageName;
 use crate::common::{
-    MSG_QUIT, MSG_SETTINGS_CHANGED, TRAY_CLASS, spawn_status, start, status_view, theme_colors,
-    ui_error,
+    MSG_QUIT, MSG_SETTINGS_CHANGED, TRAY_CLASS, notification_error, spawn_status, start,
+    status_view, theme_colors, ui_error, wait_for_owner,
 };
 use crate::status::{Notice, UiStatus};
 
@@ -120,8 +120,8 @@ impl Tray {
             Cmd::Status(status, notice) => {
                 self.status = status;
                 self.apply_status();
-                if notice == Some(Notice::ServiceRestarted) {
-                    self.notify(AdnsErrorCode::SvcRestarted);
+                if let Some(notice) = notice {
+                    self.notify(notice.code());
                 }
             }
             Cmd::CloseFlyout => self.close_flyout(),
@@ -169,11 +169,8 @@ impl Tray {
         }
         let r = AdnsError::new(code).render(self.lang());
         if let Err(e) = self.icon.balloon(&r.title, &r.message) {
-            tracing::warn!(
-                code = AdnsErrorCode::UiNotificationsUnavailable.as_str(),
-                error = %e,
-                "bildirim gösterilemedi"
-            );
+            let err = notification_error(e);
+            tracing::warn!(code = err.code().as_str(), error = ?err, "bildirim gösterilemedi");
         }
     }
 
@@ -260,13 +257,13 @@ impl Tray {
 
     fn open_main(&mut self, page: Option<PageName>) {
         self.close_flyout();
-        allow_foreground_any();
         let result = std::env::current_exe().and_then(|exe| {
             let mut cmd = std::process::Command::new(exe);
             if let Some(page) = page {
                 cmd.args(["--page", page.as_str()]);
             }
-            cmd.spawn().map(|_| ())
+            // Ön plana geçme izni yalnızca başlatılan pencere işlemine verilir.
+            cmd.spawn().map(|child| allow_foreground(child.id()))
         });
         if let Err(e) = result {
             tracing::error!(error = %e, "ana pencere başlatılamadı");
@@ -278,7 +275,8 @@ impl Tray {
 /// kullanıcı başlatmayı kapattıysa hemen döner.
 pub fn run(logon: bool) -> Result<(), AdnsError> {
     let Some(_lock) = single_instance(TRAY_CLASS).map_err(ui_error)? else {
-        return Ok(());
+        // Tepsi zaten çalışıyor; kilit tutulduğu hâlde tepsi penceresi yoksa sessizce çıkılmaz.
+        return wait_for_owner(TRAY_CLASS);
     };
     let (paths, cfg) = start("tray")?;
     if crate::args::exit_at_logon(&crate::args::Mode::Tray { logon }, &cfg) {
