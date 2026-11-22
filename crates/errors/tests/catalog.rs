@@ -194,7 +194,6 @@ fn faz1_codes_have_fixed_names() {
         (SysApplyFailed, "ADNS-SYS-001"),
         (SysRevertFailed, "ADNS-SYS-002"),
         (SysChangedByOther, "ADNS-SYS-003"),
-        (SysElevationDenied, "ADNS-SYS-004"),
         (UiStartFailed, "ADNS-UI-001"),
         (UiNotificationsUnavailable, "ADNS-UI-002"),
     ];
@@ -202,6 +201,9 @@ fn faz1_codes_have_fixed_names() {
         assert_eq!(code.as_str(), s);
         assert_eq!(code.faz(), 1, "{s}");
     }
+    // UAC reddi: ürünün yönetici izni istediği ilk yer Faz 5'teki kurulum (1E kararı).
+    assert_eq!(SysElevationDenied.as_str(), "ADNS-SYS-004");
+    assert_eq!(SysElevationDenied.faz(), 5);
 }
 
 #[test]
