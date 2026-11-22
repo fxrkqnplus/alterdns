@@ -13,7 +13,7 @@ use std::path::Path;
 
 use alterdns_journal::{
     InstallOps, Kind, Lifetime, RealOps, Snapshot, SystemOps, Targets, Txn, product_install_root,
-    sha256_file, validate_service_binary,
+    sha256_file, validate_service_binary, validate_startup_command,
 };
 
 mod common;
@@ -177,4 +177,59 @@ fn service_binary_must_be_svc_in_program_files() {
         std::process::id()
     );
     assert!(validate_service_binary(&missing).is_err());
+}
+
+#[test]
+fn startup_command_validation() {
+    let root = product_install_root().unwrap();
+    let exe = format!(
+        r"{}\0.0.0-yok-{}\alterdns-ui.exe",
+        root.display(),
+        std::process::id()
+    );
+    // Doğru biçim ama dosya yok: reddedilir (canonicalize).
+    assert!(validate_startup_command(&format!("\"{exe}\" --tray --logon")).is_err());
+    for bad in [
+        format!("{exe} --tray --logon"),
+        format!("\"{exe}\" --tray"),
+        format!("\"{exe}\" --tray --logon --x"),
+        format!("\"{exe}\"  --tray --logon"),
+        format!("\"{}\\0.0.0\\baska.exe\" --tray --logon", root.display()),
+        format!("\"{}\\alterdns-ui.exe\" --tray --logon", root.display()),
+        "\"C:\\Windows\\alterdns-ui.exe\" --tray --logon".to_string(),
+        format!(
+            "\"{}\\0.0.0\\..\\..\\x\\alterdns-ui.exe\" --tray --logon",
+            root.display()
+        ),
+        String::new(),
+    ] {
+        assert!(validate_startup_command(&bad).is_err(), "{bad}");
+    }
+}
+
+/// Salt okunur: Run değeri yoksa `Absent`, varsa REG_SZ metni. Yazma denenmez; geçersiz komut
+/// ve izin dışı hedef yazılmadan önce reddedilir (kayıt defterine dokunulmaz).
+#[test]
+fn startup_entry_read_is_absent_or_string() {
+    let target = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\AlterDNS";
+    match RealOps.read(Kind::StartupEntry, target).unwrap() {
+        Snapshot::Absent => {}
+        Snapshot::Present(cmd) => assert!(cmd.contains("alterdns-ui.exe"), "{cmd}"),
+    }
+    let other = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Baska";
+    assert!(RealOps.read(Kind::StartupEntry, other).is_err());
+    assert!(
+        RealOps
+            .write(Kind::StartupEntry, other, &Snapshot::Absent)
+            .is_err()
+    );
+    assert!(
+        RealOps
+            .write(
+                Kind::StartupEntry,
+                target,
+                &Snapshot::Present("\"C:\\Windows\\notepad.exe\" --tray --logon".into())
+            )
+            .is_err()
+    );
 }

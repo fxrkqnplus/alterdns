@@ -24,7 +24,9 @@ pub use ops::{
     REGISTRY_ROOT, RUN_VALUE, SERVICE_NAME, SystemOps, TEST_REGISTRY_ROOT, Targets, UNINSTALL_KEY,
     is_own_object, target_allowed,
 };
-pub use real::{RealOps, product_install_root, sha256_file, validate_service_binary};
+pub use real::{
+    RealOps, product_install_root, sha256_file, validate_service_binary, validate_startup_command,
+};
 pub use recover::{RecoveryReport, recover_at_startup};
 pub use txn::{RevertReport, Txn, revert_file};
 pub use watchdog::{

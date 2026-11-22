@@ -11,7 +11,9 @@
 //! - `FileInstall`: `%ProgramFiles%\AlterDNS\…` (yalnızca `test-ops` ile `%TEMP%\alterdns-*`).
 //!   Değer dosyanın SHA-256'sıdır. Okuma ve silme burada; kopyalama `InstallOps`'ta.
 //! - `ServiceCreate`: yalnızca `AlterDNS` servisi; değer ikilinin yoludur (tırnaksız).
-//! - Servis ayarı ve kaldırma kaydı Faz 5'te, başlangıç kaydı 1D'de gelir.
+//! - `StartupEntry`: yalnızca `HKLM\…\Run\AlterDNS` (REG_SZ); yazılan komut birebir
+//!   `"<kurulum>\<sürüm>\alterdns-ui.exe" --tray --logon` olmalıdır.
+//! - Servis ayarı ve kaldırma kaydı Faz 5'te gelir.
 
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
@@ -44,6 +46,7 @@ impl SystemOps for RealOps {
             Kind::RegistryValue => read_registry(target),
             Kind::FileInstall => read_file_install(target),
             Kind::ServiceCreate => read_service(target),
+            Kind::StartupEntry => read_startup(target),
             #[cfg(any(test, feature = "test-ops"))]
             Kind::FileValue => read_file_value(target),
             other => Err(unsupported(other)),
@@ -60,6 +63,7 @@ impl SystemOps for RealOps {
                 }
             },
             Kind::ServiceCreate => write_service(target, value),
+            Kind::StartupEntry => write_startup(target, value),
             #[cfg(any(test, feature = "test-ops"))]
             Kind::FileValue => write_file_value(target, value),
             other => Err(unsupported(other)),
@@ -69,7 +73,6 @@ impl SystemOps for RealOps {
 
 fn unsupported(kind: Kind) -> String {
     match kind {
-        Kind::StartupEntry => "başlangıç kaydı 1D'de gelir".into(),
         Kind::Unknown => "bilinmeyen değişiklik türü".into(),
         other => format!("{other:?} Faz 5'te gelir"),
     }
@@ -198,24 +201,97 @@ fn read_service(target: &str) -> Result<Snapshot, String> {
     }
 }
 
-/// Servis ikilisi: `%ProgramFiles%\AlterDNS\<sürüm>\alterdns-svc.exe`, var olan bir dosya.
-pub fn validate_service_binary(p: &str) -> Result<PathBuf, String> {
+/// Kurulu ikili: `%ProgramFiles%\AlterDNS\<sürüm>\<name>`, var olan bir dosya.
+fn validate_install_binary(p: &str, name: &str) -> Result<PathBuf, String> {
     let path = Path::new(p);
     let root = product_install_root()?;
     let ok_name = path
         .file_name()
         .and_then(|n| n.to_str())
-        .is_some_and(|n| n.eq_ignore_ascii_case("alterdns-svc.exe"));
+        .is_some_and(|n| n.eq_ignore_ascii_case(name));
     let ok_depth = path.parent().and_then(Path::parent) == Some(root.as_path());
     if !plain_absolute(path) || !ok_name || !ok_depth {
-        return Err(format!("izin dışı servis ikilisi: {p}"));
+        return Err(format!("izin dışı ikili: {p}"));
     }
     let real = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
     let real_root = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
     if !real.starts_with(&real_root) {
-        return Err(format!("servis ikilisi kurulum dizininde değil: {p}"));
+        return Err(format!("ikili kurulum dizininde değil: {p}"));
     }
     Ok(path.to_path_buf())
+}
+
+/// Servis ikilisi: `%ProgramFiles%\AlterDNS\<sürüm>\alterdns-svc.exe`, var olan bir dosya.
+pub fn validate_service_binary(p: &str) -> Result<PathBuf, String> {
+    validate_install_binary(p, "alterdns-svc.exe")
+}
+
+/// Oturum açılışı komutu, birebir bu biçimde:
+/// `"%ProgramFiles%\AlterDNS\<sürüm>\alterdns-ui.exe" --tray --logon` (var olan dosya).
+pub fn validate_startup_command(cmd: &str) -> Result<PathBuf, String> {
+    let bad = || format!("izin dışı başlangıç komutu: {cmd}");
+    let rest = cmd.strip_prefix('"').ok_or_else(bad)?;
+    let (path, args) = rest.split_once('"').ok_or_else(bad)?;
+    if args != " --tray --logon" || path.contains(['"', '\0']) {
+        return Err(bad());
+    }
+    validate_install_binary(path, "alterdns-ui.exe")
+}
+
+/// `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` altındaki `AlterDNS` değeri.
+const RUN_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+const RUN_NAME: &str = "AlterDNS";
+
+fn startup_target(target: &str) -> Result<(), String> {
+    if target.eq_ignore_ascii_case(crate::ops::RUN_VALUE) {
+        Ok(())
+    } else {
+        Err(format!("izin dışı başlangıç kaydı: {target}"))
+    }
+}
+
+fn read_startup(target: &str) -> Result<Snapshot, String> {
+    startup_target(target)?;
+    let key = LOCAL_MACHINE.open(RUN_KEY);
+    if is_not_found(&key) {
+        return Ok(Snapshot::Absent);
+    }
+    let key = key.map_err(|e| format!("anahtar açılamadı: {e}"))?;
+    let ty = key.get_type(RUN_NAME);
+    if is_not_found(&ty) {
+        return Ok(Snapshot::Absent);
+    }
+    match ty.map_err(|e| format!("değer okunamadı: {e}"))? {
+        Type::String => key
+            .get_string(RUN_NAME)
+            .map(Snapshot::Present)
+            .map_err(|e| format!("değer okunamadı: {e}")),
+        other => Err(format!("beklenmeyen değer türü: {other:?}")),
+    }
+}
+
+fn write_startup(target: &str, value: &Snapshot) -> Result<(), String> {
+    startup_target(target)?;
+    if let Snapshot::Present(cmd) = value {
+        validate_startup_command(cmd)?;
+    }
+    let key = LOCAL_MACHINE.options().read().write().open(RUN_KEY);
+    match value {
+        Snapshot::Present(cmd) => key
+            .and_then(|k| k.set_string(RUN_NAME, cmd))
+            .map_err(|e| format!("başlangıç kaydı yazılamadı: {e}")),
+        Snapshot::Absent => {
+            if is_not_found(&key) {
+                return Ok(());
+            }
+            let key = key.map_err(|e| format!("anahtar açılamadı: {e}"))?;
+            let removed = key.remove_value(RUN_NAME);
+            if is_not_found(&removed) {
+                return Ok(());
+            }
+            removed.map_err(|e| format!("başlangıç kaydı silinemedi: {e}"))
+        }
+    }
 }
 
 fn write_service(target: &str, value: &Snapshot) -> Result<(), String> {

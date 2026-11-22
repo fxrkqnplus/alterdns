@@ -20,8 +20,8 @@ use alterdns_core::Paths;
 use alterdns_errors::{AdnsError, AdnsErrorCode};
 use alterdns_ipc::{Client, ConnectOptions, PIPE_NAME};
 use alterdns_journal::{
-    InstallOps, JournalFile, Kind, Lifetime, RealOps, SERVICE_NAME, Snapshot, Targets, Txn, list,
-    recover_at_startup, revert_file, sha256_file,
+    InstallOps, JournalFile, Kind, Lifetime, RUN_VALUE, RealOps, SERVICE_NAME, Snapshot, Targets,
+    Txn, list, recover_at_startup, revert_file, sha256_file,
 };
 use alterdns_winsys::{
     DirAccess, create_protected_dir, is_elevated, query_service, start_service,
@@ -32,7 +32,9 @@ use anyhow::{Context, bail};
 use crate::residue;
 
 pub const COMPONENT: &str = "dev-install";
-pub const BINARIES: [&str; 2] = ["alterdns-svc.exe", "alterdns-maint.exe"];
+pub const BINARIES: [&str; 3] = ["alterdns-svc.exe", "alterdns-maint.exe", "alterdns-ui.exe"];
+const BUILD_HINT: &str =
+    "cargo build --release -p alterdns-svc -p alterdns-maint -p alterdns-ui-app";
 
 /// Yalnızca `test-ops` derlemelerinde bulunan dizeler. `cargo xtask check` test derlemelerini
 /// aynı `target\debug`'a yazar; onların kuruluma girmesi engellenir.
@@ -62,7 +64,8 @@ pub struct PlannedChange {
     pub source: Option<PathBuf>,
 }
 
-/// Kurulum adımları: önce dosyalar, sonra servis. Yalnızca kaynakları okur (hash).
+/// Kurulum adımları: önce dosyalar, sonra servis, en son oturum açılışı kaydı. Yalnızca
+/// kaynakları okur (hash).
 pub fn plan(paths: &Paths, version: &str, target_dir: &Path) -> anyhow::Result<Vec<PlannedChange>> {
     let dir = paths.install_dir(version);
     let mut out = Vec::new();
@@ -70,14 +73,14 @@ pub fn plan(paths: &Paths, version: &str, target_dir: &Path) -> anyhow::Result<V
         let source = target_dir.join(bin);
         if !source.is_file() {
             bail!(
-                "derlenmiş ikili yok: {} (önce: cargo build --release -p alterdns-svc -p alterdns-maint)",
+                "derlenmiş ikili yok: {} (önce: {BUILD_HINT})",
                 source.display()
             );
         }
         let bytes = std::fs::read(&source).with_context(|| source.display().to_string())?;
         if is_test_build(&bytes) {
             bail!(
-                "{} bir test derlemesi (test-ops); kurulmaz. Önce: cargo build --release -p alterdns-svc -p alterdns-maint",
+                "{} bir test derlemesi (test-ops); kurulmaz. Önce: {BUILD_HINT}",
                 source.display()
             );
         }
@@ -93,6 +96,16 @@ pub fn plan(paths: &Paths, version: &str, target_dir: &Path) -> anyhow::Result<V
         kind: Kind::ServiceCreate,
         target: SERVICE_NAME.to_string(),
         after: Snapshot::Present(dir.join("alterdns-svc.exe").to_string_lossy().into_owned()),
+        source: None,
+    });
+    // Oturum açılışında tepsi (K16); kullanıcı kapattıysa `--logon` ile açılan tepsi çıkar.
+    out.push(PlannedChange {
+        kind: Kind::StartupEntry,
+        target: RUN_VALUE.to_string(),
+        after: Snapshot::Present(format!(
+            "\"{}\" --tray --logon",
+            dir.join("alterdns-ui.exe").display()
+        )),
         source: None,
     });
     Ok(out)

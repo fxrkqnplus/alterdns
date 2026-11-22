@@ -27,7 +27,7 @@ fn paths(d: &xtask::testutil::TempDir) -> Paths {
 }
 
 #[test]
-fn plan_lists_files_then_service() {
+fn plan_lists_files_service_then_startup() {
     let d = temp("plan");
     let target = d.join("target");
     std::fs::create_dir_all(&target).unwrap();
@@ -36,7 +36,7 @@ fn plan_lists_files_then_service() {
     }
     let p = paths(&d);
     let changes = plan(&p, "1.2.3", &target).unwrap();
-    assert_eq!(changes.len(), 3);
+    assert_eq!(changes.len(), 5);
     let dir = p.install_dir("1.2.3");
     for (c, b) in changes.iter().zip(BINARIES) {
         assert_eq!(c.kind, Kind::FileInstall);
@@ -47,12 +47,22 @@ fn plan_lists_files_then_service() {
             Snapshot::Present(sha256_file(&target.join(b)).unwrap())
         );
     }
-    let svc = &changes[2];
+    let svc = &changes[3];
     assert_eq!(svc.kind, Kind::ServiceCreate);
     assert_eq!(svc.target, SERVICE_NAME);
     assert_eq!(
         svc.after,
         Snapshot::Present(dir.join("alterdns-svc.exe").to_string_lossy().into_owned())
+    );
+    let run = &changes[4];
+    assert_eq!(run.kind, Kind::StartupEntry);
+    assert_eq!(run.target, alterdns_journal::RUN_VALUE);
+    assert_eq!(
+        run.after,
+        Snapshot::Present(format!(
+            "\"{}\" --tray --logon",
+            dir.join("alterdns-ui.exe").display()
+        ))
     );
     // Test derlemesi (test-ops) kurulmaz.
     std::fs::write(
