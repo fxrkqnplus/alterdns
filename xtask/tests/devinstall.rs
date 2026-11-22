@@ -12,7 +12,7 @@ use alterdns_errors::AdnsErrorCode;
 use alterdns_journal::{Kind, SERVICE_NAME, Snapshot, sha256_file};
 use alterdns_winsys::{DirAccess, PipeListener, create_protected_dir};
 use xtask::devinstall::{BINARIES, plan, require_elevated};
-use xtask::residue::{Residue, scan};
+use xtask::residue::{Residue, ResidueTargets, scan};
 
 fn temp(name: &str) -> xtask::testutil::TempDir {
     xtask::testutil::temp("devinst", name).unwrap()
@@ -114,18 +114,45 @@ fn existing_untrusted_dir_is_refused() {
 fn residue_scan_detects_planted_objects() {
     let d = temp("residue");
     let p = paths(&d);
-    let service = format!("AlterDNS-Yok-{}", std::process::id());
-    let pipe = format!(r"\\.\pipe\AlterDNS.Test.{}.residue", std::process::id());
-    let base = scan(&p, &service, &pipe);
-    // Ürünün sabit kayıt defteri anahtarları bu makinede olmamalı (kurulum onları yazmaz).
+    let id = std::process::id();
+    let service = format!("AlterDNS-Yok-{id}");
+    let pipe = format!(r"\\.\pipe\AlterDNS.Test.{id}.residue");
+    let registry_key = format!(r"SOFTWARE\AlterDNS-Yok-{id}");
+    let uninstall_key =
+        format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AlterDNS-Yok-{id}");
+    let run_value = format!("AlterDNS-Yok-{id}");
+    // Bütün hedefler test adlarıdır: makinede AlterDNS kurulu olsa da (ör. `test --live`)
+    // sonuç değişmez.
+    let targets = ResidueTargets {
+        service: &service,
+        pipe: &pipe,
+        registry_key: &registry_key,
+        uninstall_key: &uninstall_key,
+        run_value: &run_value,
+    };
+    let base = scan(&p, &targets);
     assert!(base.is_empty(), "{base:?}");
     std::fs::create_dir_all(&p.machine).unwrap();
     let _listener = PipeListener::bind(&pipe, "D:P(A;;GA;;;OW)", 1).unwrap();
-    let found = scan(&p, &service, &pipe);
+    let found = scan(&p, &targets);
     assert!(
         found.contains(&Residue::Dir(p.machine.clone())),
         "{found:?}"
     );
     assert!(found.contains(&Residue::Pipe(pipe.clone())), "{found:?}");
     assert_eq!(found.len(), 2, "{found:?}");
+}
+
+/// Ürünün kalıntı hedefleri sabit adlardır (kaldırma bunları tarar).
+#[test]
+fn product_residue_targets_are_fixed_names() {
+    let t = ResidueTargets::product();
+    assert_eq!(t.service, SERVICE_NAME);
+    assert_eq!(t.pipe, alterdns_ipc::PIPE_NAME);
+    assert_eq!(t.registry_key, r"SOFTWARE\AlterDNS");
+    assert_eq!(
+        t.uninstall_key,
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AlterDNS"
+    );
+    assert_eq!(t.run_value, "AlterDNS");
 }

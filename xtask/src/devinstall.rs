@@ -299,7 +299,7 @@ pub fn dev_uninstall() -> anyhow::Result<()> {
     } else {
         eprintln!("geri alma temiz değil; dizinler silinmedi");
     }
-    let residue = residue::scan(&paths, SERVICE_NAME, PIPE_NAME);
+    let residue = residue::scan(&paths, &residue::ResidueTargets::product());
     if residue.is_empty() {
         eprintln!("kalıntı taraması temiz");
         Ok(())
