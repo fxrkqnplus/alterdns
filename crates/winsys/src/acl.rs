@@ -126,24 +126,29 @@ fn evaluate_sd(sd: PSECURITY_DESCRIPTOR) -> Result<(), DirProblem> {
         return Err(DirProblem::UntrustedOwner);
     }
     let mut present = BOOL(0);
-    let mut dacl: *mut ACL = std::ptr::null_mut();
+    let mut dacl_out: *mut ACL = std::ptr::null_mut();
     // SAFETY: `sd` geçerli; çıktılar yerel değişkenlerdir.
-    unsafe { GetSecurityDescriptorDacl(sd, &mut present, &mut dacl, &mut defaulted) }
+    unsafe { GetSecurityDescriptorDacl(sd, &mut present, &mut dacl_out, &mut defaulted) }
         .map_err(|e| DirProblem::Unreadable(e.to_string()))?;
     if !present.as_bool() {
         return Err(DirProblem::WritableByOthers);
     }
-    // NULL DACL herkese tam erişimdir. İşaretçi okunmadan önce ayrı bir koşulla denetlenir.
+    // API'nin yazdığı değer değişmez bir bağa alınır; NULL denetimi okumayı bu bağ üzerinden
+    // korur. NULL DACL herkese tam erişimdir.
+    let dacl = dacl_out;
     if dacl.is_null() {
         return Err(DirProblem::WritableByOthers);
     }
     // SAFETY: `dacl` boş olmayan, güvenlik tanımlayıcısına ait geçerli bir ACL'dir.
     let count = unsafe { (*dacl).AceCount };
     for i in 0..u32::from(count) {
-        let mut ace: *mut c_void = std::ptr::null_mut();
-        // SAFETY: `i < AceCount`; `ace` ACL içindeki bir ACE'ye işaret eder.
-        unsafe { GetAce(dacl, i, &mut ace) }.map_err(|e| DirProblem::Unreadable(e.to_string()))?;
-        // Başarılı çağrı işaretçiyi doldurur; yine de okumadan önce denetlenir.
+        let mut ace_out: *mut c_void = std::ptr::null_mut();
+        // SAFETY: `i < AceCount`; çıktı ACL içindeki bir ACE'ye işaret eder.
+        unsafe { GetAce(dacl, i, &mut ace_out) }
+            .map_err(|e| DirProblem::Unreadable(e.to_string()))?;
+        // Başarılı çağrı işaretçiyi doldurur; yine de değişmez bağa alınıp okumadan önce
+        // denetlenir.
+        let ace = ace_out;
         if ace.is_null() {
             return Err(DirProblem::Unreadable(format!("ACE {i} okunamadı")));
         }
